@@ -11,7 +11,7 @@ Guia rapido para manter a publicacao do `Dashboard-ISP` organizada.
 - Build:
   - `installCommand`: `npm --prefix frontend ci`
   - `buildCommand`: `npm --prefix frontend run build`
-  - `outputDirectory`: `frontend/dist`
+  - `outputDirectory`: `dist`
 
 ## O Que Ja Foi Organizado
 
