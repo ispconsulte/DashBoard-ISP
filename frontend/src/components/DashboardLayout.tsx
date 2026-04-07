@@ -12,7 +12,6 @@ import AssistantReminder from "@/components/AssistantReminder";
 import { useTaskStatusAlerts } from "@/hooks/useTaskStatusAlerts";
 import MobileHeader from "@/components/MobileHeader";
 import DataErrorCard from "@/components/ui/DataErrorCard";
-import { useNotifications } from "@/hooks/useNotifications";
 import {
   parseDateValue,
   isDeadlineSoon,
@@ -159,8 +158,6 @@ class RouteErrorBoundary extends Component<
  * │  Desktop: CSS Grid com sidebar fixa + conteúdo scrollável           │
  * │  Mobile:  Grid 1-coluna + MobileHeader sticky + Sidebar Sheet       │
  * │                                                                     │
- * │  • Notification bell: único no MobileHeader (mobile) ou             │
- * │    AppSidebar (desktop). NUNCA duplicar.                            │
  * │  • Novas páginas devem usar <Outlet /> — NÃO criar layouts novos.  │
  * │  • Responsividade: usar Tailwind breakpoints (sm/md/lg) e          │
  * │    isMobile do useSidebar quando necessário.                        │
@@ -257,17 +254,12 @@ function DashboardInner() {
       })),
     [notifTasks]
   );
-  const userId = session?.email || "";
-  const { alert: statusAlert, dismissAlert } = useTaskStatusAlerts(statusAlertData, !loading, userId, session?.role);
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications(
-    notifTasks,
-    session?.name,
+  const { alert: statusAlert, dismissAlert } = useTaskStatusAlerts(
+    statusAlertData,
+    !loading,
+    session?.email || "",
     session?.role,
-    userId,
-    session?.bitrixUserId,
   );
-
-
   if (loadingSession) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,rgba(96,122,255,0.12),transparent_28%),linear-gradient(180deg,hsl(234_45%_8%),hsl(222_47%_5%))] px-4">
@@ -334,34 +326,19 @@ function DashboardInner() {
               flexDirection: "column",
             }}
           >
-            <AppSidebar
-              notifications={notifications}
-              unreadCount={unreadCount}
-              onMarkAsRead={markAsRead}
-              onMarkAllAsRead={markAllAsRead}
-            />
+            <AppSidebar />
           </div>
         </div>
       )}
 
       {/* Main content column */}
       <main style={{ minWidth: 0, overflowX: "hidden", gridColumn: isMobile ? "1 / -1" : undefined }}>
-        {/* Mobile top bar with hamburger — notification bell lives HERE on mobile (single instance) */}
-        <MobileHeader
-          notifications={notifications}
-          unreadCount={unreadCount}
-          onMarkAsRead={markAsRead}
-          onMarkAllAsRead={markAllAsRead}
-        />
+        {/* Mobile top bar with hamburger */}
+        <MobileHeader />
 
-        {/* Mobile sidebar (Sheet overlay) — NO notification bell here to avoid duplication */}
+        {/* Mobile sidebar (Sheet overlay) */}
         {isMobile && (
-          <AppSidebar
-            notifications={notifications}
-            unreadCount={unreadCount}
-            onMarkAsRead={markAsRead}
-            onMarkAllAsRead={markAllAsRead}
-          />
+          <AppSidebar />
         )}
 
         <SharedTasksProvider value={sharedTasksResult}>

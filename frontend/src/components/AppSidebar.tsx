@@ -34,8 +34,6 @@ import {
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SUPABASE_URL as LOVABLE_URL, SUPABASE_ANON_KEY as LOVABLE_KEY } from "@/lib/supabase";
-import NotificationBell from "@/components/NotificationBell";
-import type { AppNotification } from "@/hooks/useNotifications";
 
 const SIDEBAR_FOCUS_RING =
   "outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(234_89%_64%/0.95)] focus-visible:ring-offset-0 focus-visible:shadow-[0_0_0_1px_hsl(222_47%_7%),0_0_0_3px_hsl(234_89%_64%/0.22)]";
@@ -163,15 +161,7 @@ function ToggleButton() {
 type SectionKey = "management" | "tools" | "administration" | "sprint";
 
 export function AppSidebar({
-  notifications = [],
-  unreadCount = 0,
-  onMarkAsRead = () => {},
-  onMarkAllAsRead = () => {},
 }: {
-  notifications?: AppNotification[];
-  unreadCount?: number;
-  onMarkAsRead?: (id: string) => void;
-  onMarkAllAsRead?: () => void;
 }) {
   const { session, logout, canAccess } = useAuth();
   const navigate = useNavigate();
@@ -264,9 +254,9 @@ export function AppSidebar({
         flexDirection: "column",
       }}
     >
-      {/* Logo + notifications + toggle
-           On mobile Sheet: show only logo (bell lives in MobileHeader, toggle is unnecessary)
-           On desktop: show logo + notification bell + collapse toggle */}
+      {/* Logo + toggle
+           On mobile Sheet: show only logo (toggle is unnecessary)
+           On desktop: show logo + collapse toggle */}
       <div className={`flex ${collapsed ? "flex-col items-center gap-2 px-1 pt-4 pb-1" : "flex-row items-center justify-between px-4 pt-5 pb-1"}`}>
         {!collapsed && (
           <img
@@ -277,13 +267,6 @@ export function AppSidebar({
         )}
         {!isMobile && (
           <div className={`flex ${collapsed ? "flex-col" : "flex-row"} items-center gap-1`}>
-            <NotificationBell
-              notifications={notifications}
-              unreadCount={unreadCount}
-              onMarkAsRead={onMarkAsRead}
-              onMarkAllAsRead={onMarkAllAsRead}
-              collapsed={collapsed}
-            />
             <ToggleButton />
           </div>
         )}

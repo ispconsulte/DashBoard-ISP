@@ -1,21 +1,8 @@
 import { Menu } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
-import NotificationBell from "@/components/NotificationBell";
-import type { AppNotification } from "@/hooks/useNotifications";
-
-type Props = {
-  notifications?: AppNotification[];
-  unreadCount?: number;
-  onMarkAsRead?: (id: string) => void;
-  onMarkAllAsRead?: () => void;
-};
 
 export default function MobileHeader({
-  notifications = [],
-  unreadCount = 0,
-  onMarkAsRead = () => {},
-  onMarkAllAsRead = () => {},
-}: Props) {
+}: {}) {
   const { isMobile, toggleSidebar } = useSidebar();
 
   if (!isMobile) return null;
@@ -42,13 +29,7 @@ export default function MobileHeader({
         alt="ISP Consulte"
         className="h-7 w-auto object-contain"
       />
-
-      <NotificationBell
-        notifications={notifications}
-        unreadCount={unreadCount}
-        onMarkAsRead={onMarkAsRead}
-        onMarkAllAsRead={onMarkAllAsRead}
-      />
+      <div className="h-10 w-10" />
     </header>
   );
 }
