@@ -99,7 +99,7 @@ export default function AppUpdateManager() {
     <Dialog open={modalOpen}>
       <DialogContent
         className={[
-          "w-[92vw] max-w-[420px] p-0 overflow-hidden",
+          "w-[92vw] max-w-[460px] p-0 overflow-hidden",
           "border border-white/[0.08]",
           "bg-[linear-gradient(165deg,hsl(228_33%_14%/0.98),hsl(233_36%_8%/0.99))]",
           "shadow-[0_30px_100px_hsl(240_60%_3%/0.75)]",
@@ -193,30 +193,20 @@ export default function AppUpdateManager() {
             </span>
             <br />
             <span className="bg-gradient-to-r from-emerald-300 via-emerald-200 to-primary bg-clip-text text-transparent drop-shadow-[0_0_14px_hsl(160_80%_50%/0.2)]">
-              pronta para você
+              pronta para você!
             </span>
           </motion.h2>
-
-          {/* Description */}
-          <motion.p
-            initial={{ y: 8, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.28, duration: 0.35 }}
-            className="mt-3 max-w-[340px] text-[12px] leading-relaxed text-white/45 sm:text-[13px]"
-          >
-            Inclui melhorias de desempenho, correções de estabilidade e novos recursos para manter sua operação segura.
-          </motion.p>
 
           {/* Trust banner */}
           <motion.div
             initial={{ y: 8, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.34, duration: 0.35 }}
-            className="mt-4 flex w-full max-w-xs items-start gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.035] px-4 py-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+            transition={{ delay: 0.3, duration: 0.35 }}
+            className="mt-4 flex w-full max-w-sm items-start gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.035] px-4 py-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
           >
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300/80" />
             <p className="text-[11px] leading-relaxed text-white/40 sm:text-xs">
-              Nenhuma atualização será forçada. Se preferir continuar, voltaremos a avisar em 5 minutos.
+              Nenhuma atualização será forçada. Se preferir continuar, voltaremos a avisar em breve.
             </p>
           </motion.div>
 
@@ -224,8 +214,8 @@ export default function AppUpdateManager() {
           <motion.div
             initial={{ y: 8, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.4, duration: 0.3 }}
-            className="mt-6 flex w-full max-w-xs flex-col gap-2.5 sm:flex-row sm:gap-3"
+            transition={{ delay: 0.36, duration: 0.3 }}
+            className="mt-6 flex w-full max-w-sm flex-col gap-2.5 sm:flex-row sm:gap-3"
           >
             <Button
               type="button"
@@ -249,7 +239,7 @@ export default function AppUpdateManager() {
               size="lg"
               onClick={handleLater}
               disabled={updating}
-              className="h-11 rounded-xl border border-white/10 bg-white/[0.04] px-5 text-[13px] font-semibold text-white/45 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] hover:text-white/70 sm:h-12 sm:w-[100px] sm:text-sm"
+              className="h-11 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-5 text-[13px] font-semibold text-white/45 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] hover:text-white/70 sm:h-12 sm:text-sm"
             >
               Atualizar depois
             </Button>
