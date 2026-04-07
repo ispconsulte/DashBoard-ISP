@@ -521,6 +521,11 @@ export default function UsuariosPage() {
   /* ─── Delete user ─── */
   const handleDelete = async (user: UserRow) => {
     if (!session || !token) return;
+    if (user.auth_user_id === session.authUserId) {
+      showFeedback("error", "Não é possível excluir a conta que está logada no momento.");
+      setConfirmDeleteId(null);
+      return;
+    }
     setDeletingId(user.id);
     try {
       await callManageUser(token, {
@@ -1157,7 +1162,8 @@ export default function UsuariosPage() {
                     {filteredUsers.map((user, idx) => {
                       const initials = (user.name || user.email || "U")
                         .split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
-                          const isSelected = editingUser?.id === user.id;
+                      const isSelected = editingUser?.id === user.id;
+                      const isCurrentLoggedUser = user.auth_user_id === session?.authUserId;
                       const normalizedEmail = String(user.email ?? "").trim().toLowerCase();
                       const presenceEntry = onlineUsers.get(normalizedEmail) ?? onlineUsers.get(String(user.email ?? "").trim());
                       const isOnline = Boolean(presenceEntry);
@@ -1239,8 +1245,18 @@ export default function UsuariosPage() {
                                 </button>
                               </div>
                             ) : (
-                              <button onClick={() => setConfirmDeleteId(user.id)}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-[hsl(var(--task-text-muted))] hover:bg-rose-500/10 hover:text-rose-400 transition" title="Excluir">
+                              <button
+                                onClick={() => {
+                                  if (isCurrentLoggedUser) {
+                                    showFeedback("error", "Não é possível excluir a conta que está logada no momento.");
+                                    return;
+                                  }
+                                  setConfirmDeleteId(user.id);
+                                }}
+                                disabled={isCurrentLoggedUser}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-[hsl(var(--task-text-muted))] hover:bg-rose-500/10 hover:text-rose-400 transition disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[hsl(var(--task-text-muted))]"
+                                title={isCurrentLoggedUser ? "Conta logada no momento" : "Excluir"}
+                              >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
                             )}

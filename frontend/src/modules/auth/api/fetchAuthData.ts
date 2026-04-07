@@ -21,10 +21,12 @@ const headers = (token: string) => ({
 
 export type BonusUserContext = {
   userId: string | null;
+  authUserId: string | null;
   bonusRole: BonusPermissionRole;
   seniority: BonusSeniority;
   coordinatorOf: string[];
   myCoordinator: string | null;
+  bitrixUserId: string | null;
 };
 
 /** Fetch role: user_roles → users.user_profile → JWT metadata fallback */
@@ -166,17 +168,19 @@ export const fetchBonusUserContext = async (
 ): Promise<BonusUserContext> => {
   const fallback: BonusUserContext = {
     userId: null,
+    authUserId,
     bonusRole: "consultor",
     seniority: null,
     coordinatorOf: [],
     myCoordinator: null,
+    bitrixUserId: null,
   };
 
   try {
     let userRow: Record<string, unknown> | undefined;
 
     const userRes = await fetch(
-      `${base()}/rest/v1/users?auth_user_id=eq.${authUserId}&select=id,role,seniority&limit=1`,
+      `${base()}/rest/v1/users?auth_user_id=eq.${authUserId}&select=id,role,seniority,bitrix_user_id&limit=1`,
       { headers: headers(accessToken) },
     );
 
@@ -184,7 +188,7 @@ export const fetchBonusUserContext = async (
       [userRow] = await userRes.json();
     } else {
       const legacyRes = await fetch(
-        `${base()}/rest/v1/users?auth_user_id=eq.${authUserId}&select=id,user_profile,seniority_level&limit=1`,
+        `${base()}/rest/v1/users?auth_user_id=eq.${authUserId}&select=id,user_profile,seniority_level,bitrix_user_id&limit=1`,
         { headers: headers(accessToken) },
       );
       if (!legacyRes.ok) return fallback;
@@ -199,12 +203,20 @@ export const fetchBonusUserContext = async (
         : null;
     const bonusRoleValue = userRow?.role ?? userRow?.user_profile;
     const seniorityValue = userRow?.seniority ?? userRow?.seniority_level;
+    const bitrixUserId =
+      typeof userRow?.bitrix_user_id === "string"
+        ? userRow.bitrix_user_id
+        : typeof userRow?.bitrix_user_id === "number"
+        ? String(userRow.bitrix_user_id)
+        : null;
 
     if (!userId) {
       return {
         ...fallback,
+        authUserId,
         bonusRole: normalizeBonusRole(typeof bonusRoleValue === "string" ? bonusRoleValue : undefined),
         seniority: normalizeBonusSeniority(typeof seniorityValue === "string" ? seniorityValue : undefined),
+        bitrixUserId,
       };
     }
 
@@ -224,6 +236,7 @@ export const fetchBonusUserContext = async (
 
     return {
       userId,
+      authUserId,
       bonusRole: normalizeBonusRole(typeof bonusRoleValue === "string" ? bonusRoleValue : undefined),
       seniority: normalizeBonusSeniority(typeof seniorityValue === "string" ? seniorityValue : undefined),
       coordinatorOf: Array.isArray(coordinatorRows)
@@ -232,6 +245,7 @@ export const fetchBonusUserContext = async (
       myCoordinator: Array.isArray(myCoordinatorRows) && typeof myCoordinatorRows[0]?.coordinator_user_id === "string"
         ? myCoordinatorRows[0].coordinator_user_id
         : null,
+      bitrixUserId,
     };
   } catch {
     return fallback;

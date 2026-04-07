@@ -154,19 +154,14 @@ export default function Sprint6BonificacaoPage() {
             <div className="flex items-center gap-4 min-w-0">
               <motion.div
                 className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-500/10 shrink-0"
-                animate={{
-                  boxShadow: [
-                    "0 0 10px hsl(160 60% 45% / 0.08)",
-                    "0 0 24px hsl(160 60% 45% / 0.25)",
-                    "0 0 10px hsl(160 60% 45% / 0.08)",
-                  ],
-                  scale: [1, 1.06, 1],
-                }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.35, delay: 0.15, ease: "easeOut" }}
               >
                 <motion.div
-                  animate={{ rotateY: [0, 360] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "linear", repeatDelay: 2 }}
+                  initial={{ rotateY: -90, opacity: 0 }}
+                  animate={{ rotateY: 0, opacity: 1 }}
+                  transition={{ duration: 0.45, delay: 0.2, ease: "easeOut" }}
                   style={{ perspective: 600 }}
                 >
                   <Crown className="h-5 w-5 text-emerald-400" />
@@ -189,47 +184,34 @@ export default function Sprint6BonificacaoPage() {
             {topPerformer && !hideMonetary && (
               <motion.div
                 initial={{ opacity: 0, x: 24 }}
-                animate={{
-                  opacity: 1,
-                  x: 0,
-                  boxShadow: [
-                    "0 0 8px hsl(38 92% 50% / 0.04)",
-                    "0 0 20px hsl(38 92% 50% / 0.18)",
-                    "0 0 8px hsl(38 92% 50% / 0.04)",
-                  ],
-                }}
+                animate={{ opacity: 1, x: 0 }}
                 transition={{
                   opacity: { duration: 0.5, delay: 0.4 },
                   x: { duration: 0.5, delay: 0.4 },
-                  boxShadow: { duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 1 },
                 }}
                 className="flex items-center gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-2.5 shrink-0"
               >
                 <motion.div
-                  animate={{ rotate: [0, -12, 12, -8, 0], scale: [1, 1.15, 1, 1.1, 1] }}
-                  transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", repeatDelay: 1.5 }}
+                  initial={{ rotate: -10, opacity: 0 }}
+                  animate={{ rotate: 0, opacity: 1 }}
+                  transition={{ duration: 0.35, delay: 0.5, ease: "easeOut" }}
                 >
                   <Crown className="h-4 w-4 shrink-0 text-amber-400" />
                 </motion.div>
                 <motion.p
                   className="text-xs font-semibold uppercase tracking-wider text-amber-400/60"
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3, delay: 0.55 }}
                 >
                   Top
                 </motion.p>
                 <p className="truncate text-sm font-semibold text-foreground">{topPerformer.name}</p>
                 <motion.p
                   className="text-base font-bold text-amber-300 ml-2"
-                  animate={{
-                    textShadow: [
-                      "0 0 4px hsl(38 92% 50% / 0)",
-                      "0 0 14px hsl(38 92% 50% / 0.45)",
-                      "0 0 4px hsl(38 92% 50% / 0)",
-                    ],
-                    scale: [1, 1.05, 1],
-                  }}
-                  transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.6 }}
                 >
                   {money(topPerformer.payout)}
                 </motion.p>

@@ -83,6 +83,24 @@ function toNotifTask(task: Record<string, any>) {
 const norm = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
+const taskBelongsToSession = (
+  task: Record<string, any>,
+  sessionName?: string | null,
+  sessionBitrixUserId?: string | null,
+) => {
+  const responsibleId = String(task.responsible_id ?? task.user_id ?? "").trim();
+  const bitrixUserId = String(sessionBitrixUserId ?? "").trim();
+  if (responsibleId && bitrixUserId && responsibleId === bitrixUserId) {
+    return true;
+  }
+
+  const responsible = norm(
+    String(task.responsible_name ?? task.consultant ?? task.owner ?? task.responsavel ?? "")
+  );
+  const me = norm(sessionName ?? "");
+  return !!responsible && !!me && (responsible.includes(me) || me.includes(responsible));
+};
+
 // Sidebar width constants — must match sidebar.tsx
 const SIDEBAR_WIDTH = "15.5rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
@@ -190,12 +208,7 @@ function DashboardInner() {
     const hasExplicitIds = accessibleProjectIds && accessibleProjectIds.length > 0;
     const hasCompanyName = !!companyName;
     const myTasks = deferredTasks.filter((t) => {
-      if (!session?.name) return false;
-      const responsible = norm(
-        String(t.responsible_name ?? t.consultant ?? t.owner ?? t.responsavel ?? "")
-      );
-      const me = norm(session.name);
-      return responsible && (responsible.includes(me) || me.includes(responsible));
+      return taskBelongsToSession(t, session?.name, session?.bitrixUserId);
     });
 
     if (!hasExplicitIds && !hasCompanyName) return myTasks;
@@ -221,16 +234,11 @@ function DashboardInner() {
   // For non-admin users, further filter by consultant name so they only see their own tasks
   const userScopedTasks = useMemo(() => {
     if (isAdmin) return accessFilteredTasks;
-    const userName = session?.name;
-    if (!userName) return accessFilteredTasks;
-    const me = norm(userName);
+    if (!session?.name && !session?.bitrixUserId) return accessFilteredTasks;
     return accessFilteredTasks.filter((t) => {
-      const responsible = norm(
-        String(t.responsible_name ?? t.consultant ?? t.owner ?? t.responsavel ?? "")
-      );
-      return responsible && (responsible.includes(me) || me.includes(responsible));
+      return taskBelongsToSession(t, session?.name, session?.bitrixUserId);
     });
-  }, [accessFilteredTasks, isAdmin, session?.name]);
+  }, [accessFilteredTasks, isAdmin, session?.name, session?.bitrixUserId]);
 
   const notifTasks = useMemo(
     () => userScopedTasks.map(toNotifTask),

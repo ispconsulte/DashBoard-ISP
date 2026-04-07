@@ -109,6 +109,24 @@ const normalizeComparableText = (value?: string | null) =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
 
+const taskBelongsToSession = (
+  consultantName: string | null | undefined,
+  responsibleId: string | number | null | undefined,
+  sessionName?: string | null,
+  sessionBitrixUserId?: string | null,
+) => {
+  const consultant = normalizeComparableText(consultantName);
+  const me = normalizeComparableText(sessionName);
+  const taskResponsibleId = String(responsibleId ?? "").trim();
+  const userBitrixId = String(sessionBitrixUserId ?? "").trim();
+
+  if (taskResponsibleId && userBitrixId && taskResponsibleId === userBitrixId) {
+    return true;
+  }
+
+  return !!consultant && !!me && (consultant.includes(me) || me.includes(consultant));
+};
+
 const normalizeTask = (task: TaskRecord, durationSeconds?: number, projectNameById?: Map<string, string>): TaskView => {
   const title = normalizeTaskTitle(pickField(task, ["title", "nome", "name"], "Tarefa sem título"));
   const projectId = pickField(task, ["project_id", "projectId"], "").trim();
@@ -466,9 +484,12 @@ export default function TarefasPage() {
     const hasExplicitIds = accessibleProjectIds && accessibleProjectIds.length > 0;
     const hasCompanyName = !!companyName;
     const myTasks = normalizedTasks.filter((task) => {
-      const consultantName = normalizeComparableText(task.consultant);
-      const me = normalizeComparableText(session?.name);
-      return !!consultantName && !!me && (consultantName.includes(me) || me.includes(consultantName));
+      return taskBelongsToSession(
+        task.consultant,
+        task.raw.responsible_id ?? task.raw.user_id,
+        session?.name,
+        session?.bitrixUserId,
+      );
     });
 
     // Sem vínculo de projeto configurado, ainda mostramos as tarefas do próprio responsável.
@@ -509,13 +530,18 @@ export default function TarefasPage() {
     });
 
     // Non-admin: show only projects where the logged user has linked tasks (faz parte)
-    if (session?.name) {
-      const me = normalizeComparableText(session.name);
+    if (session?.name || session?.bitrixUserId) {
       const myProjectKeys = new Set<string>();
 
       filtered.forEach((task) => {
-        const responsible = normalizeComparableText(task.consultant);
-        if (responsible && responsible === me) {
+        if (
+          taskBelongsToSession(
+            task.consultant,
+            task.raw.responsible_id ?? task.raw.user_id,
+            session?.name,
+            session?.bitrixUserId,
+          )
+        ) {
           const projectKey = getProjectAccessKey(task);
           if (projectKey) myProjectKeys.add(projectKey);
         }
@@ -529,7 +555,7 @@ export default function TarefasPage() {
     }
 
     return filtered.length > 0 ? filtered : myTasks;
-  }, [normalizedTasks, isAdmin, accessibleProjectIds, accessibleProjectNames, companyName, session?.name]);
+  }, [normalizedTasks, isAdmin, accessibleProjectIds, accessibleProjectNames, companyName, session?.name, session?.bitrixUserId]);
 
   // Scope by company (kept for backward compat, now uses projectFilteredTasks)
   const scopedTasks = projectFilteredTasks;
@@ -541,19 +567,22 @@ export default function TarefasPage() {
     const uName = session?.name;
     if (!uName) return new Set<string>();
 
-    const me = uName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    if (!me) return new Set<string>();
-
     const names = new Set<string>();
     normalizedTasks.forEach((t) => {
-      const responsible = (t.consultant || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-      if (responsible && responsible === me) {
+      if (
+        taskBelongsToSession(
+          t.consultant,
+          t.raw.responsible_id ?? t.raw.user_id,
+          session?.name,
+          session?.bitrixUserId,
+        )
+      ) {
         const name = (t.project || "").trim();
         if (name && name.toLowerCase() !== "projeto indefinido") names.add(name);
       }
     });
     return names;
-  }, [normalizedTasks, session?.name]);
+  }, [normalizedTasks, session?.name, session?.bitrixUserId]);
 
   // Default project filter for non-admin: pre-select only projects where user "faz parte"
   useEffect(() => {

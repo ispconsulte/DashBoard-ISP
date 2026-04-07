@@ -251,7 +251,7 @@ export default function AppUpdateManager() {
               disabled={updating}
               className="h-11 rounded-xl border border-white/10 bg-white/[0.04] px-5 text-[13px] font-semibold text-white/45 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] hover:text-white/70 sm:h-12 sm:w-[100px] sm:text-sm"
             >
-              Depois
+              Atualizar depois
             </Button>
           </motion.div>
         </div>

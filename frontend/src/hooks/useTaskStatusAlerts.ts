@@ -9,6 +9,8 @@ export type StatusAlert = {
   timestamp: number;
 };
 
+const ALERT_AFTER_LOGIN_DELAY_MS = 20_000;
+
 /**
  * Detects tasks that became overdue since the last check.
  * Returns alerts to be consumed by the AssistantReminder widget.
@@ -22,6 +24,7 @@ export function useTaskStatusAlerts(
 ) {
   const initialLoad = useRef(true);
   const [alert, setAlert] = useState<StatusAlert | null>(null);
+  const [alertsEnabled, setAlertsEnabled] = useState(false);
   const storageKey = userId ? `task_status_snapshot_${userId}` : "task_status_snapshot";
 
   const dismissAlert = useCallback(() => setAlert(null), []);
@@ -30,10 +33,24 @@ export function useTaskStatusAlerts(
   useEffect(() => {
     initialLoad.current = true;
     setAlert(null);
+    setAlertsEnabled(false);
   }, [userId]);
 
   useEffect(() => {
-    if (!enabled || tasks.length === 0 || !userId) return;
+    if (!enabled || !userId) {
+      setAlertsEnabled(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setAlertsEnabled(true);
+    }, ALERT_AFTER_LOGIN_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [enabled, userId]);
+
+  useEffect(() => {
+    if (!enabled || !alertsEnabled || tasks.length === 0 || !userId) return;
 
     const prevSnapshot = storage.get<Record<string, string>>(storageKey, {});
     const currentSnapshot: Record<string, string> = {};
@@ -81,7 +98,7 @@ export function useTaskStatusAlerts(
         timestamp: Date.now(),
       });
     }
-  }, [tasks, enabled, userId, userRole, storageKey]);
+  }, [tasks, enabled, alertsEnabled, userId, userRole, storageKey]);
 
   return { alert, dismissAlert };
 }

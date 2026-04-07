@@ -25,11 +25,13 @@ export type AccessArea = "home" | "comodato" | "integracoes" | "tarefas" | "usua
 
 export type AuthSession = {
   userId?: string | null;
+  authUserId?: string | null;
   name: string;
   email: string;
   role: UserRole;
   bonusRole?: BonusPermissionRole;
   seniority?: BonusSeniority;
+  bitrixUserId?: string | null;
   coordinatorOf?: string[];
   myCoordinator?: string | null;
   company?: string | null;
@@ -118,11 +120,13 @@ const buildSession = async (
 
   return {
     userId: bonusContext.userId,
+    authUserId: bonusContext.authUserId ?? user?.id ?? null,
     name: dbName || metadata.name || user?.email || storedSession?.name || "Usuário",
     email: user?.email ?? fallbackEmail,
     role,
     bonusRole: bonusContext.bonusRole,
     seniority: bonusContext.seniority,
+    bitrixUserId: bonusContext.bitrixUserId,
     coordinatorOf: bonusContext.coordinatorOf,
     myCoordinator: bonusContext.myCoordinator,
     company: clienteInfo.clienteName ?? clientName ?? storedSession?.company ?? null,
@@ -255,9 +259,11 @@ export function useAuth() {
               const updated: AuthSession = {
                 ...saved,
                 userId: bonusContext.userId,
+                authUserId: bonusContext.authUserId ?? userId,
                 name: dbName || saved.name,
                 bonusRole: bonusContext.bonusRole,
                 seniority: bonusContext.seniority,
+                bitrixUserId: bonusContext.bitrixUserId,
                 coordinatorOf: bonusContext.coordinatorOf,
                 myCoordinator: bonusContext.myCoordinator,
                 accessibleProjectIds: accessibleProjects?.ids ?? null,
