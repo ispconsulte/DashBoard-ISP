@@ -1,0 +1,19 @@
+project_id = "stubkeeuttixteqckshd"
+
+[functions.ixc-proxy]
+verify_jwt = false
+
+[functions.manage-user]
+verify_jwt = false
+
+[functions.Get-Projetcs-And-Tasks-Bitrix]
+verify_jwt = false
+
+[functions.sync-bitrix-times]
+verify_jwt = false
+
+[functions.create-monthly-reminders]
+verify_jwt = false
+
+[functions.send-bonus-monthly-report]
+verify_jwt = true
