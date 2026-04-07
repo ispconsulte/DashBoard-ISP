@@ -10,7 +10,7 @@ export type AnalyticsFilterState = {
   consultant: string;
 };
 
-type ProjectOption = { id: number; name: string };
+type ProjectOption = { id: number; name: string; clientName?: string; searchText?: string };
 
 type Props = {
   filters: AnalyticsFilterState;
@@ -391,7 +391,7 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
 
   // Filter projects by search
   const searchResults = searchQuery.trim()
-    ? projects.filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    ? projects.filter((p) => (p.searchText ?? `${p.name} ${p.clientName ?? ""}`).toLowerCase().includes(searchQuery.toLowerCase()))
     : [];
 
   return (

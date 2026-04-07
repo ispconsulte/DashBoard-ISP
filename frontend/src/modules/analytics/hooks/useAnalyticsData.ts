@@ -121,6 +121,30 @@ export function useAnalyticsData(
     return map;
   }, [tasks]);
 
+  const hoursByProjectFromTimes = useMemo(() => {
+    const taskProjectById = new Map<string | number, number>();
+    tasks.forEach((task) => {
+      const taskId = task.task_id ?? task.id;
+      const projectId = Number(task.project_id);
+      if (!taskId || !projectId) return;
+      taskProjectById.set(taskId, projectId);
+      taskProjectById.set(String(taskId), projectId);
+    });
+
+    const totals = new Map<number, number>();
+    userTimes.forEach((time) => {
+      const taskId = time.task_id;
+      if (!taskId) return;
+      const projectId = taskProjectById.get(taskId) ?? taskProjectById.get(String(taskId));
+      if (!projectId) return;
+      const seconds = Number(time.seconds ?? 0);
+      if (!Number.isFinite(seconds) || seconds <= 0) return;
+      totals.set(projectId, (totals.get(projectId) ?? 0) + seconds / 3600);
+    });
+
+    return totals;
+  }, [tasks, userTimes]);
+
   const projects: ProjectAnalytics[] = useMemo(() => {
     /** Sanitiza o nome do cliente: remove placeholders como [NOME DO CLIENTE] */
     const sanitizeClientName = (raw: string | null | undefined): string => {
@@ -147,13 +171,15 @@ export function useAnalyticsData(
       const overdueRate = totalTasks > 0 ? taskStats.overdue / totalTasks : 0;
       const performance: "good" | "neutral" | "bad" =
         overdueRate > 0.3 ? "bad" : completionRate > 0.6 ? "good" : "neutral";
+      const fallbackHours = hoursByProjectFromTimes.get(ph.projectId) ?? 0;
+      const resolvedHours = ph.hours > 0 ? ph.hours : fallbackHours;
 
       return {
         projectId: ph.projectId,
         projectName: ph.projectName,
         clientId: ph.clientId,
         clientName: sanitizeClientName(ph.clientName),
-        hoursUsed: ph.hours,
+        hoursUsed: resolvedHours,
         hoursContracted: 0,
         isActive: taskStats.pending > 0 || taskStats.overdue > 0,
         isFavorite: favorites.has(ph.projectId),
@@ -188,13 +214,14 @@ export function useAnalyticsData(
       const overdueRate = totalTasks > 0 ? stats.overdue / totalTasks : 0;
       const performance: "good" | "neutral" | "bad" =
         overdueRate > 0.3 ? "bad" : completionRate > 0.6 ? "good" : "neutral";
+      const fallbackHours = hoursByProjectFromTimes.get(pid) ?? 0;
 
       fromTasks.push({
         projectId: pid,
         projectName: String(projectName),
         clientId,
         clientName,
-        hoursUsed: 0,
+        hoursUsed: fallbackHours,
         hoursContracted: 0,
         isActive: stats.pending > 0 || stats.overdue > 0,
         isFavorite: favorites.has(pid),
@@ -206,7 +233,7 @@ export function useAnalyticsData(
     });
 
     return [...fromHours, ...fromTasks];
-  }, [filteredProjectHours, tasksByProject, favorites, tasks]);
+  }, [filteredProjectHours, tasksByProject, favorites, tasks, hoursByProjectFromTimes]);
 
   const uniqueClients = useMemo(() => {
     const set = new Set<number>();
@@ -219,7 +246,10 @@ export function useAnalyticsData(
   const totalDone = useMemo(() => tasks.filter((t) => classifyTask(t) === "done").length, [tasks]);
   const totalPending = useMemo(() => tasks.filter((t) => classifyTask(t) === "pending").length, [tasks]);
   const totalOverdue = useMemo(() => tasks.filter((t) => classifyTask(t) === "overdue").length, [tasks]);
-  const totalHours = useMemo(() => filteredProjectHours.reduce((s, p) => s + p.hours, 0), [filteredProjectHours]);
+  const totalHours = useMemo(
+    () => projects.reduce((sum, project) => sum + (Number.isFinite(project.hoursUsed) ? project.hoursUsed : 0), 0),
+    [projects],
+  );
   const userTaskCount = tasks.length;
 
   return {

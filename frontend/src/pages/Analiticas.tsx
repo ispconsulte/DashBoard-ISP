@@ -34,7 +34,7 @@ const PERIOD_DAYS: Record<AnalyticsFilterState["period"], number> = {
   "30d": 30,
   "90d": 90,
   "180d": 180,
-  all: 365,
+  all: 3650,
 };
 
 // Safe hook: always returns empty map if the feature is unavailable
@@ -139,7 +139,7 @@ export default function AnaliticasPage() {
   const periodDays = PERIOD_DAYS[filters.period] ?? PERIOD_DAYS["all"];
 
   // Use shared 180d tasks from layout when period matches, otherwise fetch independently
-  const effectivePeriod = filters.period === "all" ? "180d" : filters.period;
+  const effectivePeriod = filters.period;
   const shared = useSharedTasks();
   const ownTasks = useTasks({ accessToken, period: effectivePeriod });
   const useShared = effectivePeriod === "180d" && shared;
@@ -172,9 +172,14 @@ export default function AnaliticasPage() {
   const { startIso, endIso } = useMemo(() => {
     const end = new Date();
     const start = new Date();
-    start.setDate(start.getDate() - periodDays);
+    if (filters.period === "all") {
+      start.setFullYear(2000, 0, 1);
+      start.setHours(0, 0, 0, 0);
+    } else {
+      start.setDate(start.getDate() - periodDays);
+    }
     return { startIso: start.toISOString(), endIso: end.toISOString() };
-  }, [periodDays]);
+  }, [filters.period, periodDays]);
 
   const { data: projectHours, loading: loadingHours } = useProjectHours({ startIso, endIso });
 
@@ -295,15 +300,24 @@ export default function AnaliticasPage() {
       const name = joinName || projectNameById.get(pid) || String(t.project_name ?? t.project ?? t.projeto ?? `Projeto ${pid}`);
       if (!map.has(pid)) map.set(pid, name);
     });
-    return [...map.entries()]
-      .map(([id, name]) => ({ id, name }))
+      return [...map.entries()]
+      .map(([id, name]) => {
+        const project = projects.find((item) => item.projectId === id);
+        const clientName = project?.clientName || "";
+        return {
+          id,
+          name,
+          clientName,
+          searchText: `${name} ${clientName}`.trim(),
+        };
+      })
       .sort((a, b) => {
         const aHas = a.name.includes("<>");
         const bHas = b.name.includes("<>");
         if (aHas !== bHas) return aHas ? 1 : -1;
         return a.name.localeCompare(b.name);
       });
-  }, [allTasks, accessFilteredTasks, isAdmin, projectNameById]);
+  }, [allTasks, accessFilteredTasks, isAdmin, projectNameById, projects]);
 
   // Apply status + project filter to user's tasks for display components
   const filteredTasks = useMemo(() => {
@@ -504,7 +518,7 @@ export default function AnaliticasPage() {
         {/* Header */}
         <AnalyticsPageHeader
           effectiveUser={effectiveUser}
-          periodLabel={filters.period !== "180d" ? `Últimos ${periodDays} dias` : undefined}
+          periodLabel={filters.period === "all" ? "Todo histórico" : filters.period !== "180d" ? `Últimos ${periodDays} dias` : undefined}
           lastUpdatedText={formatLastUpdated(combinedLastUpdated)}
           refreshing={refreshing}
           onExportPdf={() => setShowExportModal(true)}
@@ -601,7 +615,7 @@ export default function AnaliticasPage() {
         <ExportPDFModal
           title="Exportar Relatório de Analíticas"
           onClose={() => setShowExportModal(false)}
-          taskIntegrityData={projectsWithContracted.map((p) => ({
+          taskIntegrityData={displayedProjects.map((p) => ({
             title: p.projectName || "",
             project: p.projectName || "",
             consultant: "n/a",
@@ -610,7 +624,7 @@ export default function AnaliticasPage() {
             statusKey: p.tasksOverdue > 0 ? "overdue" : p.tasksDone > 0 ? "done" : "pending",
           }))}
           onExport={async (_sel: PDFExportSelection, incompleteAction) => {
-            let projectRows = projectsWithContracted.map((p) => ({
+            let projectRows = displayedProjects.map((p) => ({
               name: p.projectName,
               totalTasks: p.tasksDone + p.tasksPending + p.tasksOverdue,
               doneTasks: p.tasksDone,
@@ -628,7 +642,7 @@ export default function AnaliticasPage() {
 
             await exportAnalyticsPDF({
               userName: effectiveUser,
-              period: `Últimos ${periodDays} dias`,
+              period: filters.period === "all" ? "Todo histórico" : `Últimos ${periodDays} dias`,
               generatedBy: userName || undefined,
               projects: projectRows,
               totals: {
