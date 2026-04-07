@@ -158,10 +158,14 @@ export default function AppUpdateManager() {
                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
               />
               <motion.div
-                animate={updating ? { rotate: 360 } : { rotate: [0, 15, -12, 0] }}
+                animate={
+                  updating
+                    ? { y: [0, -4, 0], scale: [1, 1.06, 1] }
+                    : { rotate: [0, 15, -12, 0] }
+                }
                 transition={
                   updating
-                    ? { duration: 0.8, repeat: Infinity, ease: "linear" }
+                    ? { duration: 1.1, repeat: Infinity, ease: "easeInOut" }
                     : { duration: 2, repeat: Infinity, ease: "easeInOut" }
                 }
               >
