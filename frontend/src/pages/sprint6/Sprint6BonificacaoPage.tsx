@@ -197,7 +197,7 @@ export default function Sprint6BonificacaoPage() {
 
               {/* ── Period Summary (always visible) ────────────────── */}
               {visibleConsultants.length > 0 && (
-                <motion.div {...fadeUp} transition={{ duration: 0.35, delay: 0.05 }} className={`grid gap-2.5 ${hideMonetary ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2 lg:grid-cols-4"}`}>
+                <div className={`grid gap-2.5 ${hideMonetary ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2 lg:grid-cols-4"}`}>
                   {[
                     !hideMonetary && {
                       label: "Score médio",
@@ -235,19 +235,16 @@ export default function Sprint6BonificacaoPage() {
                       valueColor: "text-primary",
                     },
                   ].filter(Boolean).map((item: any) => (
-                    <motion.div
+                    <div
                       key={item.label}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3 }}
                       className={`rounded-xl border p-3.5 ${item.color}`}
                     >
                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">{item.label}</p>
                       <p className={`mt-1.5 text-lg font-bold leading-none ${item.valueColor}`}>{item.value}</p>
                       <p className="mt-1 text-[11px] text-muted-foreground/50">{item.sub}</p>
-                    </motion.div>
+                    </div>
                   ))}
-                </motion.div>
+                </div>
               )}
 
 
@@ -268,9 +265,9 @@ export default function Sprint6BonificacaoPage() {
                     {trendingUp.length > 0 ? (
                       <div className="space-y-2">
                         {trendingUp.map((c, i) => (
-                          <motion.div key={c.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08, duration: 0.3 }}>
+                          <div key={c.name}>
                             <InsightRow name={c.name} score={c.score} payout={c.payout} icon={TrendingUp} color="emerald" hideMonetary={hideMonetary} />
-                          </motion.div>
+                          </div>
                         ))}
                       </div>
                     ) : (
@@ -283,9 +280,9 @@ export default function Sprint6BonificacaoPage() {
                     {needsAttention.length > 0 ? (
                       <div className="space-y-2">
                         {needsAttention.map((c, i) => (
-                          <motion.div key={c.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08, duration: 0.3 }}>
+                          <div key={c.name}>
                             <InsightRow name={c.name} score={c.score} payout={c.payout} icon={TrendingDown} color="red" hideMonetary={hideMonetary} />
-                          </motion.div>
+                          </div>
                         ))}
                       </div>
                     ) : visibleConsultants.length > 0 ? (
@@ -342,7 +339,7 @@ export default function Sprint6BonificacaoPage() {
               <CollapsibleSection
                 title={hideMonetary ? "Seu Ranking" : "Ranking de Consultores"}
                 icon={Crown}
-                defaultOpen
+                
                 summary={
                   visibleConsultants.length > 0
                     ? `${visibleConsultants.length} consultores · Líder: ${visibleConsultants[0]?.name ?? "—"} com ${visibleConsultants[0]?.score ?? 0}%`
@@ -365,9 +362,9 @@ export default function Sprint6BonificacaoPage() {
                     </div>
                   )}
 
-                  <motion.div variants={staggerContainer} initial="initial" animate="animate" className="space-y-3">
+                  <div className="space-y-3">
                     {filteredConsultants.map((consultant, index) => (
-                      <motion.div key={consultant.name} variants={staggerItem}>
+                      <div key={consultant.name}>
                         <RankingCard
                           consultant={consultant}
                           rank={index + 1}
@@ -380,7 +377,7 @@ export default function Sprint6BonificacaoPage() {
                           onEvaluate={setEvaluationConsultant}
                           onSendReport={setReportConsultant}
                         />
-                      </motion.div>
+                      </div>
                     ))}
                     {filteredConsultants.length === 0 && (
                       <div className="rounded-2xl border border-border/15 bg-card/35 p-10 text-center space-y-2.5">
