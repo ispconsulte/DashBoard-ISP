@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import {
   Crown,
   Search,
@@ -11,7 +10,6 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-
 import { usePageSEO } from "@/hooks/usePageSEO";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import { useBonusRealData, type BonusConsultantCard } from "@/modules/sprint6/hooks/useBonusRealData";
@@ -19,7 +17,6 @@ import type { RoiPeriod } from "@/modules/sprint6/types";
 import PageSkeleton from "@/components/ui/PageSkeleton";
 import DataErrorCard from "@/components/ui/DataErrorCard";
 
-import { fadeUp, staggerContainer, staggerItem } from "@/modules/sprint6/components/bonus/BonusAnimations";
 import {
   money,
   normalizeName,
@@ -131,91 +128,44 @@ export default function Sprint6BonificacaoPage() {
     <div className="page-gradient w-full">
       <div className="mx-auto w-full max-w-[1800px] space-y-5 p-4 sm:p-5 md:p-6 lg:p-8">
 
-        <motion.div {...fadeUp} transition={{ duration: 0.3 }} className="space-y-5">
+        <div className="space-y-5">
 
         {/* ── Hero Header ──────────────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: -18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
+        <div
           className="relative overflow-hidden rounded-2xl border border-white/[0.07] p-5 sm:p-6 lg:p-7"
           style={{
             background: "linear-gradient(145deg, hsl(222 40% 9% / 0.92), hsl(228 36% 8% / 0.72))",
           }}
         >
-          <motion.div
+          <div
             className="pointer-events-none absolute inset-y-0 right-0 w-[40%]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1.2, delay: 0.3 }}
             style={{ background: "radial-gradient(circle at center, hsl(234 89% 64% / 0.14), transparent 65%)" }}
           />
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4 min-w-0">
-              <motion.div
-                className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-500/10 shrink-0"
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.35, delay: 0.15, ease: "easeOut" }}
-              >
-                <motion.div
-                  initial={{ rotateY: -90, opacity: 0 }}
-                  animate={{ rotateY: 0, opacity: 1 }}
-                  transition={{ duration: 0.45, delay: 0.2, ease: "easeOut" }}
-                  style={{ perspective: 600 }}
-                >
+              <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-500/10 shrink-0">
                   <Crown className="h-5 w-5 text-emerald-400" />
-                </motion.div>
-              </motion.div>
-              <motion.div
-                className="min-w-0"
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.45, delay: 0.2 }}
-              >
+              </div>
+              <div className="min-w-0">
                 <h1 className="text-xl font-bold text-foreground tracking-tight sm:text-2xl">
                   Painel de Bonificação
                 </h1>
                 <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
                   Ranking, payout e impacto financeiro
                 </p>
-              </motion.div>
+              </div>
             </div>
             {topPerformer && !hideMonetary && (
-              <motion.div
-                initial={{ opacity: 0, x: 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{
-                  opacity: { duration: 0.5, delay: 0.4 },
-                  x: { duration: 0.5, delay: 0.4 },
-                }}
-                className="flex items-center gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-2.5 shrink-0"
-              >
-                <motion.div
-                  initial={{ rotate: -10, opacity: 0 }}
-                  animate={{ rotate: 0, opacity: 1 }}
-                  transition={{ duration: 0.35, delay: 0.5, ease: "easeOut" }}
-                >
+              <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-2.5 shrink-0">
                   <Crown className="h-4 w-4 shrink-0 text-amber-400" />
-                </motion.div>
-                <motion.p
-                  className="text-xs font-semibold uppercase tracking-wider text-amber-400/60"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.3, delay: 0.55 }}
-                >
+                <p className="text-xs font-semibold uppercase tracking-wider text-amber-400/60">
                   Top
-                </motion.p>
+                </p>
                 <p className="truncate text-sm font-semibold text-foreground">{topPerformer.name}</p>
-                <motion.p
-                  className="text-base font-bold text-amber-300 ml-2"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.6 }}
-                >
+                <p className="text-base font-bold text-amber-300 ml-2">
                   {money(topPerformer.payout)}
-                </motion.p>
-              </motion.div>
+                </p>
+              </div>
             )}
           </div>
         </motion.div>
@@ -244,7 +194,7 @@ export default function Sprint6BonificacaoPage() {
 
               {/* ── Period Summary (always visible) ────────────────── */}
               {visibleConsultants.length > 0 && (
-                <motion.div {...fadeUp} transition={{ duration: 0.35, delay: 0.05 }} className={`grid gap-2.5 ${hideMonetary ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2 lg:grid-cols-4"}`}>
+                <div className={`grid gap-2.5 ${hideMonetary ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2 lg:grid-cols-4"}`}>
                   {[
                     !hideMonetary && {
                       label: "Score médio",
@@ -282,19 +232,16 @@ export default function Sprint6BonificacaoPage() {
                       valueColor: "text-primary",
                     },
                   ].filter(Boolean).map((item: any) => (
-                    <motion.div
+                    <div
                       key={item.label}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3 }}
                       className={`rounded-xl border p-3.5 ${item.color}`}
                     >
                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">{item.label}</p>
                       <p className={`mt-1.5 text-lg font-bold leading-none ${item.valueColor}`}>{item.value}</p>
                       <p className="mt-1 text-[11px] text-muted-foreground/50">{item.sub}</p>
-                    </motion.div>
+                    </div>
                   ))}
-                </motion.div>
+                </div>
               )}
 
 
@@ -315,9 +262,9 @@ export default function Sprint6BonificacaoPage() {
                     {trendingUp.length > 0 ? (
                       <div className="space-y-2">
                         {trendingUp.map((c, i) => (
-                          <motion.div key={c.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08, duration: 0.3 }}>
+                          <div key={c.name}>
                             <InsightRow name={c.name} score={c.score} payout={c.payout} icon={TrendingUp} color="emerald" hideMonetary={hideMonetary} />
-                          </motion.div>
+                          </div>
                         ))}
                       </div>
                     ) : (
@@ -330,9 +277,9 @@ export default function Sprint6BonificacaoPage() {
                     {needsAttention.length > 0 ? (
                       <div className="space-y-2">
                         {needsAttention.map((c, i) => (
-                          <motion.div key={c.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08, duration: 0.3 }}>
+                          <div key={c.name}>
                             <InsightRow name={c.name} score={c.score} payout={c.payout} icon={TrendingDown} color="red" hideMonetary={hideMonetary} />
-                          </motion.div>
+                          </div>
                         ))}
                       </div>
                     ) : visibleConsultants.length > 0 ? (
@@ -389,7 +336,7 @@ export default function Sprint6BonificacaoPage() {
               <CollapsibleSection
                 title={hideMonetary ? "Seu Ranking" : "Ranking de Consultores"}
                 icon={Crown}
-                defaultOpen
+                
                 summary={
                   visibleConsultants.length > 0
                     ? `${visibleConsultants.length} consultores · Líder: ${visibleConsultants[0]?.name ?? "—"} com ${visibleConsultants[0]?.score ?? 0}%`
@@ -412,9 +359,9 @@ export default function Sprint6BonificacaoPage() {
                     </div>
                   )}
 
-                  <motion.div variants={staggerContainer} initial="initial" animate="animate" className="space-y-3">
+                  <div className="space-y-3">
                     {filteredConsultants.map((consultant, index) => (
-                      <motion.div key={consultant.name} variants={staggerItem}>
+                      <div key={consultant.name}>
                         <RankingCard
                           consultant={consultant}
                           rank={index + 1}
@@ -427,7 +374,7 @@ export default function Sprint6BonificacaoPage() {
                           onEvaluate={setEvaluationConsultant}
                           onSendReport={setReportConsultant}
                         />
-                      </motion.div>
+                      </div>
                     ))}
                     {filteredConsultants.length === 0 && (
                       <div className="rounded-2xl border border-border/15 bg-card/35 p-10 text-center space-y-2.5">
@@ -459,13 +406,13 @@ export default function Sprint6BonificacaoPage() {
                         </p>
                       </div>
                     )}
-                  </motion.div>
+                  </div>
                 </div>
               </CollapsibleSection>
               </div>
 
             </div>
-        </motion.div>
+        </div>
       </div>
 
       <BonusEvaluationModal
