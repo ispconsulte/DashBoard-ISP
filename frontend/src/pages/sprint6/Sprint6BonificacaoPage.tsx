@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import {
   Crown,
   Search,
@@ -11,7 +10,6 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-
 import { usePageSEO } from "@/hooks/usePageSEO";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import { useBonusRealData, type BonusConsultantCard } from "@/modules/sprint6/hooks/useBonusRealData";
@@ -19,7 +17,6 @@ import type { RoiPeriod } from "@/modules/sprint6/types";
 import PageSkeleton from "@/components/ui/PageSkeleton";
 import DataErrorCard from "@/components/ui/DataErrorCard";
 
-import { fadeUp, staggerContainer, staggerItem } from "@/modules/sprint6/components/bonus/BonusAnimations";
 import {
   money,
   normalizeName,
