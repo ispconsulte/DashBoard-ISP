@@ -131,91 +131,44 @@ export default function Sprint6BonificacaoPage() {
     <div className="page-gradient w-full">
       <div className="mx-auto w-full max-w-[1800px] space-y-5 p-4 sm:p-5 md:p-6 lg:p-8">
 
-        <motion.div {...fadeUp} transition={{ duration: 0.3 }} className="space-y-5">
+        <div className="space-y-5">
 
         {/* ── Hero Header ──────────────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: -18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
+        <div
           className="relative overflow-hidden rounded-2xl border border-white/[0.07] p-5 sm:p-6 lg:p-7"
           style={{
             background: "linear-gradient(145deg, hsl(222 40% 9% / 0.92), hsl(228 36% 8% / 0.72))",
           }}
         >
-          <motion.div
+          <div
             className="pointer-events-none absolute inset-y-0 right-0 w-[40%]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1.2, delay: 0.3 }}
             style={{ background: "radial-gradient(circle at center, hsl(234 89% 64% / 0.14), transparent 65%)" }}
           />
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4 min-w-0">
-              <motion.div
-                className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-500/10 shrink-0"
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.35, delay: 0.15, ease: "easeOut" }}
-              >
-                <motion.div
-                  initial={{ rotateY: -90, opacity: 0 }}
-                  animate={{ rotateY: 0, opacity: 1 }}
-                  transition={{ duration: 0.45, delay: 0.2, ease: "easeOut" }}
-                  style={{ perspective: 600 }}
-                >
+              <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-500/10 shrink-0">
                   <Crown className="h-5 w-5 text-emerald-400" />
-                </motion.div>
-              </motion.div>
-              <motion.div
-                className="min-w-0"
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.45, delay: 0.2 }}
-              >
+              </div>
+              <div className="min-w-0">
                 <h1 className="text-xl font-bold text-foreground tracking-tight sm:text-2xl">
                   Painel de Bonificação
                 </h1>
                 <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
                   Ranking, payout e impacto financeiro
                 </p>
-              </motion.div>
+              </div>
             </div>
             {topPerformer && !hideMonetary && (
-              <motion.div
-                initial={{ opacity: 0, x: 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{
-                  opacity: { duration: 0.5, delay: 0.4 },
-                  x: { duration: 0.5, delay: 0.4 },
-                }}
-                className="flex items-center gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-2.5 shrink-0"
-              >
-                <motion.div
-                  initial={{ rotate: -10, opacity: 0 }}
-                  animate={{ rotate: 0, opacity: 1 }}
-                  transition={{ duration: 0.35, delay: 0.5, ease: "easeOut" }}
-                >
+              <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-2.5 shrink-0">
                   <Crown className="h-4 w-4 shrink-0 text-amber-400" />
-                </motion.div>
-                <motion.p
-                  className="text-xs font-semibold uppercase tracking-wider text-amber-400/60"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.3, delay: 0.55 }}
-                >
+                <p className="text-xs font-semibold uppercase tracking-wider text-amber-400/60">
                   Top
-                </motion.p>
+                </p>
                 <p className="truncate text-sm font-semibold text-foreground">{topPerformer.name}</p>
-                <motion.p
-                  className="text-base font-bold text-amber-300 ml-2"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.6 }}
-                >
+                <p className="text-base font-bold text-amber-300 ml-2">
                   {money(topPerformer.payout)}
-                </motion.p>
-              </motion.div>
+                </p>
+              </div>
             )}
           </div>
         </motion.div>
