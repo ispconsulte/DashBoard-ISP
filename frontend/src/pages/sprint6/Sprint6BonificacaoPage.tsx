@@ -409,7 +409,7 @@ export default function Sprint6BonificacaoPage() {
                         </p>
                       </div>
                     )}
-                  </motion.div>
+                  </div>
                 </div>
               </CollapsibleSection>
               </div>
