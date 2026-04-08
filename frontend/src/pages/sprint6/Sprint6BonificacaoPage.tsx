@@ -168,7 +168,7 @@ export default function Sprint6BonificacaoPage() {
               </div>
             )}
           </div>
-        </motion.div>
+        </div>
 
 
         {/* ── Error / Loading / Status ────────────────────────────── */}
