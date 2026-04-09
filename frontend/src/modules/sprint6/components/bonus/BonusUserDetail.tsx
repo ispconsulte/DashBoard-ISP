@@ -65,12 +65,23 @@ function colorForFactor(key: string) {
 }
 
 /* ── Metrics Grid ─────────────────────────────────── */
+const METRIC_COLORS: Record<string, { bg: string; text: string }> = {
+  Horas: { bg: "bg-blue-500/[0.08]", text: "text-blue-400" },
+  "No Prazo": { bg: "bg-emerald-500/[0.08]", text: "text-emerald-400" },
+  Utilização: { bg: "bg-cyan-500/[0.08]", text: "text-cyan-400" },
+  Carteira: { bg: "bg-purple-500/[0.08]", text: "text-purple-400" },
+  Tarefas: { bg: "bg-indigo-500/[0.08]", text: "text-indigo-400" },
+  Projetos: { bg: "bg-sky-500/[0.08]", text: "text-sky-400" },
+  Atraso: { bg: "bg-amber-500/[0.08]", text: "text-amber-400" },
+};
+
 function MetricTile({ icon: Icon, label, value }: { icon: typeof Clock; label: string; value: string | null }) {
   if (value == null) return null;
+  const colors = METRIC_COLORS[label] ?? { bg: "bg-primary/[0.06]", text: "text-primary/60" };
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border/10 bg-card/25 p-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/[0.06]">
-        <Icon className="h-4 w-4 text-primary/60" />
+      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${colors.bg}`}>
+        <Icon className={`h-4 w-4 ${colors.text}`} />
       </div>
       <div className="min-w-0">
         <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">{label}</p>
@@ -279,6 +290,9 @@ export function BonusUserDetail({
     { icon: PieChart, label: "Projetos", value: consultant.projectCount > 0 ? String(consultant.projectCount) : null },
     { icon: AlertCircle, label: "Atraso", value: consultant.overdueRate != null ? `${Math.round(consultant.overdueRate)}%` : null },
   ].filter((m) => m.value != null), [consultant]);
+
+  // Force 5-column grid so all metrics stay side by side
+  const metricsGridClass = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5";
 
   return (
     <div className={`rounded-2xl border transition-all ${expanded ? "border-primary/20 bg-card/55" : "border-border/12 bg-card/35 hover:bg-card/45"}`}>
