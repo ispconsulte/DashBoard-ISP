@@ -222,11 +222,19 @@ export default function AppUpdateManager() {
             initial={{ y: 8, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.3, duration: 0.35 }}
-            className="mt-4 flex w-full max-w-sm items-start gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.035] px-4 py-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+            className={`mt-4 flex w-full max-w-sm items-start gap-2.5 rounded-xl border px-4 py-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${
+              isUrgent
+                ? "border-amber-400/15 bg-amber-400/[0.04]"
+                : "border-white/[0.06] bg-white/[0.035]"
+            }`}
           >
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300/80" />
+            <ShieldCheck className={`mt-0.5 h-4 w-4 shrink-0 ${isUrgent ? "text-amber-300/80" : "text-emerald-300/80"}`} />
             <p className="text-[11px] leading-relaxed text-white/40 sm:text-xs">
-              Nenhuma atualização será forçada. Se preferir continuar, voltaremos a avisar em breve.
+              {isUrgent
+                ? versionChanges >= 2
+                  ? "Existem múltiplas atualizações pendentes. Recomendamos atualizar o sistema assim que possível para garantir estabilidade e segurança."
+                  : "Você já adiou esta atualização algumas vezes. Quando possível, salve o que está fazendo e atualize o sistema."
+                : "Nenhuma atualização será forçada. Se preferir continuar, voltaremos a avisar em breve."}
             </p>
           </motion.div>
 
