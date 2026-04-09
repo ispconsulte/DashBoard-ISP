@@ -242,52 +242,52 @@ export default function Sprint6BonificacaoPage() {
     <div className="page-gradient w-full">
       <div className="mx-auto w-full max-w-[1800px] space-y-5 p-4 sm:p-5 md:p-6 lg:p-8">
         <div className="space-y-5">
+          {/* Header */}
           <div
             className="relative overflow-hidden rounded-2xl border border-white/[0.07]"
             style={{
               background: "linear-gradient(135deg, hsl(260 30% 11%) 0%, hsl(262 35% 15%) 40%, hsl(270 25% 12%) 100%)",
             }}
           >
-            <div className="relative flex flex-col gap-4 p-4 sm:p-5 md:px-6 md:py-5">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                  <div
-                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] shrink-0 backdrop-blur-sm shadow-lg shadow-black/30"
-                    style={{
-                      background: "linear-gradient(145deg, hsl(45 80% 30% / 0.5), hsl(45 60% 20% / 0.4))",
-                    }}
-                  >
-                    <Crown className="h-5 w-5 text-amber-400" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-foreground tracking-tight leading-tight">
-                      Bonificação
-                    </h1>
-                    <p className="mt-0.5 text-xs sm:text-sm text-white/35 line-clamp-1">
-                      {canSeeRanking ? "Ranking, desempenho e evolução da equipe" : "Seu desempenho e sua avaliação mais recente"}
-                    </p>
-                  </div>
+            <div className="relative flex flex-col gap-2 p-4 sm:p-5 md:px-6 md:py-5">
+              <div className="flex items-center gap-3.5">
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] shrink-0 backdrop-blur-sm shadow-lg shadow-black/30"
+                  style={{
+                    background: "linear-gradient(145deg, hsl(45 80% 30% / 0.5), hsl(45 60% 20% / 0.4))",
+                  }}
+                >
+                  <Crown className="h-5 w-5 text-amber-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-foreground tracking-tight leading-tight">
+                    Bonificação
+                  </h1>
+                  <p className="mt-0.5 text-xs sm:text-sm text-white/35 line-clamp-1">
+                    {canSeeRanking ? "Ranking, desempenho e evolução da equipe" : "Seu desempenho e sua avaliação mais recente"}
+                  </p>
                 </div>
               </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Calendar className="h-4 w-4 text-white/30 shrink-0" />
-                {PERIOD_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setPeriod(opt.value)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                      period === opt.value
-                        ? "bg-primary/20 text-primary border border-primary/30"
-                        : "bg-white/[0.04] text-white/50 border border-white/[0.06] hover:bg-white/[0.08] hover:text-white/70"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
             </div>
+          </div>
+
+          {/* Period filters — outside header */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+            {PERIOD_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setPeriod(opt.value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                  period === opt.value
+                    ? "bg-primary/20 text-primary border border-primary/30"
+                    : "bg-card/30 text-muted-foreground/60 border border-border/15 hover:bg-card/50 hover:text-foreground/80"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
 
           {showPdfReminder && (

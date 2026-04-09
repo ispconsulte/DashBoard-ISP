@@ -366,7 +366,7 @@ export function BonusUserDetail({
                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 font-semibold px-0.5">
                         Indicadores · {periodLabel}
                       </p>
-                      <div className={`grid gap-2.5 ${allMetrics.length <= 2 ? "grid-cols-1 sm:grid-cols-2" : allMetrics.length <= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4"}`}>
+                      <div className={`grid gap-2.5 ${metricsGridClass}`}>
                         {allMetrics.map((m) => (
                           <MetricTile key={m.label} icon={m.icon} label={m.label} value={m.value} />
                         ))}
