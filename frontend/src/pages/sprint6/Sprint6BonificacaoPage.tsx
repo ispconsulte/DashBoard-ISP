@@ -40,36 +40,32 @@ import { BonusScoreComposition } from "@/modules/sprint6/components/bonus/BonusS
 import { CollapsibleSection } from "@/modules/sprint6/components/bonus/CollapsibleSection";
 import { BonusTeamTab } from "@/modules/sprint6/components/bonus/BonusTeamTab";
 
-/* ── Users who can see monetary values ───────────────────────────── */
-const MONETARY_VISIBLE_NAMES = new Set(
-  ["Rafael", "Tiago", "Felipe"].map((n) => n.toLowerCase()),
-);
-
-function canSeeMonetary(userName?: string | null): boolean {
-  if (!userName) return false;
-  const first = userName.trim().split(" ")[0]?.toLowerCase() ?? "";
-  return MONETARY_VISIBLE_NAMES.has(first);
+/* ── Visibility tiers ────────────────────────────────────────────── */
+function firstNameLower(name?: string | null): string {
+  return (name ?? "").trim().split(" ")[0]?.toLowerCase() ?? "";
 }
 
-/* ── Users who should see PDF review reminder ────────────────────── */
-const PDF_REMINDER_NAMES = new Set(
-  ["Rafael", "Tiago", "Thalia", "Felipe"].map((n) => n.toLowerCase()),
-);
+/** Talia = payment manager = full access to everything */
+function isPaymentManager(userName?: string | null): boolean {
+  return firstNameLower(userName) === "thalia" || firstNameLower(userName) === "talia";
+}
 
+/** Rafael, Tiago, Felipe = privileged coordinators: see scores + limited monetary */
+const PRIVILEGED_COORDINATOR_NAMES = new Set(["rafael", "tiago", "felipe"]);
+function isPrivilegedCoordinator(userName?: string | null): boolean {
+  return PRIVILEGED_COORDINATOR_NAMES.has(firstNameLower(userName));
+}
+
+/** Users who should see PDF review reminder */
+const PDF_REMINDER_NAMES = new Set(["rafael", "tiago", "thalia", "talia", "felipe"]);
 function shouldShowPdfReminder(userName?: string | null): boolean {
-  if (!userName) return false;
-  const first = userName.trim().split(" ")[0]?.toLowerCase() ?? "";
-  return PDF_REMINDER_NAMES.has(first);
+  return PDF_REMINDER_NAMES.has(firstNameLower(userName));
 }
 
-/* ── Eligible consultant names for ranking ───────────────────────── */
-const RANKING_ELIGIBLE_NAMES = new Set(
-  ["Tiago", "Thalia", "Felipe", "Rafael"].map((n) => n.toLowerCase()),
-);
-
+/** Eligible consultant names for ranking */
+const RANKING_ELIGIBLE_NAMES = new Set(["tiago", "thalia", "talia", "felipe", "rafael"]);
 function isRankingEligible(consultantName: string): boolean {
-  const first = consultantName.trim().split(" ")[0]?.toLowerCase() ?? "";
-  return RANKING_ELIGIBLE_NAMES.has(first);
+  return RANKING_ELIGIBLE_NAMES.has(firstNameLower(consultantName));
 }
 
 /* ── Period options ──────────────────────────────────────────────── */
