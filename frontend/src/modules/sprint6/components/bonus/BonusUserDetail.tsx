@@ -157,7 +157,7 @@ function CompositionView({ breakdown, score, hideMonetary, maxBonus, payout }: {
           return (
             <div key={f.key} className="rounded-xl border border-border/8 bg-card/20 p-4 space-y-2.5">
               <div className="flex items-start gap-3">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${palette.color}/10`}>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: palette.bgLight }}>
                   <CfgIcon className={`h-4.5 w-4.5 ${palette.text}`} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -171,7 +171,7 @@ function CompositionView({ breakdown, score, hideMonetary, maxBonus, payout }: {
                 </div>
               </div>
               <div className="h-2 w-full rounded-full bg-card/30 overflow-hidden">
-                <div style={{ width: `${normalizedPct}%` }} className={`h-full rounded-full ${palette.color}/50 transition-all`} />
+                <div style={{ width: `${normalizedPct}%`, backgroundColor: palette.bgBar }} className="h-full rounded-full transition-all" />
               </div>
               <div className="flex items-center justify-between text-[10px] text-muted-foreground/40">
                 <span>Eficiência: {normalizedPct}%</span>
