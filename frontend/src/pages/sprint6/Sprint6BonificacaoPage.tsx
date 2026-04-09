@@ -103,9 +103,17 @@ export default function Sprint6BonificacaoPage() {
   const [expandedConsultant, setExpandedConsultant] = useState<string | null>(null);
   const [evaluationConsultant, setEvaluationConsultant] = useState<BonusConsultantCard | null>(null);
   const [reportConsultant, setReportConsultant] = useState<BonusConsultantCard | null>(null);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const bonus = useBonusRealData(period, session?.accessToken, refreshKey);
   const sharedTasks = useSharedTasks();
   const allTasks = sharedTasks?.tasks ?? [];
+
+  // Track first successful load to prevent flickering empty/error states
+  useEffect(() => {
+    if (!bonus.loading && !hasLoadedOnce) {
+      setHasLoadedOnce(true);
+    }
+  }, [bonus.loading, hasLoadedOnce]);
 
   // Defensive: log crash-prone values on mount to help diagnose ErrorBoundary triggers
   useEffect(() => {
@@ -246,7 +254,7 @@ export default function Sprint6BonificacaoPage() {
     ? { tone: "amber" as const, title: "Sem dados no período", message: `Ajuste o período ou aguarde o próximo ciclo.` }
     : null;
 
-  if (loadingSession) return <PageSkeleton variant="analiticas" />;
+  if (loadingSession || (bonus.loading && !hasLoadedOnce)) return <PageSkeleton variant="analiticas" />;
 
   if (!session?.accessToken) {
     return (
@@ -449,7 +457,7 @@ export default function Sprint6BonificacaoPage() {
             </div>
           )}
 
-          {bonus.error && (
+          {bonus.error && !bonus.loading && (
             <div className="rounded-xl border border-amber-500/15 bg-amber-500/[0.04] px-5 py-4 text-sm text-amber-200 space-y-1">
               <p className="font-semibold">Parece que encontramos um problema</p>
               <p className="text-xs text-amber-200/70 leading-relaxed">
