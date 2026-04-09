@@ -58,13 +58,13 @@ function iconForFactor(key: string) {
 }
 
 function colorForFactor(key: string) {
-  if (key.includes("on_time")) return { color: "bg-emerald-500", text: "text-emerald-400" };
-  if (key.includes("hard")) return { color: "bg-teal-500", text: "text-teal-400" };
-  if (key.includes("util")) return { color: "bg-cyan-500", text: "text-cyan-400" };
-  if (key.includes("soft")) return { color: "bg-blue-500", text: "text-blue-400" };
-  if (key.includes("health")) return { color: "bg-purple-500", text: "text-purple-400" };
-  if (key.includes("people")) return { color: "bg-indigo-500", text: "text-indigo-400" };
-  return { color: "bg-sky-500", text: "text-sky-400" };
+  if (key.includes("on_time")) return { bg: "rgba(16,185,129,0.6)", bgLight: "rgba(16,185,129,0.1)", bgBar: "rgba(16,185,129,0.5)", text: "text-emerald-400" };
+  if (key.includes("hard")) return { bg: "rgba(20,184,166,0.6)", bgLight: "rgba(20,184,166,0.1)", bgBar: "rgba(20,184,166,0.5)", text: "text-teal-400" };
+  if (key.includes("util")) return { bg: "rgba(6,182,212,0.6)", bgLight: "rgba(6,182,212,0.1)", bgBar: "rgba(6,182,212,0.5)", text: "text-cyan-400" };
+  if (key.includes("soft")) return { bg: "rgba(59,130,246,0.6)", bgLight: "rgba(59,130,246,0.1)", bgBar: "rgba(59,130,246,0.5)", text: "text-blue-400" };
+  if (key.includes("health")) return { bg: "rgba(168,85,247,0.6)", bgLight: "rgba(168,85,247,0.1)", bgBar: "rgba(168,85,247,0.5)", text: "text-purple-400" };
+  if (key.includes("people")) return { bg: "rgba(99,102,241,0.6)", bgLight: "rgba(99,102,241,0.1)", bgBar: "rgba(99,102,241,0.5)", text: "text-indigo-400" };
+  return { bg: "rgba(14,165,233,0.6)", bgLight: "rgba(14,165,233,0.1)", bgBar: "rgba(14,165,233,0.5)", text: "text-sky-400" };
 }
 
 function factorDescription(key: string): string {
@@ -128,13 +128,17 @@ function CompositionView({ breakdown, score, hideMonetary, maxBonus, payout }: {
       )}
 
       <div className="flex h-3 w-full overflow-hidden rounded-full bg-card/30">
-        {breakdown.factors.map((f) => {
+        {breakdown.factors.map((f, i) => {
           const palette = colorForFactor(f.key);
           return (
             <div
               key={f.key}
-              style={{ width: `${Math.max(f.contribution * 100, 0.5)}%` }}
-              className={`h-full ${palette.color}/60 first:rounded-l-full last:rounded-r-full`}
+              style={{
+                width: `${Math.max(f.contribution * 100, 0.5)}%`,
+                backgroundColor: palette.bg,
+                borderRadius: i === 0 ? "9999px 0 0 9999px" : i === breakdown.factors.length - 1 ? "0 9999px 9999px 0" : undefined,
+              }}
+              className="h-full"
               title={`${f.label}: ${Math.round(f.contribution * 100)}%`}
             />
           );
@@ -153,7 +157,7 @@ function CompositionView({ breakdown, score, hideMonetary, maxBonus, payout }: {
           return (
             <div key={f.key} className="rounded-xl border border-border/8 bg-card/20 p-4 space-y-2.5">
               <div className="flex items-start gap-3">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${palette.color}/10`}>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: palette.bgLight }}>
                   <CfgIcon className={`h-4.5 w-4.5 ${palette.text}`} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -167,7 +171,7 @@ function CompositionView({ breakdown, score, hideMonetary, maxBonus, payout }: {
                 </div>
               </div>
               <div className="h-2 w-full rounded-full bg-card/30 overflow-hidden">
-                <div style={{ width: `${normalizedPct}%` }} className={`h-full rounded-full ${palette.color}/50 transition-all`} />
+                <div style={{ width: `${normalizedPct}%`, backgroundColor: palette.bgBar }} className="h-full rounded-full transition-all" />
               </div>
               <div className="flex items-center justify-between text-[10px] text-muted-foreground/40">
                 <span>Eficiência: {normalizedPct}%</span>
