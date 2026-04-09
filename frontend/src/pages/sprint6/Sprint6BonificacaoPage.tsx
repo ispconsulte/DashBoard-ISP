@@ -40,36 +40,32 @@ import { BonusScoreComposition } from "@/modules/sprint6/components/bonus/BonusS
 import { CollapsibleSection } from "@/modules/sprint6/components/bonus/CollapsibleSection";
 import { BonusTeamTab } from "@/modules/sprint6/components/bonus/BonusTeamTab";
 
-/* ── Users who can see monetary values ───────────────────────────── */
-const MONETARY_VISIBLE_NAMES = new Set(
-  ["Rafael", "Tiago", "Felipe"].map((n) => n.toLowerCase()),
-);
-
-function canSeeMonetary(userName?: string | null): boolean {
-  if (!userName) return false;
-  const first = userName.trim().split(" ")[0]?.toLowerCase() ?? "";
-  return MONETARY_VISIBLE_NAMES.has(first);
+/* ── Visibility tiers ────────────────────────────────────────────── */
+function firstNameLower(name?: string | null): string {
+  return (name ?? "").trim().split(" ")[0]?.toLowerCase() ?? "";
 }
 
-/* ── Users who should see PDF review reminder ────────────────────── */
-const PDF_REMINDER_NAMES = new Set(
-  ["Rafael", "Tiago", "Thalia", "Felipe"].map((n) => n.toLowerCase()),
-);
+/** Talia = payment manager = full access to everything */
+function isPaymentManager(userName?: string | null): boolean {
+  return firstNameLower(userName) === "thalia" || firstNameLower(userName) === "talia";
+}
 
+/** Rafael, Tiago, Felipe = privileged coordinators: see scores + limited monetary */
+const PRIVILEGED_COORDINATOR_NAMES = new Set(["rafael", "tiago", "felipe"]);
+function isPrivilegedCoordinator(userName?: string | null): boolean {
+  return PRIVILEGED_COORDINATOR_NAMES.has(firstNameLower(userName));
+}
+
+/** Users who should see PDF review reminder */
+const PDF_REMINDER_NAMES = new Set(["rafael", "tiago", "thalia", "talia", "felipe"]);
 function shouldShowPdfReminder(userName?: string | null): boolean {
-  if (!userName) return false;
-  const first = userName.trim().split(" ")[0]?.toLowerCase() ?? "";
-  return PDF_REMINDER_NAMES.has(first);
+  return PDF_REMINDER_NAMES.has(firstNameLower(userName));
 }
 
-/* ── Eligible consultant names for ranking ───────────────────────── */
-const RANKING_ELIGIBLE_NAMES = new Set(
-  ["Tiago", "Thalia", "Felipe", "Rafael"].map((n) => n.toLowerCase()),
-);
-
+/** Eligible consultant names for ranking */
+const RANKING_ELIGIBLE_NAMES = new Set(["tiago", "thalia", "talia", "felipe", "rafael"]);
 function isRankingEligible(consultantName: string): boolean {
-  const first = consultantName.trim().split(" ")[0]?.toLowerCase() ?? "";
-  return RANKING_ELIGIBLE_NAMES.has(first);
+  return RANKING_ELIGIBLE_NAMES.has(firstNameLower(consultantName));
 }
 
 /* ── Period options ──────────────────────────────────────────────── */
@@ -95,8 +91,14 @@ export default function Sprint6BonificacaoPage() {
   const bonus = useBonusRealData(period, session?.accessToken, refreshKey);
   const permissionRole = session?.bonusRole ?? "consultor";
 
-  // Monetary visibility is now name-based, not role-based
-  const hideMonetary = !canSeeMonetary(session?.name);
+  // Three-tier visibility:
+  // Tier 1: Talia (payment manager) → full access, all monetary, all consultants
+  // Tier 2: Rafael, Tiago, Felipe (privileged) → see scores, limited monetary (no payout total)
+  // Tier 3: Everyone else → minimal, own data only, no monetary
+  const isTaliaFullAccess = isPaymentManager(session?.name);
+  const isPrivileged = isPrivilegedCoordinator(session?.name);
+  const hideMonetary = !isTaliaFullAccess; // Only Talia sees monetary values
+  const showScores = isTaliaFullAccess || isPrivileged; // Talia + privileged see scores
   const showPdfReminder = shouldShowPdfReminder(session?.name);
 
   const isCoordinator = permissionRole === "gestor" && (session?.coordinatorOf ?? []).length > 0;
@@ -120,6 +122,8 @@ export default function Sprint6BonificacaoPage() {
 
   // Filter consultants by visibility permissions
   const visibleConsultants = useMemo(() => {
+    // Talia sees all consultants
+    if (isTaliaFullAccess) return bonus.consultants;
     if (permissionRole === "admin") return bonus.consultants;
     if (permissionRole === "gestor") {
       return bonus.consultants.filter((consultant) =>
@@ -128,7 +132,7 @@ export default function Sprint6BonificacaoPage() {
       );
     }
     return bonus.consultants.filter((consultant) => consultant.userId === session?.userId);
-  }, [bonus.consultants, permissionRole, session?.coordinatorOf, session?.userId]);
+  }, [bonus.consultants, permissionRole, session?.coordinatorOf, session?.userId, isTaliaFullAccess]);
 
   // For ranking, only show eligible consultants
   const rankingConsultants = useMemo(() => {
@@ -296,16 +300,16 @@ export default function Sprint6BonificacaoPage() {
 
               {/* ── Period Summary (always visible) ────────────────── */}
               {rankingConsultants.length > 0 && (
-                <div className={`grid gap-2.5 ${hideMonetary ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2 lg:grid-cols-4"}`}>
+                <div className={`grid gap-2.5 ${!showScores ? "grid-cols-1 sm:grid-cols-2" : isTaliaFullAccess ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-3"}`}>
                   {[
-                    !hideMonetary && {
+                    showScores && {
                       label: "Score médio",
                       value: `${Math.round(rankingConsultants.reduce((s, c) => s + c.score, 0) / rankingConsultants.length)}%`,
                       sub: `${rankingConsultants.length} consultor${rankingConsultants.length > 1 ? "es" : ""} · ${periodLabel(period)}`,
                       color: "border-primary/12 bg-primary/[0.04]",
                       valueColor: "text-primary",
                     },
-                    !hideMonetary && {
+                    isTaliaFullAccess && {
                       label: "Payout total",
                       value: money(rankingConsultants.reduce((sum, consultant) => sum + consultant.payout, 0)),
                       sub: `estimativa ${periodLabel(period)}`,
@@ -326,7 +330,7 @@ export default function Sprint6BonificacaoPage() {
                       color: "border-amber-500/12 bg-amber-500/[0.04]",
                       valueColor: "text-amber-400",
                     },
-                    hideMonetary && {
+                    !showScores && {
                       label: "Meu Score",
                       value: visibleConsultants[0] ? `${visibleConsultants[0].score}%` : "—",
                       sub: periodLabel(period),
@@ -347,7 +351,7 @@ export default function Sprint6BonificacaoPage() {
               )}
 
               {/* ── Main tabs (coordinator/admin get team tab) ─────── */}
-              {(isCoordinator || isAdmin) ? (
+              {(isCoordinator || isAdmin || isTaliaFullAccess) ? (
                 <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="space-y-4">
                   <TabsList className="h-auto rounded-xl bg-card/40 border border-border/10 p-1">
                     <TabsTrigger
@@ -355,7 +359,7 @@ export default function Sprint6BonificacaoPage() {
                       className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60"
                     >
                       <Crown className="h-3.5 w-3.5 mr-1.5" />
-                      {hideMonetary ? "Meu Ranking" : "Ranking Geral"}
+                      {showScores ? "Ranking Geral" : "Meu Ranking"}
                     </TabsTrigger>
                     {isCoordinator && (
                       <TabsTrigger
@@ -371,7 +375,7 @@ export default function Sprint6BonificacaoPage() {
                         )}
                       </TabsTrigger>
                     )}
-                    {isAdmin && (
+                    {(isAdmin || isTaliaFullAccess) && (
                       <TabsTrigger
                         value="all-evaluations"
                         className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60"
@@ -400,8 +404,8 @@ export default function Sprint6BonificacaoPage() {
                     </TabsContent>
                   )}
 
-                  {/* All evaluations tab (admin/distributor) */}
-                  {isAdmin && (
+                  {/* All evaluations tab (Talia + admin) */}
+                  {(isAdmin || isTaliaFullAccess) && (
                     <TabsContent value="all-evaluations" className="mt-0">
                       <BonusTeamTab
                         subordinates={bonus.consultants}
@@ -414,7 +418,7 @@ export default function Sprint6BonificacaoPage() {
                   )}
                 </Tabs>
               ) : (
-                /* No tabs for regular consultants */
+                /* No tabs for regular users */
                 <div className="space-y-3">
                   {renderRankingContent()}
                 </div>
@@ -451,8 +455,8 @@ export default function Sprint6BonificacaoPage() {
   function renderRankingContent() {
     return (
       <>
-        {/* ── Collapsible: Signals (visible to monetary users) ── */}
-        {!hideMonetary && (
+        {/* ── Collapsible: Signals (Talia + privileged only) ── */}
+        {showScores && (
         <CollapsibleSection
           title="Sinais rápidos"
           icon={TrendingUp}
@@ -473,7 +477,7 @@ export default function Sprint6BonificacaoPage() {
                   ))}
                 </div>
               ) : (
-                <EmptyInsight text="Ainda não há consultores com score acima de 75% e entregas em dia. Quando alguém se destacar, vai aparecer aqui." />
+                <EmptyInsight text="Ainda não há consultores com score acima de 75% e entregas em dia." />
               )}
             </SectionCard>
 
@@ -487,9 +491,9 @@ export default function Sprint6BonificacaoPage() {
                   ))}
                 </div>
               ) : rankingConsultants.length > 0 ? (
-                <EmptyInsight text="Todos os consultores estão com score acima de 60%. Ninguém precisa de atenção imediata agora." />
+                <EmptyInsight text="Todos acima de 60%." />
               ) : (
-                <EmptyInsight text="Sem dados de consultores neste período." />
+                <EmptyInsight text="Sem dados neste período." />
               )}
             </SectionCard>
 
@@ -497,15 +501,15 @@ export default function Sprint6BonificacaoPage() {
               {rankingConsultants.length > 0 ? (
                 <ScoreDistribution consultants={rankingConsultants} />
               ) : (
-                <EmptyInsight text="Quando existirem consultores com scores calculados, você verá como a equipe se distribui por faixa de desempenho." />
+                <EmptyInsight text="Sem dados de scores calculados." />
               )}
             </SectionCard>
           </div>
         </CollapsibleSection>
         )}
 
-        {/* ── Collapsible: Score Composition (visible to monetary users) ── */}
-        {!hideMonetary && (
+        {/* ── Collapsible: Score Composition (Talia only) ── */}
+        {isTaliaFullAccess && (
         <CollapsibleSection
           title="Score do Consultor"
           icon={Target}
@@ -535,7 +539,7 @@ export default function Sprint6BonificacaoPage() {
         {/* ── Collapsible: Ranking ────────────────────────────── */}
         <div id="bonus-ranking">
         <CollapsibleSection
-          title={hideMonetary ? "Seu Ranking" : "Ranking de Consultores"}
+          title={showScores ? "Ranking de Consultores" : "Seu Ranking"}
           icon={Crown}
           
           summary={
@@ -546,7 +550,7 @@ export default function Sprint6BonificacaoPage() {
           badge={rankingConsultants.length > 0 ? <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-md px-1.5 py-0.5">{rankingConsultants.length}</span> : undefined}
         >
           <div className="space-y-4">
-            {!hideMonetary && (
+            {showScores && (
               <div className="flex items-center justify-end">
                 <div className="relative w-full max-w-xs">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
