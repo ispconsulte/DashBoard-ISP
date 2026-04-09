@@ -128,13 +128,17 @@ function CompositionView({ breakdown, score, hideMonetary, maxBonus, payout }: {
       )}
 
       <div className="flex h-3 w-full overflow-hidden rounded-full bg-card/30">
-        {breakdown.factors.map((f) => {
+        {breakdown.factors.map((f, i) => {
           const palette = colorForFactor(f.key);
           return (
             <div
               key={f.key}
-              style={{ width: `${Math.max(f.contribution * 100, 0.5)}%` }}
-              className={`h-full ${palette.color}/60 first:rounded-l-full last:rounded-r-full`}
+              style={{
+                width: `${Math.max(f.contribution * 100, 0.5)}%`,
+                backgroundColor: palette.bg,
+                borderRadius: i === 0 ? "9999px 0 0 9999px" : i === breakdown.factors.length - 1 ? "0 9999px 9999px 0" : undefined,
+              }}
+              className="h-full"
               title={`${f.label}: ${Math.round(f.contribution * 100)}%`}
             />
           );
