@@ -58,19 +58,33 @@ function iconForFactor(key: string) {
 }
 
 function colorForFactor(key: string) {
-  if (key.includes("hard") || key.includes("on_time")) return { color: "bg-emerald-500", text: "text-emerald-400" };
-  if (key.includes("soft") || key.includes("util")) return { color: "bg-blue-500", text: "text-blue-400" };
-  if (key.includes("people") || key.includes("health")) return { color: "bg-purple-500", text: "text-purple-400" };
-  return { color: "bg-amber-500", text: "text-amber-400" };
+  if (key.includes("on_time")) return { color: "bg-emerald-500", text: "text-emerald-400" };
+  if (key.includes("hard")) return { color: "bg-teal-500", text: "text-teal-400" };
+  if (key.includes("util")) return { color: "bg-cyan-500", text: "text-cyan-400" };
+  if (key.includes("soft")) return { color: "bg-blue-500", text: "text-blue-400" };
+  if (key.includes("health")) return { color: "bg-purple-500", text: "text-purple-400" };
+  if (key.includes("people")) return { color: "bg-indigo-500", text: "text-indigo-400" };
+  return { color: "bg-sky-500", text: "text-sky-400" };
 }
 
 /* ── Metrics Grid ─────────────────────────────────── */
+const METRIC_COLORS: Record<string, { bg: string; text: string }> = {
+  Horas: { bg: "bg-blue-500/[0.08]", text: "text-blue-400" },
+  "No Prazo": { bg: "bg-emerald-500/[0.08]", text: "text-emerald-400" },
+  Utilização: { bg: "bg-cyan-500/[0.08]", text: "text-cyan-400" },
+  Carteira: { bg: "bg-purple-500/[0.08]", text: "text-purple-400" },
+  Tarefas: { bg: "bg-indigo-500/[0.08]", text: "text-indigo-400" },
+  Projetos: { bg: "bg-sky-500/[0.08]", text: "text-sky-400" },
+  Atraso: { bg: "bg-amber-500/[0.08]", text: "text-amber-400" },
+};
+
 function MetricTile({ icon: Icon, label, value }: { icon: typeof Clock; label: string; value: string | null }) {
   if (value == null) return null;
+  const colors = METRIC_COLORS[label] ?? { bg: "bg-primary/[0.06]", text: "text-primary/60" };
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border/10 bg-card/25 p-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/[0.06]">
-        <Icon className="h-4 w-4 text-primary/60" />
+      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${colors.bg}`}>
+        <Icon className={`h-4 w-4 ${colors.text}`} />
       </div>
       <div className="min-w-0">
         <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">{label}</p>
@@ -280,6 +294,9 @@ export function BonusUserDetail({
     { icon: AlertCircle, label: "Atraso", value: consultant.overdueRate != null ? `${Math.round(consultant.overdueRate)}%` : null },
   ].filter((m) => m.value != null), [consultant]);
 
+  // Force 5-column grid so all metrics stay side by side
+  const metricsGridClass = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5";
+
   return (
     <div className={`rounded-2xl border transition-all ${expanded ? "border-primary/20 bg-card/55" : "border-border/12 bg-card/35 hover:bg-card/45"}`}>
       {/* Card header — click to expand */}
@@ -352,7 +369,7 @@ export function BonusUserDetail({
                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 font-semibold px-0.5">
                         Indicadores · {periodLabel}
                       </p>
-                      <div className={`grid gap-2.5 ${allMetrics.length <= 2 ? "grid-cols-1 sm:grid-cols-2" : allMetrics.length <= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4"}`}>
+                      <div className={`grid gap-2.5 ${metricsGridClass}`}>
                         {allMetrics.map((m) => (
                           <MetricTile key={m.label} icon={m.icon} label={m.label} value={m.value} />
                         ))}
