@@ -378,7 +378,7 @@ export default function Sprint6BonificacaoPage() {
                     </Button>
                   </div>
                   {showCalendar && (
-                    <div className="rounded-xl border border-border/15 bg-secondary/20 p-2 mt-1">
+                    <div className="rounded-xl border border-border/15 bg-secondary/20 p-3 mt-1 flex justify-center">
                       <Calendar
                         mode="single"
                         selected={showCalendar === "from" ? dateFrom : dateTo}
@@ -388,7 +388,7 @@ export default function Sprint6BonificacaoPage() {
                           setShowCalendar(null);
                         }}
                         locale={ptBR}
-                        className="p-2 pointer-events-auto"
+                        className="p-0 pointer-events-auto w-full"
                       />
                     </div>
                   )}
