@@ -254,7 +254,7 @@ export default function Sprint6BonificacaoPage() {
     ? { tone: "amber" as const, title: "Sem dados no período", message: `Ajuste o período ou aguarde o próximo ciclo.` }
     : null;
 
-  if (loadingSession) return <PageSkeleton variant="analiticas" />;
+  if (loadingSession || (bonus.loading && !hasLoadedOnce)) return <PageSkeleton variant="analiticas" />;
 
   if (!session?.accessToken) {
     return (
