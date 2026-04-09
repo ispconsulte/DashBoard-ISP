@@ -539,7 +539,7 @@ export default function Sprint6BonificacaoPage() {
         {/* ── Collapsible: Ranking ────────────────────────────── */}
         <div id="bonus-ranking">
         <CollapsibleSection
-          title={hideMonetary ? "Seu Ranking" : "Ranking de Consultores"}
+          title={showScores ? "Ranking de Consultores" : "Seu Ranking"}
           icon={Crown}
           
           summary={
@@ -550,7 +550,7 @@ export default function Sprint6BonificacaoPage() {
           badge={rankingConsultants.length > 0 ? <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-md px-1.5 py-0.5">{rankingConsultants.length}</span> : undefined}
         >
           <div className="space-y-4">
-            {!hideMonetary && (
+            {showScores && (
               <div className="flex items-center justify-end">
                 <div className="relative w-full max-w-xs">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
