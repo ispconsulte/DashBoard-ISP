@@ -10,6 +10,9 @@ import {
   Users,
   FileText,
   Calendar,
+  Filter,
+  X,
+  CalendarDays,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -84,6 +87,10 @@ export default function Sprint6BonificacaoPage() {
   const { session, loadingSession } = useAuth();
   const [refreshKey, setRefreshKey] = useState(0);
   const [period, setPeriod] = useState<RoiPeriod>("180d");
+  const [customDateFrom, setCustomDateFrom] = useState("");
+  const [customDateTo, setCustomDateTo] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [consultantFilter, setConsultantFilter] = useState("");
   const [activeMainTab, setActiveMainTab] = useState("ranking");
   const [search, setSearch] = useState("");
   const [evaluationFilter, setEvaluationFilter] = useState<"all" | "evaluated" | "pending">("all");
