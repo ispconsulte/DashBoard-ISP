@@ -8,6 +8,8 @@ import {
   PieChart,
   AlertCircle,
   Users,
+  FileText,
+  Calendar,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,6 +40,46 @@ import { BonusScoreComposition } from "@/modules/sprint6/components/bonus/BonusS
 import { CollapsibleSection } from "@/modules/sprint6/components/bonus/CollapsibleSection";
 import { BonusTeamTab } from "@/modules/sprint6/components/bonus/BonusTeamTab";
 
+/* ── Users who can see monetary values ───────────────────────────── */
+const MONETARY_VISIBLE_NAMES = new Set(
+  ["Rafael", "Tiago", "Felipe"].map((n) => n.toLowerCase()),
+);
+
+function canSeeMonetary(userName?: string | null): boolean {
+  if (!userName) return false;
+  const first = userName.trim().split(" ")[0]?.toLowerCase() ?? "";
+  return MONETARY_VISIBLE_NAMES.has(first);
+}
+
+/* ── Users who should see PDF review reminder ────────────────────── */
+const PDF_REMINDER_NAMES = new Set(
+  ["Rafael", "Tiago", "Thalia", "Felipe"].map((n) => n.toLowerCase()),
+);
+
+function shouldShowPdfReminder(userName?: string | null): boolean {
+  if (!userName) return false;
+  const first = userName.trim().split(" ")[0]?.toLowerCase() ?? "";
+  return PDF_REMINDER_NAMES.has(first);
+}
+
+/* ── Eligible consultant names for ranking ───────────────────────── */
+const RANKING_ELIGIBLE_NAMES = new Set(
+  ["Tiago", "Thalia", "Felipe", "Rafael"].map((n) => n.toLowerCase()),
+);
+
+function isRankingEligible(consultantName: string): boolean {
+  const first = consultantName.trim().split(" ")[0]?.toLowerCase() ?? "";
+  return RANKING_ELIGIBLE_NAMES.has(first);
+}
+
+/* ── Period options ──────────────────────────────────────────────── */
+const PERIOD_OPTIONS: { value: RoiPeriod; label: string }[] = [
+  { value: "30d", label: "Mensal" },
+  { value: "90d", label: "Trimestral" },
+  { value: "180d", label: "Semestral" },
+  { value: "all", label: "Histórico" },
+];
+
 
 export default function Sprint6BonificacaoPage() {
   usePageSEO("Bonificação | Dashboard ISP");
@@ -52,7 +94,11 @@ export default function Sprint6BonificacaoPage() {
   const [reportConsultant, setReportConsultant] = useState<BonusConsultantCard | null>(null);
   const bonus = useBonusRealData(period, session?.accessToken, refreshKey);
   const permissionRole = session?.bonusRole ?? "consultor";
-  const hideMonetary = permissionRole === "consultor";
+
+  // Monetary visibility is now name-based, not role-based
+  const hideMonetary = !canSeeMonetary(session?.name);
+  const showPdfReminder = shouldShowPdfReminder(session?.name);
+
   const isCoordinator = permissionRole === "gestor" && (session?.coordinatorOf ?? []).length > 0;
   const isAdmin = permissionRole === "admin";
 
@@ -62,14 +108,17 @@ export default function Sprint6BonificacaoPage() {
       console.info("[Bonificação] Permissões:", {
         bonusRole: session.bonusRole,
         permissionRole,
+        userName: session.name,
+        hideMonetary,
         userId: session.userId,
         coordinatorOf: session.coordinatorOf,
         isCoordinator,
         totalConsultants: bonus.consultants.length,
       });
     }
-  }, [session, loadingSession, permissionRole, isCoordinator, bonus.consultants.length]);
+  }, [session, loadingSession, permissionRole, hideMonetary, isCoordinator, bonus.consultants.length]);
 
+  // Filter consultants by visibility permissions
   const visibleConsultants = useMemo(() => {
     if (permissionRole === "admin") return bonus.consultants;
     if (permissionRole === "gestor") {
@@ -81,6 +130,11 @@ export default function Sprint6BonificacaoPage() {
     return bonus.consultants.filter((consultant) => consultant.userId === session?.userId);
   }, [bonus.consultants, permissionRole, session?.coordinatorOf, session?.userId]);
 
+  // For ranking, only show eligible consultants
+  const rankingConsultants = useMemo(() => {
+    return visibleConsultants.filter((c) => isRankingEligible(c.name));
+  }, [visibleConsultants]);
+
   // Subordinates only (for team tab)
   const subordinateConsultants = useMemo(() => {
     if (!isCoordinator) return [];
@@ -91,23 +145,23 @@ export default function Sprint6BonificacaoPage() {
 
   const filteredConsultants = useMemo(() => {
     const term = normalizeName(search);
-    if (!term) return visibleConsultants;
-    return visibleConsultants.filter((c) => normalizeName(c.name).includes(term));
-  }, [visibleConsultants, search]);
+    if (!term) return rankingConsultants;
+    return rankingConsultants.filter((c) => normalizeName(c.name).includes(term));
+  }, [rankingConsultants, search]);
 
-  const topPerformer = visibleConsultants[0] ?? null;
+  const topPerformer = rankingConsultants[0] ?? null;
   const needsAttention = useMemo(
-    () => visibleConsultants.filter((c) => c.score < 60).slice(0, 3),
-    [visibleConsultants],
+    () => rankingConsultants.filter((c) => c.score < 60).slice(0, 3),
+    [rankingConsultants],
   );
   const trendingUp = useMemo(
-    () => visibleConsultants.filter((c) => c.score >= 75 && (c.onTimeRate == null || c.onTimeRate >= 60)).slice(0, 3),
-    [visibleConsultants],
+    () => rankingConsultants.filter((c) => c.score >= 75 && (c.onTimeRate == null || c.onTimeRate >= 60)).slice(0, 3),
+    [rankingConsultants],
   );
 
-  const totalHoursTracked = useMemo(() => visibleConsultants.reduce((s, c) => s + c.hoursTracked, 0), [visibleConsultants]);
-  const totalCompletedTasks = useMemo(() => visibleConsultants.reduce((s, c) => s + c.completedTasks, 0), [visibleConsultants]);
-  const totalTasks = useMemo(() => visibleConsultants.reduce((s, c) => s + c.totalTasks, 0), [visibleConsultants]);
+  const totalHoursTracked = useMemo(() => rankingConsultants.reduce((s, c) => s + c.hoursTracked, 0), [rankingConsultants]);
+  const totalCompletedTasks = useMemo(() => rankingConsultants.reduce((s, c) => s + c.completedTasks, 0), [rankingConsultants]);
+  const totalTasks = useMemo(() => rankingConsultants.reduce((s, c) => s + c.totalTasks, 0), [rankingConsultants]);
   const completionRate = totalTasks > 0 ? Math.round((totalCompletedTasks / totalTasks) * 100) : 0;
 
   const sourceStatusMap = useMemo(
@@ -160,27 +214,65 @@ export default function Sprint6BonificacaoPage() {
             background: "linear-gradient(135deg, hsl(260 30% 11%) 0%, hsl(262 35% 15%) 40%, hsl(270 25% 12%) 100%)",
           }}
         >
-          <div className="relative flex flex-col sm:flex-row sm:items-center gap-4 p-4 sm:p-5 md:px-6 md:py-5">
-            <div className="flex items-center gap-3.5 flex-1 min-w-0">
-              <div
-                className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] shrink-0 backdrop-blur-sm shadow-lg shadow-black/30"
-                style={{
-                  background: "linear-gradient(145deg, hsl(45 80% 30% / 0.5), hsl(45 60% 20% / 0.4))",
-                }}
-              >
-                <Crown className="h-5 w-5 text-amber-400" />
+          <div className="relative flex flex-col gap-4 p-4 sm:p-5 md:px-6 md:py-5">
+            {/* Title row */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] shrink-0 backdrop-blur-sm shadow-lg shadow-black/30"
+                  style={{
+                    background: "linear-gradient(145deg, hsl(45 80% 30% / 0.5), hsl(45 60% 20% / 0.4))",
+                  }}
+                >
+                  <Crown className="h-5 w-5 text-amber-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-foreground tracking-tight leading-tight">
+                    Bonificação
+                  </h1>
+                  <p className="mt-0.5 text-xs sm:text-sm text-white/35 line-clamp-1">
+                    Ranking, desempenho e evolução da equipe
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-foreground tracking-tight leading-tight">
-                  Bonificação
-                </h1>
-                <p className="mt-0.5 text-xs sm:text-sm text-white/35 line-clamp-1">
-                  Ranking, payout e impacto financeiro
-                </p>
-              </div>
+            </div>
+
+            {/* Period filter buttons */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Calendar className="h-4 w-4 text-white/30 shrink-0" />
+              {PERIOD_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPeriod(opt.value)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                    period === opt.value
+                      ? "bg-primary/20 text-primary border border-primary/30"
+                      : "bg-white/[0.04] text-white/50 border border-white/[0.06] hover:bg-white/[0.08] hover:text-white/70"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>
+
+        {/* ── PDF Review Reminder Card ───────────────────────────────── */}
+        {showPdfReminder && (
+          <div className="rounded-xl border border-blue-500/15 bg-blue-500/[0.04] px-5 py-4 flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 border border-blue-500/15">
+              <FileText className="h-4.5 w-4.5 text-blue-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-blue-200">Lembrete: Revisão de Bonificação</p>
+              <p className="mt-1 text-xs text-blue-200/60 leading-relaxed">
+                Não esqueça de revisar o sistema de bonificação e enviar os relatórios em PDF ao final deste mês. 
+                Verifique as notas e avaliações de cada membro da equipe antes do fechamento.
+              </p>
+            </div>
+          </div>
+        )}
 
 
         {/* ── Error / Loading / Status ────────────────────────────── */}
@@ -203,19 +295,19 @@ export default function Sprint6BonificacaoPage() {
             <div className="space-y-3">
 
               {/* ── Period Summary (always visible) ────────────────── */}
-              {visibleConsultants.length > 0 && (
+              {rankingConsultants.length > 0 && (
                 <div className={`grid gap-2.5 ${hideMonetary ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2 lg:grid-cols-4"}`}>
                   {[
                     !hideMonetary && {
                       label: "Score médio",
-                      value: `${Math.round(visibleConsultants.reduce((s, c) => s + c.score, 0) / visibleConsultants.length)}%`,
-                      sub: `${visibleConsultants.length} consultor${visibleConsultants.length > 1 ? "es" : ""} · ${periodLabel(period)}`,
+                      value: `${Math.round(rankingConsultants.reduce((s, c) => s + c.score, 0) / rankingConsultants.length)}%`,
+                      sub: `${rankingConsultants.length} consultor${rankingConsultants.length > 1 ? "es" : ""} · ${periodLabel(period)}`,
                       color: "border-primary/12 bg-primary/[0.04]",
                       valueColor: "text-primary",
                     },
                     !hideMonetary && {
                       label: "Payout total",
-                      value: money(visibleConsultants.reduce((sum, consultant) => sum + consultant.payout, 0)),
+                      value: money(rankingConsultants.reduce((sum, consultant) => sum + consultant.payout, 0)),
                       sub: `estimativa ${periodLabel(period)}`,
                       color: "border-emerald-500/12 bg-emerald-500/[0.04]",
                       valueColor: "text-emerald-400",
@@ -230,7 +322,7 @@ export default function Sprint6BonificacaoPage() {
                     {
                       label: "Horas registradas",
                       value: `${Math.round(totalHoursTracked)}h`,
-                      sub: visibleConsultants.length > 0 ? `média de ${Math.round(totalHoursTracked / visibleConsultants.length)}h/pessoa · ${periodLabel(period)}` : `nenhuma hora · ${periodLabel(period)}`,
+                      sub: rankingConsultants.length > 0 ? `média de ${Math.round(totalHoursTracked / rankingConsultants.length)}h/pessoa · ${periodLabel(period)}` : `nenhuma hora · ${periodLabel(period)}`,
                       color: "border-amber-500/12 bg-amber-500/[0.04]",
                       valueColor: "text-amber-400",
                     },
@@ -359,13 +451,13 @@ export default function Sprint6BonificacaoPage() {
   function renderRankingContent() {
     return (
       <>
-        {/* ── Collapsible: Signals (hidden for consultants) ── */}
+        {/* ── Collapsible: Signals (visible to monetary users) ── */}
         {!hideMonetary && (
         <CollapsibleSection
           title="Sinais rápidos"
           icon={TrendingUp}
           summary={
-            visibleConsultants.length > 0
+            rankingConsultants.length > 0
               ? `${trendingUp.length > 0 ? `${trendingUp.length} em destaque` : "Nenhum destaque"} · ${needsAttention.length > 0 ? `${needsAttention.length} precisam de atenção` : "Todos acima de 60%"}`
               : "Aguardando dados de consultores"
           }
@@ -394,16 +486,16 @@ export default function Sprint6BonificacaoPage() {
                     </div>
                   ))}
                 </div>
-              ) : visibleConsultants.length > 0 ? (
+              ) : rankingConsultants.length > 0 ? (
                 <EmptyInsight text="Todos os consultores estão com score acima de 60%. Ninguém precisa de atenção imediata agora." />
               ) : (
                 <EmptyInsight text="Sem dados de consultores neste período." />
               )}
             </SectionCard>
 
-            <SectionCard title="Distribuição da equipe" icon={PieChart} compact badge={visibleConsultants.length > 0 ? <span className="text-[10px] font-bold text-muted-foreground bg-white/[0.05] rounded-md px-1.5 py-0.5">{visibleConsultants.length} pessoas</span> : undefined}>
-              {visibleConsultants.length > 0 ? (
-                <ScoreDistribution consultants={visibleConsultants} />
+            <SectionCard title="Distribuição da equipe" icon={PieChart} compact badge={rankingConsultants.length > 0 ? <span className="text-[10px] font-bold text-muted-foreground bg-white/[0.05] rounded-md px-1.5 py-0.5">{rankingConsultants.length} pessoas</span> : undefined}>
+              {rankingConsultants.length > 0 ? (
+                <ScoreDistribution consultants={rankingConsultants} />
               ) : (
                 <EmptyInsight text="Quando existirem consultores com scores calculados, você verá como a equipe se distribui por faixa de desempenho." />
               )}
@@ -412,23 +504,22 @@ export default function Sprint6BonificacaoPage() {
         </CollapsibleSection>
         )}
 
-        {/* ── Collapsible: Score Composition (hidden for consultants) ── */}
+        {/* ── Collapsible: Score Composition (visible to monetary users) ── */}
         {!hideMonetary && (
         <CollapsibleSection
           title="Score do Consultor"
           icon={Target}
           summary={
-              visibleConsultants.length > 0
-              ? `Melhor score: ${visibleConsultants[0]?.score ?? 0}% (${visibleConsultants[0]?.name ?? "—"})`
+              rankingConsultants.length > 0
+              ? `Melhor score: ${rankingConsultants[0]?.score ?? 0}% (${rankingConsultants[0]?.name ?? "—"})`
               : "Veja como o score é composto e o teto por nível"
           }
         >
-          <BonusScoreComposition consultants={visibleConsultants} />
+          <BonusScoreComposition consultants={rankingConsultants} />
         </CollapsibleSection>
         )}
 
-        {/* ── Collapsible: Trends (hidden for consultants) ── */}
-        {!hideMonetary && (
+        {/* ── Collapsible: Trends (visible to ALL users now) ── */}
         <CollapsibleSection
           title="Evolução ao longo do tempo"
           icon={TrendingUp}
@@ -438,9 +529,8 @@ export default function Sprint6BonificacaoPage() {
               : "O histórico aparecerá quando houver períodos gravados"
           }
         >
-          <BonusTrendsSection consultants={visibleConsultants} consultantSnapshots={bonus.persistence.consultantSnapshots.filter((snapshot) => !snapshot.user_id || visibleConsultants.some((consultant) => consultant.userId === snapshot.user_id))} />
+          <BonusTrendsSection consultants={rankingConsultants} consultantSnapshots={bonus.persistence.consultantSnapshots.filter((snapshot) => !snapshot.user_id || rankingConsultants.some((consultant) => consultant.userId === snapshot.user_id))} />
         </CollapsibleSection>
-        )}
 
         {/* ── Collapsible: Ranking ────────────────────────────── */}
         <div id="bonus-ranking">
@@ -449,11 +539,11 @@ export default function Sprint6BonificacaoPage() {
           icon={Crown}
           
           summary={
-            visibleConsultants.length > 0
-              ? `${visibleConsultants.length} consultores · Líder: ${visibleConsultants[0]?.name ?? "—"} com ${visibleConsultants[0]?.score ?? 0}%`
+            rankingConsultants.length > 0
+              ? `${rankingConsultants.length} consultores · Líder: ${rankingConsultants[0]?.name ?? "—"} com ${rankingConsultants[0]?.score ?? 0}%`
               : "Nenhum consultor encontrado neste período"
           }
-          badge={visibleConsultants.length > 0 ? <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-md px-1.5 py-0.5">{visibleConsultants.length}</span> : undefined}
+          badge={rankingConsultants.length > 0 ? <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-md px-1.5 py-0.5">{rankingConsultants.length}</span> : undefined}
         >
           <div className="space-y-4">
             {!hideMonetary && (
