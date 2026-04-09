@@ -8,7 +8,7 @@ import { motion } from "framer-motion";
 
 /* ── Config ─────────────────────────────────────────────────────────── */
 const VERSION_CHECK_INTERVAL_MS = 60_000;
-const UPDATE_SNOOZE_MS = 5 * 60 * 1000; // 5 minutes
+const SNOOZE_DURATIONS_MS = [5 * 60_000, 3 * 60_000, 2 * 60_000, 60_000]; // decreasing: 5m, 3m, 2m, 1m
 
 type RemoteVersionPayload = {
   version?: string;
