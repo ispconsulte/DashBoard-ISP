@@ -455,8 +455,8 @@ export default function Sprint6BonificacaoPage() {
   function renderRankingContent() {
     return (
       <>
-        {/* ── Collapsible: Signals (visible to monetary users) ── */}
-        {!hideMonetary && (
+        {/* ── Collapsible: Signals (Talia + privileged only) ── */}
+        {showScores && (
         <CollapsibleSection
           title="Sinais rápidos"
           icon={TrendingUp}
@@ -477,7 +477,7 @@ export default function Sprint6BonificacaoPage() {
                   ))}
                 </div>
               ) : (
-                <EmptyInsight text="Ainda não há consultores com score acima de 75% e entregas em dia. Quando alguém se destacar, vai aparecer aqui." />
+                <EmptyInsight text="Ainda não há consultores com score acima de 75% e entregas em dia." />
               )}
             </SectionCard>
 
@@ -491,9 +491,9 @@ export default function Sprint6BonificacaoPage() {
                   ))}
                 </div>
               ) : rankingConsultants.length > 0 ? (
-                <EmptyInsight text="Todos os consultores estão com score acima de 60%. Ninguém precisa de atenção imediata agora." />
+                <EmptyInsight text="Todos acima de 60%." />
               ) : (
-                <EmptyInsight text="Sem dados de consultores neste período." />
+                <EmptyInsight text="Sem dados neste período." />
               )}
             </SectionCard>
 
@@ -501,15 +501,15 @@ export default function Sprint6BonificacaoPage() {
               {rankingConsultants.length > 0 ? (
                 <ScoreDistribution consultants={rankingConsultants} />
               ) : (
-                <EmptyInsight text="Quando existirem consultores com scores calculados, você verá como a equipe se distribui por faixa de desempenho." />
+                <EmptyInsight text="Sem dados de scores calculados." />
               )}
             </SectionCard>
           </div>
         </CollapsibleSection>
         )}
 
-        {/* ── Collapsible: Score Composition (visible to monetary users) ── */}
-        {!hideMonetary && (
+        {/* ── Collapsible: Score Composition (Talia only) ── */}
+        {isTaliaFullAccess && (
         <CollapsibleSection
           title="Score do Consultor"
           icon={Target}
