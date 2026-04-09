@@ -316,7 +316,7 @@ export default function Sprint6BonificacaoPage() {
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="center" sideOffset={8} className="w-80 rounded-2xl border-border/15 bg-card p-5 shadow-2xl backdrop-blur-xl space-y-5">
+              <PopoverContent align="center" sideOffset={8} className="w-[22rem] rounded-2xl border-border/15 bg-card p-5 shadow-2xl backdrop-blur-xl space-y-5">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-bold text-foreground">Filtros</p>
                   <button type="button" onClick={() => setFilterOpen(false)} className="text-muted-foreground/40 hover:text-foreground transition-colors">
