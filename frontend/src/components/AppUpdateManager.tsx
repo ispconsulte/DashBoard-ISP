@@ -25,7 +25,8 @@ export default function AppUpdateManager() {
 
   /* Re-check snooze timer */
   const [now, setNow] = useState(Date.now());
-  const modalOpen = updateAvailable && now >= snoozedUntil;
+  const isLoginPage = location.pathname === "/login" || location.pathname === "/";
+  const modalOpen = updateAvailable && now >= snoozedUntil && !isLoginPage;
 
   /* Restore context on mount (post-update) */
   useEffect(() => {
@@ -106,6 +107,7 @@ export default function AppUpdateManager() {
           "backdrop-blur-xl",
           "rounded-2xl sm:rounded-3xl",
           "max-h-[95vh]",
+          "[&>button.absolute]:z-50 [&>button.absolute]:text-white/50 [&>button.absolute]:hover:text-white [&>button.absolute]:right-5 [&>button.absolute]:top-5",
         ].join(" ")}
       >
         <DialogTitle className="sr-only">Atualização disponível</DialogTitle>
