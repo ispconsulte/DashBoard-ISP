@@ -475,7 +475,16 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
         .sort((a, b) => b.localeCompare(a))[0] ?? null;
       const rows = latestPeriodKey ? rowsForUser.filter((row) => row.period_key === latestPeriodKey) : rowsForUser;
       const submittedRows = rows.filter((row) => row.status === "submitted");
-      const rowsToUse = submittedRows.length > 0 ? submittedRows : rows;
+      const rowsToInspect = submittedRows.length > 0 ? submittedRows : rows;
+      const meaningfulRows = rowsToInspect.filter((row) => {
+        const hasScore = row.score_1_10 != null;
+        const hasJustification = (row.justificativa ?? "").trim().length > 0;
+        const hasImprovement = (row.pontos_de_melhoria ?? "").trim().length > 0;
+        const hasNotes = (row.notes ?? "").trim().length > 0;
+        return hasScore || hasJustification || hasImprovement || hasNotes;
+      });
+      const meaningfulSubmittedRows = meaningfulRows.filter((row) => row.status === "submitted");
+      const rowsToUse = meaningfulSubmittedRows.length > 0 ? meaningfulSubmittedRows : meaningfulRows;
       const byCategory = {
         hard_skill_manual: rowsToUse.filter((row) => row.category === "hard_skill_manual"),
         soft_skill: rowsToUse.filter((row) => row.category === "soft_skill"),
@@ -488,15 +497,15 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
 
       map.set(userId, {
         hasManualEvaluation: rowsToUse.length > 0,
-        status: submittedRows.length > 0 ? "submitted" : rowsToUse.length > 0 ? "draft" : "none",
-        periodKey: latestPeriodKey,
+        status: meaningfulSubmittedRows.length > 0 ? "submitted" : rowsToUse.length > 0 ? "draft" : "none",
+        periodKey: rowsToUse.length > 0 ? latestPeriodKey : null,
         hardManualScore,
         softSkillScore,
         peopleSkillScore,
         hardManualPayout: null,
         softSkillPayout: null,
         peopleSkillPayout: null,
-        lastSubmittedAt: rowsToUse.map((row) => row.submitted_at).sort((a, b) => b.localeCompare(a))[0] ?? null,
+        lastSubmittedAt: meaningfulSubmittedRows.map((row) => row.submitted_at).sort((a, b) => b.localeCompare(a))[0] ?? null,
         rows: rowsToUse,
       });
     });
