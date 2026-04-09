@@ -109,6 +109,9 @@ export default function AppUpdateManager() {
         ].join(" ")}
       >
         <DialogTitle className="sr-only">Atualização disponível</DialogTitle>
+        <DialogDescription className="sr-only">
+          Uma nova versão do sistema está disponível. Você pode atualizar agora ou continuar e atualizar depois.
+        </DialogDescription>
 
         {/* ── Decorative glows ── */}
         <motion.div
