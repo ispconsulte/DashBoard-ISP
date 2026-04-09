@@ -96,6 +96,7 @@ export default function Sprint6BonificacaoPage() {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [showCalendar, setShowCalendar] = useState<"from" | "to" | null>(null);
   const [consultantFilter, setConsultantFilter] = useState("");
   const [activeMainTab, setActiveMainTab] = useState("ranking");
   const [search, setSearch] = useState("");
