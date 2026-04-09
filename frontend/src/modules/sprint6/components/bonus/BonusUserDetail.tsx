@@ -67,6 +67,17 @@ function colorForFactor(key: string) {
   return { color: "bg-sky-500", text: "text-sky-400" };
 }
 
+function factorDescription(key: string): string {
+  if (key.includes("on_time")) return "Percentual de tarefas entregues dentro do prazo estabelecido.";
+  if (key.includes("hard")) return "Qualidade técnica das entregas e conformidade documental.";
+  if (key.includes("util")) return "Aproveitamento das horas disponíveis em atividades produtivas.";
+  if (key.includes("soft")) return "Organização, proatividade e comunicação no dia a dia.";
+  if (key.includes("health")) return "Saúde geral da carteira de projetos sob responsabilidade.";
+  if (key.includes("people")) return "Trabalho em equipe, relacionamento com clientes e receptividade.";
+  if (key.includes("risk") || key.includes("atraso")) return "Índice de tarefas com risco de atraso ou já atrasadas.";
+  return "Indicador de desempenho calculado automaticamente.";
+}
+
 /* ── Metrics Grid ─────────────────────────────────── */
 const METRIC_COLORS: Record<string, { bg: string; text: string }> = {
   Horas: { bg: "bg-blue-500/[0.08]", text: "text-blue-400" },
