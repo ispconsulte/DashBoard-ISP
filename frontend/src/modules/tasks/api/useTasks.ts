@@ -30,6 +30,7 @@ const RELOAD_COOLDOWN_MS = 12_000; // 5 reloads per minute → 60s / 5 = 12s bet
 const MAX_RELOADS_PER_MINUTE = 5;
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "25000");
 const PAGE_SIZE = 1000;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — stale cache is ignored on hydration
 const MAX_PAGES = 10;
 
 const buildDateFilter = (period?: string, dateFrom?: string, dateTo?: string) => {
@@ -108,11 +109,13 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
     [period, dateFrom, dateTo]
   );
 
-  // Hydrate from cache on mount so UI renders instantly
+  // Hydrate from cache on mount so UI renders instantly (only if within TTL)
   const initialCache = useMemo(() => {
     const periodKey = period === "custom" ? `custom:${dateFrom ?? ""}:${dateTo ?? ""}` : period;
     const cached = storage.get<{ data: TaskRecord[]; timestamp: number } | null>(`${CACHE_KEY}:${periodKey}`, null);
-    return cached?.data?.length ? cached : null;
+    if (!cached?.data?.length) return null;
+    if (Date.now() - (cached.timestamp ?? 0) > CACHE_TTL_MS) return null;
+    return cached;
   }, []); // intentionally empty — only read cache on first mount
 
   const [tasks, setTasks] = useState<TaskRecord[]>(initialCache?.data ?? []);
