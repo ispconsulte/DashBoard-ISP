@@ -217,7 +217,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [countEndpoint, key, envError, params.accessToken]);
+  }, [skip, countEndpoint, key, envError, params.accessToken]);
 
   // Main fetch effect
   useEffect(() => {
@@ -431,7 +431,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
       clearTimeout(timeoutId);
       inFlightKeyRef.current = null;
     };
-  }, [endpoint, latestEndpoint, key, envError, refreshToken, params.accessToken, period, dateFrom, dateTo]);
+  }, [skip, endpoint, latestEndpoint, key, envError, refreshToken, params.accessToken, period, dateFrom, dateTo]);
 
   return { tasks, loading, error, reload, lastUpdated, reloadCooldownMsLeft, reloadsRemainingThisMinute, noChanges, totalCount };
 }
