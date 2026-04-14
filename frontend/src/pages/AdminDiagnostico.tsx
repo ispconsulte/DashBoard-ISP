@@ -11,6 +11,7 @@ import {
   Eye,
   EyeOff,
   FileQuestion,
+  Filter,
   Hash,
   Info,
   Link2Off,
@@ -20,6 +21,7 @@ import {
   Trash2,
   User,
   Wrench,
+  X,
 } from "lucide-react";
 import PageHeaderCard from "@/components/PageHeaderCard";
 import { Button } from "@/components/ui/button";
@@ -115,6 +117,16 @@ function summarizeCron(cron: string) {
   return "agendamento personalizado";
 }
 
+const JOB_SUBTITLES: Record<string, string> = {
+  "Get-Projects-And-Tasks-Bitrix": "Atualização de projetos e tarefas do Bitrix",
+  "Get-Projetcs-And-Tasks-Bitrix": "Atualização de projetos e tarefas do Bitrix",
+  "sync-bitrix-times": "Sincronização de horas lançadas do Bitrix",
+};
+
+function jobSubtitle(jobName: string) {
+  return JOB_SUBTITLES[jobName] ?? "Rotina de sincronização";
+}
+
 function formatTaskStatus(value: string | number | null | undefined) {
   if (typeof value === "number") {
     if (value === 1) return "Nova";
@@ -178,7 +190,6 @@ function getReasonSummary(item: IntegrityTaskItem): string {
     : `Tarefa ${parts.slice(0, -1).join(", ")} e ${parts[parts.length - 1]}.`;
 }
 
-/** Find the real latest run for a given job_name from recent_runs */
 function findLatestRunForJob(recentRuns: IntegrityRun[], jobName: string): IntegrityRun | null {
   const matching = recentRuns.filter((r) => r.job_name === jobName);
   if (!matching.length) return null;
@@ -186,24 +197,58 @@ function findLatestRunForJob(recentRuns: IntegrityRun[], jobName: string): Integ
   return matching[0];
 }
 
+/* ─── Filter helpers ─── */
+
+function getTaskProblemCodes(item: IntegrityTaskItem) {
+  return item.problems.map((p) => p.code);
+}
+
+type TaskFilterCategory = "missing_from_source" | "missing_project" | "missing_responsible" | "missing_deadline" | "archived_task" | "";
+type PeriodFilter = "" | "7d" | "30d" | "90d";
+
+const TASK_CATEGORY_OPTIONS: Array<{ value: TaskFilterCategory; label: string }> = [
+  { value: "", label: "Todas as categorias" },
+  { value: "missing_from_source", label: "Não encontrada / sem acesso" },
+  { value: "missing_project", label: "Sem projeto válido" },
+  { value: "missing_responsible", label: "Sem responsável" },
+  { value: "missing_deadline", label: "Sem prazo" },
+  { value: "archived_task", label: "Arquivada" },
+];
+
+const PERIOD_OPTIONS: Array<{ value: PeriodFilter; label: string }> = [
+  { value: "", label: "Qualquer período" },
+  { value: "7d", label: "Últimos 7 dias" },
+  { value: "30d", label: "Últimos 30 dias" },
+  { value: "90d", label: "Últimos 90 dias" },
+];
+
+function periodCutoff(period: PeriodFilter): Date | null {
+  if (!period) return null;
+  const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d;
+}
+
 /* ─── Componentes auxiliares ─── */
 
 const CARD = "rounded-2xl border border-white/[0.08] bg-[hsl(228_25%_10%/0.9)] shadow-[0_2px_24px_hsl(222_45%_4%/0.25)]";
 const INNER = "rounded-xl border border-white/[0.06] bg-white/[0.025]";
+const SELECT_CLS = "rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none";
 
 function StatCard({ label, value, helper, icon: Icon }: { label: string; value: string | number; helper: string; icon: typeof ShieldAlert }) {
   return (
-    <div className={`${CARD} p-5`}>
-      <div className="flex items-start justify-between gap-3">
+    <div className={`${CARD} p-4 sm:p-5`}>
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">{label}</p>
-          <p className="mt-2.5 text-3xl font-bold tracking-tight text-white">{value}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40 truncate">{label}</p>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">{value}</p>
         </div>
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.04] p-2.5 text-amber-300/80">
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.04] p-2 text-amber-300/80 shrink-0">
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <p className="mt-3.5 text-[13px] leading-[1.65] text-white/50">{helper}</p>
+      <p className="mt-2.5 text-[12px] leading-[1.55] text-white/45 line-clamp-2">{helper}</p>
     </div>
   );
 }
@@ -220,7 +265,7 @@ function EmptyPanel({ title, description }: { title: string; description: string
 
 function MetaField({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Hash }) {
   return (
-    <div className="flex items-start gap-2.5 min-w-0">
+    <div className="flex items-start gap-2 min-w-0">
       <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/30" />
       <div className="min-w-0">
         <p className="text-[11px] font-medium uppercase tracking-wider text-white/35">{label}</p>
@@ -269,6 +314,23 @@ function Pill({ children, className = "" }: { children: React.ReactNode; classNa
   );
 }
 
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors ${
+        active
+          ? "border-sky-400/40 bg-sky-400/15 text-sky-200"
+          : "border-white/[0.08] bg-white/[0.03] text-white/50 hover:bg-white/[0.06] hover:text-white/70"
+      }`}
+    >
+      {label}
+      {active && <X className="h-3 w-3" />}
+    </button>
+  );
+}
+
 /* ─── Página principal ─── */
 
 export default function AdminDiagnostico() {
@@ -288,6 +350,21 @@ export default function AdminDiagnostico() {
   const [elapsedSearch, setElapsedSearch] = useState("");
   const [taskPage, setTaskPage] = useState(1);
   const [elapsedPage, setElapsedPage] = useState(1);
+
+  /* Task filters */
+  const [taskCategory, setTaskCategory] = useState<TaskFilterCategory>("");
+  const [taskPeriod, setTaskPeriod] = useState<PeriodFilter>("");
+  const [taskResponsible, setTaskResponsible] = useState("");
+  const [taskProject, setTaskProject] = useState("");
+
+  /* Elapsed filters */
+  const [elapsedPeriod, setElapsedPeriod] = useState<PeriodFilter>("");
+  const [elapsedResponsible, setElapsedResponsible] = useState("");
+  const [elapsedProject, setElapsedProject] = useState("");
+  const [elapsedCategory, setElapsedCategory] = useState<TaskFilterCategory>("");
+
+  const [showTaskFilters, setShowTaskFilters] = useState(false);
+  const [showElapsedFilters, setShowElapsedFilters] = useState(false);
 
   const loadDashboard = async () => {
     if (!session?.accessToken) return;
@@ -309,29 +386,90 @@ export default function AdminDiagnostico() {
   const hiddenTaskCount = payload?.problematic_tasks.filter((t) => t.visibility_mode !== "show_in_operations").length ?? 0;
   const releasedTaskCount = payload?.problematic_tasks.filter((t) => t.visibility_mode === "show_in_operations").length ?? 0;
 
-  const taskInsights = useMemo(() => {
-    const items = dedupeTasks(payload?.problematic_tasks ?? []);
-    return {
-      withoutProject: items.filter((i) => i.problems.some((p) => p.code === "missing_project")).length,
-      withoutOwner: items.filter((i) => i.problems.some((p) => p.code === "missing_responsible")).length,
-      withoutDeadline: items.filter((i) => i.problems.some((p) => p.code === "missing_deadline")).length,
-      archived: items.filter((i) => i.problems.some((p) => p.code === "archived_task")).length,
-    };
+  const allTasks = useMemo(() => dedupeTasks(payload?.problematic_tasks ?? []), [payload]);
+
+  const taskInsights = useMemo(() => ({
+    withoutProject: allTasks.filter((i) => i.problems.some((p) => p.code === "missing_project")).length,
+    withoutOwner: allTasks.filter((i) => i.problems.some((p) => p.code === "missing_responsible")).length,
+    withoutDeadline: allTasks.filter((i) => i.problems.some((p) => p.code === "missing_deadline")).length,
+    archived: allTasks.filter((i) => i.problems.some((p) => p.code === "archived_task")).length,
+  }), [allTasks]);
+
+  /* Unique filter option lists */
+  const taskResponsibleOptions = useMemo(() => {
+    const set = new Set<string>();
+    allTasks.forEach((t) => { if (t.responsible_name) set.add(t.responsible_name); });
+    return Array.from(set).sort();
+  }, [allTasks]);
+
+  const taskProjectOptions = useMemo(() => {
+    const set = new Set<string>();
+    allTasks.forEach((t) => { if (t.project_name) set.add(t.project_name); });
+    return Array.from(set).sort();
+  }, [allTasks]);
+
+  const elapsedResponsibleOptions = useMemo(() => {
+    const set = new Set<string>();
+    (payload?.orphan_elapsed ?? []).forEach((e) => { if (e.related_task_responsible) set.add(e.related_task_responsible); });
+    return Array.from(set).sort();
   }, [payload]);
 
-  const filteredTasks = useMemo(() => dedupeTasks(payload?.problematic_tasks ?? []).filter((i) => matchesTaskSearch(i, taskSearch)), [payload, taskSearch]);
-  const filteredElapsed = useMemo(() => (payload?.orphan_elapsed ?? []).filter((i) => matchesElapsedSearch(i, elapsedSearch)), [payload, elapsedSearch]);
+  const elapsedProjectOptions = useMemo(() => {
+    const set = new Set<string>();
+    (payload?.orphan_elapsed ?? []).forEach((e) => { if (e.related_task_name) set.add(e.related_task_name); });
+    return Array.from(set).sort();
+  }, [payload]);
 
-  const PAGE_SIZE = 8;
+  /* Filtered lists */
+  const filteredTasks = useMemo(() => {
+    const cutoff = periodCutoff(taskPeriod);
+    return allTasks.filter((i) => {
+      if (!matchesTaskSearch(i, taskSearch)) return false;
+      if (taskCategory && !getTaskProblemCodes(i).includes(taskCategory)) return false;
+      if (taskResponsible && i.responsible_name !== taskResponsible) return false;
+      if (taskProject && i.project_name !== taskProject) return false;
+      if (cutoff) {
+        const d = new Date(i.updated_at ?? i.created_at ?? "");
+        if (Number.isNaN(d.getTime()) || d < cutoff) return false;
+      }
+      return true;
+    });
+  }, [allTasks, taskSearch, taskCategory, taskPeriod, taskResponsible, taskProject]);
+
+  const filteredElapsed = useMemo(() => {
+    const cutoff = periodCutoff(elapsedPeriod);
+    return (payload?.orphan_elapsed ?? []).filter((i) => {
+      if (!matchesElapsedSearch(i, elapsedSearch)) return false;
+      if (elapsedResponsible && i.related_task_responsible !== elapsedResponsible) return false;
+      if (elapsedProject && i.related_task_name !== elapsedProject) return false;
+      if (elapsedCategory) {
+        const codes = (i as any).problems?.map((p: any) => p.code) ?? [];
+        if (!codes.includes(elapsedCategory)) return false;
+      }
+      if (cutoff) {
+        const d = new Date(i.orphan_detected_at ?? i.updated_at ?? "");
+        if (Number.isNaN(d.getTime()) || d < cutoff) return false;
+      }
+      return true;
+    });
+  }, [payload, elapsedSearch, elapsedPeriod, elapsedResponsible, elapsedProject, elapsedCategory]);
+
+  const PAGE_SIZE = 12;
   const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   const elapsedTotalPages = Math.max(1, Math.ceil(filteredElapsed.length / PAGE_SIZE));
   const pagedTasks = filteredTasks.slice((taskPage - 1) * PAGE_SIZE, taskPage * PAGE_SIZE);
   const pagedElapsed = filteredElapsed.slice((elapsedPage - 1) * PAGE_SIZE, elapsedPage * PAGE_SIZE);
 
-  useEffect(() => { setTaskPage(1); }, [taskSearch, payload?.problematic_tasks.length]);
-  useEffect(() => { setElapsedPage(1); }, [elapsedSearch, payload?.orphan_elapsed.length]);
+  const taskActiveFilterCount = [taskCategory, taskPeriod, taskResponsible, taskProject].filter(Boolean).length;
+  const elapsedActiveFilterCount = [elapsedPeriod, elapsedResponsible, elapsedProject, elapsedCategory].filter(Boolean).length;
+
+  useEffect(() => { setTaskPage(1); }, [taskSearch, taskCategory, taskPeriod, taskResponsible, taskProject]);
+  useEffect(() => { setElapsedPage(1); }, [elapsedSearch, elapsedPeriod, elapsedResponsible, elapsedProject, elapsedCategory]);
   useEffect(() => { if (taskPage > taskTotalPages) setTaskPage(taskTotalPages); }, [taskPage, taskTotalPages]);
   useEffect(() => { if (elapsedPage > elapsedTotalPages) setElapsedPage(elapsedTotalPages); }, [elapsedPage, elapsedTotalPages]);
+
+  const clearTaskFilters = () => { setTaskCategory(""); setTaskPeriod(""); setTaskResponsible(""); setTaskProject(""); setTaskSearch(""); };
+  const clearElapsedFilters = () => { setElapsedCategory(""); setElapsedPeriod(""); setElapsedResponsible(""); setElapsedProject(""); setElapsedSearch(""); };
 
   const submitReview = async () => {
     if (!dialogState || !session?.accessToken) return;
@@ -406,64 +544,66 @@ export default function AdminDiagnostico() {
           </TabsList>
 
           {/* ═══════ VISÃO GERAL ═══════ */}
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <TabsContent value="overview" className="space-y-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard
                 label="Última sincronização"
                 value={formatDateTime(payload?.sync.latest_tasks_run?.started_at)}
-                helper="Data e horário da rotina mais recente que trouxe tarefas e projetos para a base local."
+                helper="Rotina mais recente de tarefas e projetos."
                 icon={CalendarClock}
               />
               <StatCard
                 label="Tarefas resguardadas"
                 value={hiddenTaskCount}
-                helper="Atividades com dados incompletos, mantidas isoladas nesta central para não impactar a operação."
+                helper="Isoladas nesta central para não impactar a operação."
                 icon={EyeOff}
               />
               <StatCard
                 label="Horas sem tarefa"
                 value={payload?.overview.orphan_elapsed_entries ?? 0}
-                helper="Lançamentos de horas que não possuem uma tarefa válida associada na base local."
+                helper="Lançamentos sem tarefa válida na base local."
                 icon={Link2Off}
               />
               <StatCard
                 label="Liberadas para operação"
                 value={releasedTaskCount}
-                helper="Casos revisados e autorizados a voltar para as telas operacionais."
+                helper="Casos revisados e autorizados para as telas operacionais."
                 icon={BadgeCheck}
               />
             </div>
 
-            <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
-              <div className={`${CARD} p-6`}>
+            <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+              <div className={`${CARD} p-5`}>
                 <SectionHeader icon={Bug} title="O que a central está acompanhando" />
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {[
-                    { title: "Sem projeto válido", count: taskInsights.withoutProject, desc: "Atividades sem vínculo a um projeto. Perdem contexto e não devem impactar painéis de produção." },
-                    { title: "Sem responsável", count: taskInsights.withoutOwner, desc: "Tarefas que chegaram sem um responsável definido. Precisam de revisão antes de voltar ao fluxo." },
-                    { title: "Sem prazo", count: taskInsights.withoutDeadline, desc: "Atividades sem data de entrega. Isso compromete a leitura de atraso, prioridade e agenda." },
-                    { title: "Tarefas arquivadas", count: taskInsights.archived, desc: "Tarefas que ainda existem na base, mas estão arquivadas e precisam de revisão manual." },
+                    { title: "Sem projeto válido", count: taskInsights.withoutProject, desc: "Sem vínculo a um projeto. Não impactam painéis de produção." },
+                    { title: "Sem responsável", count: taskInsights.withoutOwner, desc: "Chegaram sem responsável definido. Precisam de revisão." },
+                    { title: "Sem prazo", count: taskInsights.withoutDeadline, desc: "Sem data de entrega. Compromete leitura de atraso e agenda." },
+                    { title: "Arquivadas", count: taskInsights.archived, desc: "Arquivadas na origem. Precisam de revisão manual." },
                   ].map((item) => (
                     <div key={item.title} className={`${INNER} p-4`}>
-                      <p className="text-sm font-semibold text-white">{item.title}</p>
-                      <p className="mt-2 text-2xl font-bold tracking-tight text-white">{item.count}</p>
-                      <p className="mt-2 text-[13px] leading-[1.6] text-white/50">{item.desc}</p>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="text-sm font-semibold text-white">{item.title}</p>
+                        <p className="text-xl font-bold tracking-tight text-white">{item.count}</p>
+                      </div>
+                      <p className="mt-1.5 text-[12px] leading-[1.5] text-white/45">{item.desc}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className={`${CARD} p-6`}>
+              <div className={`${CARD} p-5`}>
                 <SectionHeader icon={Wrench} title="Guia rápido de decisão" />
-                <div className="mt-5 space-y-3">
+                <div className="mt-4 space-y-2.5">
                   {[
-                    { title: "Manter somente na central", desc: "Use quando a atividade ainda precisa de correção ou quando o histórico deve ser preservado sem poluir gestão, analíticas e calendário." },
-                    { title: "Liberar para operação", desc: "Use quando o caso foi revisado e faz sentido reaparecer nas telas normais, mesmo com alguma observação." },
-                    { title: "Excluir da base local", desc: "Use para remover registros que não fazem mais sentido. A exclusão remove o item apenas desta base local." },
+                    { title: "Manter na central", desc: "Quando ainda precisa de correção ou o histórico deve ser preservado." },
+                    { title: "Liberar para operação", desc: "Caso revisado que faz sentido reaparecer nas telas normais." },
+                    { title: "Excluir da base local", desc: "Para registros que não fazem mais sentido. Remove apenas desta base." },
                   ].map((item) => (
-                    <div key={item.title} className={`${INNER} p-4`}>
+                    <div key={item.title} className={`${INNER} p-3.5`}>
                       <p className="text-sm font-semibold text-white">{item.title}</p>
-                      <p className="mt-1.5 text-[13px] leading-[1.6] text-white/50">{item.desc}</p>
+                      <p className="mt-1 text-[12px] leading-[1.5] text-white/45">{item.desc}</p>
                     </div>
                   ))}
                 </div>
@@ -472,42 +612,88 @@ export default function AdminDiagnostico() {
           </TabsContent>
 
           {/* ═══════ TAREFAS PARA REVISÃO ═══════ */}
-          <TabsContent value="tasks" className="space-y-5">
-            {/* Header + busca */}
-            <div className={`${CARD} p-5`}>
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <TabsContent value="tasks" className="space-y-4">
+            {/* Header + search + filters */}
+            <div className={`${CARD} p-5 space-y-4`}>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-[15px] font-semibold text-white">Tarefas para revisão</p>
-                  <p className="mt-1 text-[13px] text-white/50">
-                    Itens que existem na base local mas precisam de validação antes de voltar ao fluxo operacional.
+                  <p className="mt-0.5 text-[13px] text-white/50">
+                    {filteredTasks.length} tarefa(s) encontrada(s)
                   </p>
                 </div>
-                <div className="flex w-full flex-col gap-2 lg:w-auto lg:min-w-[360px]">
+                <div className="flex items-center gap-2 w-full lg:w-auto">
                   <input
                     type="search"
                     value={taskSearch}
                     onChange={(e) => setTaskSearch(e.target.value)}
                     placeholder="Buscar por nome, responsável ou ID…"
-                    className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                    className="flex-1 lg:min-w-[300px] rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
                   />
-                  <p className="text-[11px] text-white/40">
-                    Exibindo {pagedTasks.length} de {filteredTasks.length} tarefa(s)
-                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowTaskFilters((v) => !v)}
+                    className={`gap-1.5 border-white/10 text-white hover:bg-white/10 shrink-0 ${showTaskFilters ? "bg-white/10" : "bg-white/5"}`}
+                  >
+                    <Filter className="h-3.5 w-3.5" />
+                    Filtros
+                    {taskActiveFilterCount > 0 && (
+                      <span className="ml-0.5 rounded-full bg-sky-400/20 px-1.5 text-[10px] text-sky-200">{taskActiveFilterCount}</span>
+                    )}
+                  </Button>
                 </div>
               </div>
+
+              {/* Filter panel */}
+              {showTaskFilters && (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 pt-1 border-t border-white/[0.06]">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Categoria</label>
+                    <select value={taskCategory} onChange={(e) => setTaskCategory(e.target.value as TaskFilterCategory)} className={SELECT_CLS}>
+                      {TASK_CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value} className="bg-slate-900 text-white">{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Período</label>
+                    <select value={taskPeriod} onChange={(e) => setTaskPeriod(e.target.value as PeriodFilter)} className={SELECT_CLS}>
+                      {PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value} className="bg-slate-900 text-white">{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Responsável</label>
+                    <select value={taskResponsible} onChange={(e) => setTaskResponsible(e.target.value)} className={SELECT_CLS}>
+                      <option value="" className="bg-slate-900 text-white">Todos</option>
+                      {taskResponsibleOptions.map((n) => <option key={n} value={n} className="bg-slate-900 text-white">{n}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Projeto</label>
+                    <select value={taskProject} onChange={(e) => setTaskProject(e.target.value)} className={SELECT_CLS}>
+                      <option value="" className="bg-slate-900 text-white">Todos</option>
+                      {taskProjectOptions.map((n) => <option key={n} value={n} className="bg-slate-900 text-white">{n}</option>)}
+                    </select>
+                  </div>
+                  {taskActiveFilterCount > 0 && (
+                    <div className="sm:col-span-2 xl:col-span-4 flex justify-end">
+                      <Button type="button" variant="ghost" size="sm" onClick={clearTaskFilters} className="text-white/50 hover:text-white">
+                        <X className="h-3.5 w-3.5 mr-1" /> Limpar filtros
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Global explanation block */}
+            {/* Global explanation */}
             {filteredTasks.length > 0 && (
-              <div className={`${CARD} flex items-start gap-3 px-5 py-4`}>
+              <div className={`${CARD} flex items-start gap-3 px-5 py-3.5`}>
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/60" />
-                <div className="space-y-1.5 text-[13px] leading-[1.6] text-white/55">
-                  <p className="font-semibold text-white/70">Por que estas tarefas estão aqui?</p>
-                  <div className="flex flex-col gap-1">
-                    <p><span className="font-medium text-white/65">Não encontrada ou sem acesso</span> — a tarefa pode ter sido excluída, arquivada, filtrada ou estar sem permissão de acesso na origem.</p>
-                    <p><span className="font-medium text-white/65">Dados incompletos</span> — a tarefa chegou sem projeto, sem responsável ou sem prazo de entrega.</p>
-                    <p><span className="font-medium text-white/65">Sincronização</span> — falhas temporárias podem ter impedido a atualização. Revise antes de tomar qualquer decisão.</p>
-                  </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-[12px] leading-[1.6] text-white/50">
+                  <span><span className="font-medium text-white/60">Não encontrada</span> — excluída, arquivada ou sem acesso</span>
+                  <span><span className="font-medium text-white/60">Dados incompletos</span> — sem projeto, responsável ou prazo</span>
+                  <span><span className="font-medium text-white/60">Sincronização</span> — falha temporária na atualização</span>
                 </div>
               </div>
             )}
@@ -515,70 +701,71 @@ export default function AdminDiagnostico() {
             {!filteredTasks.length ? (
               <EmptyPanel
                 title="Nenhuma tarefa pendente de revisão"
-                description="Quando houver tarefas com dados incompletos (sem projeto, sem responsável, sem prazo ou arquivadas), elas aparecerão aqui para revisão."
+                description="Quando houver tarefas com dados incompletos ou inconsistentes, elas aparecerão aqui para revisão."
               />
             ) : (
               <>
-                {pagedTasks.map((task) => (
-                  <div key={task.task_id} className={`${CARD} p-5`}>
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:gap-6">
-                      {/* Main content */}
-                      <div className="min-w-0 flex-1 space-y-4">
-                        {/* Title */}
-                        <h3 className="text-base font-semibold leading-snug text-white">{task.title}</h3>
-
-                        {/* Metadata grid */}
-                        <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-                          <MetaField icon={Hash} label="ID da tarefa" value={`#${task.task_id}`} />
-                          <MetaField icon={User} label="Responsável" value={task.responsible_name ?? "Não encontrado"} />
-                          <MetaField icon={CheckCircle2} label="Status" value={formatTaskStatus(task.status)} />
-                          <MetaField icon={Bug} label="Projeto" value={task.project_name ?? "Sem projeto válido"} />
-                          <MetaField icon={CalendarClock} label="Prazo" value={formatDate(task.deadline)} />
-                          <MetaField icon={Clock3} label="Última atualização" value={formatDateTime(task.updated_at)} />
+                <div className="grid gap-3 xl:grid-cols-2">
+                  {pagedTasks.map((task) => (
+                    <div key={task.task_id} className={`${CARD} p-4`}>
+                      <div className="flex flex-col gap-3">
+                        {/* Title + actions */}
+                        <div className="flex items-start justify-between gap-3">
+                          <h3 className="text-[14px] font-semibold leading-snug text-white line-clamp-2 min-w-0">{task.title}</h3>
+                          <div className="flex shrink-0 gap-1.5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 border-white/10 bg-white/[0.06] text-[11px] text-white hover:bg-white/[0.12]"
+                              onClick={() => setDialogState({ type: "task", item: task })}
+                            >
+                              <ShieldAlert className="h-3 w-3 text-amber-300/80" />
+                              Revisar
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 border-white/10 bg-white/[0.06] text-[11px] text-white hover:bg-white/[0.12]"
+                              onClick={() =>
+                                setDialogState({
+                                  type: "task",
+                                  item: { ...task, visibility_mode: task.visibility_mode === "show_in_operations" ? "diagnostic_only" : "show_in_operations" },
+                                })
+                              }
+                            >
+                              <ArrowUpRight className="h-3 w-3 text-sky-300/80" />
+                              {task.visibility_mode === "show_in_operations" ? "Resguardar" : "Liberar"}
+                            </Button>
+                          </div>
                         </div>
 
-                        {/* Concise reason */}
-                        <p className="text-[13px] leading-[1.6] text-amber-200/60">
+                        {/* Metadata grid */}
+                        <div className="grid gap-x-5 gap-y-2 grid-cols-2 lg:grid-cols-3">
+                          <MetaField icon={Hash} label="ID" value={`#${task.task_id}`} />
+                          <MetaField icon={User} label="Responsável" value={task.responsible_name ?? "Não encontrado"} />
+                          <MetaField icon={CheckCircle2} label="Status" value={formatTaskStatus(task.status)} />
+                          <MetaField icon={Bug} label="Projeto" value={task.project_name ?? "Sem projeto"} />
+                          <MetaField icon={CalendarClock} label="Prazo" value={formatDate(task.deadline)} />
+                          <MetaField icon={Clock3} label="Atualização" value={formatDateTime(task.updated_at)} />
+                        </div>
+
+                        {/* Reason */}
+                        <p className="text-[12px] leading-[1.55] text-amber-200/55">
                           {getReasonSummary(task)}
                         </p>
 
                         {/* Admin note */}
                         {task.admin_note && (
-                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.06] px-3.5 py-2.5 text-[13px] leading-relaxed text-sky-100">
+                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.06] px-3 py-2 text-[12px] leading-relaxed text-sky-100">
                             <strong className="font-semibold">Nota:</strong> {task.admin_note}
                           </div>
                         )}
                       </div>
-
-                      {/* Actions */}
-                      <div className="flex shrink-0 flex-row gap-2 xl:w-[200px] xl:flex-col">
-                        <Button
-                          type="button"
-                          className="justify-start gap-2 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
-                          variant="outline"
-                          onClick={() => setDialogState({ type: "task", item: task })}
-                        >
-                          <ShieldAlert className="h-4 w-4 text-amber-300/80" />
-                          Revisar caso
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="justify-start gap-2 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
-                          onClick={() =>
-                            setDialogState({
-                              type: "task",
-                              item: { ...task, visibility_mode: task.visibility_mode === "show_in_operations" ? "diagnostic_only" : "show_in_operations" },
-                            })
-                          }
-                        >
-                          <ArrowUpRight className="h-4 w-4 text-sky-300/80" />
-                          {task.visibility_mode === "show_in_operations" ? "Resguardar na central" : "Liberar para operação"}
-                        </Button>
-                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
 
                 <PaginationBar
                   page={taskPage}
@@ -592,37 +779,78 @@ export default function AdminDiagnostico() {
           </TabsContent>
 
           {/* ═══════ HORAS SEM VÍNCULO ═══════ */}
-          <TabsContent value="elapsed" className="space-y-5">
-            <div className={`${CARD} p-5`}>
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <TabsContent value="elapsed" className="space-y-4">
+            <div className={`${CARD} p-5 space-y-4`}>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-[15px] font-semibold text-white">Horas sem vínculo</p>
-                  <p className="mt-1 text-[13px] text-white/50">
-                    Lançamentos de horas que não possuem uma tarefa válida associada e precisam de revisão.
+                  <p className="mt-0.5 text-[13px] text-white/50">
+                    {filteredElapsed.length} lançamento(s) encontrado(s)
                   </p>
                 </div>
-                <div className="flex w-full flex-col gap-2 lg:w-auto lg:min-w-[360px]">
+                <div className="flex items-center gap-2 w-full lg:w-auto">
                   <input
                     type="search"
                     value={elapsedSearch}
                     onChange={(e) => setElapsedSearch(e.target.value)}
                     placeholder="Buscar por tarefa, responsável ou ID…"
-                    className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                    className="flex-1 lg:min-w-[300px] rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
                   />
-                  <p className="text-[11px] text-white/40">
-                    Exibindo {pagedElapsed.length} de {filteredElapsed.length} lançamento(s)
-                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowElapsedFilters((v) => !v)}
+                    className={`gap-1.5 border-white/10 text-white hover:bg-white/10 shrink-0 ${showElapsedFilters ? "bg-white/10" : "bg-white/5"}`}
+                  >
+                    <Filter className="h-3.5 w-3.5" />
+                    Filtros
+                    {elapsedActiveFilterCount > 0 && (
+                      <span className="ml-0.5 rounded-full bg-sky-400/20 px-1.5 text-[10px] text-sky-200">{elapsedActiveFilterCount}</span>
+                    )}
+                  </Button>
                 </div>
               </div>
+
+              {showElapsedFilters && (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 pt-1 border-t border-white/[0.06]">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Período</label>
+                    <select value={elapsedPeriod} onChange={(e) => setElapsedPeriod(e.target.value as PeriodFilter)} className={SELECT_CLS}>
+                      {PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value} className="bg-slate-900 text-white">{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Responsável</label>
+                    <select value={elapsedResponsible} onChange={(e) => setElapsedResponsible(e.target.value)} className={SELECT_CLS}>
+                      <option value="" className="bg-slate-900 text-white">Todos</option>
+                      {elapsedResponsibleOptions.map((n) => <option key={n} value={n} className="bg-slate-900 text-white">{n}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Projeto</label>
+                    <select value={elapsedProject} onChange={(e) => setElapsedProject(e.target.value)} className={SELECT_CLS}>
+                      <option value="" className="bg-slate-900 text-white">Todos</option>
+                      {elapsedProjectOptions.map((n) => <option key={n} value={n} className="bg-slate-900 text-white">{n}</option>)}
+                    </select>
+                  </div>
+                  {elapsedActiveFilterCount > 0 && (
+                    <div className="flex items-end">
+                      <Button type="button" variant="ghost" size="sm" onClick={clearElapsedFilters} className="text-white/50 hover:text-white">
+                        <X className="h-3.5 w-3.5 mr-1" /> Limpar filtros
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Global explanation */}
             {filteredElapsed.length > 0 && (
-              <div className={`${CARD} flex items-start gap-3 px-5 py-4`}>
+              <div className={`${CARD} flex items-start gap-3 px-5 py-3.5`}>
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/60" />
-                <p className="text-[13px] leading-[1.6] text-white/55">
-                  <span className="font-semibold text-white/70">Por que estes lançamentos estão aqui?</span>{" "}
-                  Cada lançamento referencia uma tarefa que não foi encontrada na última verificação. A tarefa pode ter sido excluída, arquivada ou estar inacessível por questões de permissão, filtro ou sincronização.
+                <p className="text-[12px] leading-[1.6] text-white/50">
+                  Cada lançamento referencia uma tarefa não encontrada na última verificação — pode ter sido excluída, arquivada ou estar inacessível por permissão ou sincronização.
                 </p>
               </div>
             )}
@@ -630,57 +858,54 @@ export default function AdminDiagnostico() {
             {!filteredElapsed.length ? (
               <EmptyPanel
                 title="Nenhum lançamento sem vínculo"
-                description="Quando um lançamento de horas não possuir uma tarefa válida associada na base local, ele aparecerá aqui para revisão."
+                description="Quando um lançamento de horas não possuir uma tarefa válida associada, ele aparecerá aqui para revisão."
               />
             ) : (
               <>
-                {pagedElapsed.map((entry) => (
-                  <div key={entry.id} className={`${CARD} p-5`}>
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:gap-6">
-                      <div className="min-w-0 flex-1 space-y-4">
-                        <h3 className="text-base font-semibold leading-snug text-white">{entry.label}</h3>
-
-                        <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-                          <MetaField icon={Hash} label="ID do lançamento" value={`#${entry.id}`} />
-                          <MetaField icon={Hash} label="ID da tarefa" value={entry.bitrix_task_id_raw != null ? `#${entry.bitrix_task_id_raw}` : (entry.task_id != null ? `#${entry.task_id}` : "Sem ID")} />
-                          <MetaField icon={User} label="Responsável da tarefa" value={entry.related_task_responsible ?? "Não encontrado"} />
-                          <MetaField icon={CheckCircle2} label="Status da tarefa" value={formatTaskStatus(entry.related_task_status)} />
-                          <MetaField icon={Bug} label="Projeto vinculado" value={entry.related_task_name ?? "Não localizado"} />
-                          <MetaField icon={Clock3} label="Duração" value={formatMinutes(entry.minutes, entry.seconds)} />
-                          <MetaField icon={CalendarClock} label="Detectado em" value={formatDateTime(entry.orphan_detected_at)} />
-                          <MetaField icon={Clock3} label="Última atualização" value={formatDateTime(entry.updated_at)} />
+                <div className="grid gap-3 xl:grid-cols-2">
+                  {pagedElapsed.map((entry) => (
+                    <div key={entry.id} className={`${CARD} p-4`}>
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <h3 className="text-[14px] font-semibold leading-snug text-white line-clamp-2 min-w-0">{entry.label}</h3>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 border-white/10 bg-white/[0.06] text-[11px] text-white hover:bg-white/[0.12] shrink-0"
+                            onClick={() => setDialogState({ type: "elapsed", item: entry })}
+                          >
+                            <ShieldAlert className="h-3 w-3 text-amber-300/80" />
+                            Revisar
+                          </Button>
                         </div>
 
-                        {/* Comment */}
+                        <div className="grid gap-x-5 gap-y-2 grid-cols-2 lg:grid-cols-3">
+                          <MetaField icon={Hash} label="ID lançamento" value={`#${entry.id}`} />
+                          <MetaField icon={Hash} label="ID tarefa" value={entry.bitrix_task_id_raw != null ? `#${entry.bitrix_task_id_raw}` : (entry.task_id != null ? `#${entry.task_id}` : "Sem ID")} />
+                          <MetaField icon={User} label="Responsável" value={entry.related_task_responsible ?? "Não encontrado"} />
+                          <MetaField icon={CheckCircle2} label="Status" value={formatTaskStatus(entry.related_task_status)} />
+                          <MetaField icon={Bug} label="Projeto" value={entry.related_task_name ?? "Não localizado"} />
+                          <MetaField icon={Clock3} label="Duração" value={formatMinutes(entry.minutes, entry.seconds)} />
+                          <MetaField icon={CalendarClock} label="Detectado em" value={formatDateTime(entry.orphan_detected_at)} />
+                          <MetaField icon={Clock3} label="Atualização" value={formatDateTime(entry.updated_at)} />
+                        </div>
+
                         {entry.comment_text && (
-                          <p className="text-[13px] leading-relaxed text-white/50">
+                          <p className="text-[12px] leading-relaxed text-white/50">
                             <strong className="font-semibold text-white/70">Comentário:</strong> {entry.comment_text}
                           </p>
                         )}
 
-                        {/* Admin note */}
                         {entry.admin_note && (
-                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.06] px-3.5 py-2.5 text-[13px] leading-relaxed text-sky-100">
+                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.06] px-3 py-2 text-[12px] leading-relaxed text-sky-100">
                             <strong className="font-semibold">Nota:</strong> {entry.admin_note}
                           </div>
                         )}
                       </div>
-
-                      {/* Actions */}
-                      <div className="flex shrink-0 flex-row gap-2 xl:w-[200px] xl:flex-col">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="justify-start gap-2 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
-                          onClick={() => setDialogState({ type: "elapsed", item: entry })}
-                        >
-                          <ShieldAlert className="h-4 w-4 text-amber-300/80" />
-                          Revisar lançamento
-                        </Button>
-                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
 
                 <PaginationBar
                   page={elapsedPage}
@@ -695,11 +920,11 @@ export default function AdminDiagnostico() {
 
           {/* ═══════ MONITORAMENTO ═══════ */}
           <TabsContent value="sync" className="space-y-5">
-            <div className="grid gap-5 xl:grid-cols-2">
+            <div className="grid gap-4 xl:grid-cols-2">
               {/* Últimas execuções */}
-              <div className={`${CARD} p-6`}>
-                <SectionHeader icon={Clock3} title="Últimas execuções" subtitle="Resultado das rotinas de sincronização mais recentes" />
-                <div className="mt-5 space-y-3">
+              <div className={`${CARD} p-5`}>
+                <SectionHeader icon={Clock3} title="Últimas execuções" subtitle="Resultado das rotinas mais recentes" />
+                <div className="mt-4 space-y-3">
                   {[
                     { label: "Rotina de tarefas e projetos", run: payload?.sync.latest_tasks_run },
                     { label: "Rotina de tempos lançados", run: payload?.sync.latest_times_run },
@@ -725,18 +950,19 @@ export default function AdminDiagnostico() {
                 </div>
               </div>
 
-              {/* Agendamentos ativos — show real latest run from recent_runs */}
-              <div className={`${CARD} p-6`}>
+              {/* Agendamentos ativos */}
+              <div className={`${CARD} p-5`}>
                 <SectionHeader icon={CalendarClock} title="Agendamentos ativos" subtitle="Rotinas de sincronização programadas" />
-                <div className="mt-5 space-y-3">
+                <div className="mt-4 space-y-3">
                   {(payload?.sync.configs ?? []).map((config) => {
                     const realLatest = findLatestRunForJob(payload?.sync.recent_runs ?? [], config.job_name);
                     return (
                       <div key={config.job_name} className={`${INNER} p-4`}>
-                        <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-white">{config.job_name}</p>
-                            <p className="mt-1 text-[11px] text-white/40">
+                            <p className="mt-0.5 text-[12px] text-sky-300/50">{jobSubtitle(config.job_name)}</p>
+                            <p className="mt-1 text-[11px] text-white/35">
                               Cron: {config.cron_expression} · {summarizeCron(config.cron_expression)}
                             </p>
                           </div>
@@ -744,7 +970,7 @@ export default function AdminDiagnostico() {
                             {config.enabled ? "Ativo" : "Desativado"}
                           </Pill>
                         </div>
-                        <p className="mt-3 text-[13px] leading-[1.6] text-white/50">
+                        <p className="mt-2.5 text-[13px] leading-[1.6] text-white/50">
                           Última execução real: {formatDateTime(realLatest?.started_at ?? config.last_scheduled_at)}
                           {realLatest && (
                             <> · <span className={realLatest.status === "success" ? "text-emerald-300/70" : "text-red-300/70"}>{realLatest.status === "success" ? "Sucesso" : realLatest.status}</span></>
@@ -755,37 +981,6 @@ export default function AdminDiagnostico() {
                   })}
                 </div>
               </div>
-            </div>
-
-            {/* Histórico recente */}
-            <div className={`${CARD} p-6`}>
-              <SectionHeader icon={AlertTriangle} title="Histórico recente" subtitle="Execuções registradas nas últimas horas" />
-              {!(payload?.sync.recent_runs ?? []).length ? (
-                <p className="mt-5 text-[13px] text-white/40">Nenhuma execução recente registrada.</p>
-              ) : (
-                <div className="mt-5 space-y-3">
-                  {(payload?.sync.recent_runs ?? []).map((run, index) => (
-                    <div key={`${run.job_name}-${run.started_at}-${index}`} className={`${INNER} p-4`}>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white">{run.job_name}</p>
-                          <p className="mt-1 text-[11px] text-white/40">
-                            Iniciou em {formatDateTime(run.started_at)}
-                            {run.finished_at && <> · Concluiu em {formatDateTime(run.finished_at)}</>}
-                            {" · Duração: "}{formatDuration(run.duration_ms)}
-                          </p>
-                        </div>
-                        <Pill className={run.status === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200"}>
-                          {run.status === "success" ? "Sucesso" : run.status}
-                        </Pill>
-                      </div>
-                      {run.error_message && (
-                        <p className="mt-2.5 text-sm leading-relaxed text-red-200/80">{run.error_message}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </TabsContent>
         </Tabs>
