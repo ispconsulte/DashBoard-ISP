@@ -28,6 +28,39 @@ const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "2500
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 10;
 
+const buildDateFilter = (period?: string, dateFrom?: string, dateTo?: string): string => {
+  if (!period || period === "all") return "";
+  if (period !== "custom") {
+    const days = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : 180;
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const iso = encodeURIComponent(from.toISOString());
+    return `or=(date_start.gte.${iso},created_date.gte.${iso},updated_at.gte.${iso})`;
+  }
+  // custom range
+  const parts: string[] = [];
+  if (dateFrom) {
+    const f = new Date(dateFrom);
+    if (!Number.isNaN(f.getTime())) {
+      const iso = encodeURIComponent(f.toISOString());
+      parts.push(`or(date_start.gte.${iso},created_date.gte.${iso},updated_at.gte.${iso})`);
+    }
+  }
+  if (dateTo) {
+    const t = new Date(dateTo);
+    if (!Number.isNaN(t.getTime())) {
+      t.setHours(23, 59, 59, 999);
+      const iso = encodeURIComponent(t.toISOString());
+      parts.push(`or(date_start.lte.${iso},created_date.lte.${iso},updated_at.lte.${iso})`);
+    }
+  }
+  if (parts.length === 2) return `and=(${parts.join(",")})`;
+  if (parts.length === 1) {
+    const single = parts[0];
+    return single.startsWith("or(") ? `or=${single.slice(2)}` : single;
+  }
+  return "";
+};
+
 const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
   const url = SUPABASE_URL;
   const key = SUPABASE_ANON_KEY;
@@ -58,8 +91,10 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
     "inserted_at",
     "updated_at",
   ].join(",");
-  const endpoint = `${base}/rest/v1/elapsed_times?select=${encodeURIComponent(select)}`;
-  const latestEndpoint = `${base}/rest/v1/elapsed_times?select=updated_at,inserted_at,created_date,date_start&order=updated_at.desc&limit=1`;
+  const dateFilter = buildDateFilter(period, dateFrom, dateTo);
+  const filterSuffix = dateFilter ? `&${dateFilter}` : "";
+  const endpoint = `${base}/rest/v1/elapsed_times?select=${encodeURIComponent(select)}${filterSuffix}`;
+  const latestEndpoint = `${base}/rest/v1/elapsed_times?select=updated_at,inserted_at,created_date,date_start&order=updated_at.desc&limit=1${filterSuffix}`;
   return { endpoint, latestEndpoint, key, error: null };
 };
 
