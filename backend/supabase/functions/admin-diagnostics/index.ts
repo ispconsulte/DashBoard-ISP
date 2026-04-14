@@ -154,14 +154,12 @@ function summarizeTaskProblems(task: any) {
   );
 
   if (missingFromBitrixSince) {
-    return {
-      problems: [],
-      severity: 0,
-      isProblematic: false,
-      isDeletedFromSource: true,
-      projectName,
-      archivedTask,
-    };
+    problems.push({
+      code: "missing_from_source",
+      label: "Nao encontrada ou sem acesso",
+      meaning: "A tarefa nao apareceu na verificacao mais recente da origem e nao existe evento oficial de exclusao salvo. Revise permissao, filtro ou acesso antes de tratar como excluida.",
+      severity: 95,
+    });
   }
 
   if (archivedTask) {
@@ -213,7 +211,6 @@ function summarizeTaskProblems(task: any) {
     problems: dedupeProblems(problems),
     severity: problems.reduce((max, item) => Math.max(max, item.severity), 0),
     isProblematic: problems.length > 0,
-    isDeletedFromSource: false,
     projectName,
     archivedTask,
   };
@@ -226,7 +223,11 @@ function summarizeElapsedProblem(entry: any, taskLookup: Map<number, any>) {
   const orphanReason = validateString(entry.orphan_reason, 300) ?? null;
 
   if (orphanReason === "missing_task_in_local_snapshot" && rawTaskId) {
-    return null;
+    return {
+      label: "Tarefa nao encontrada ou sem acesso",
+      meaning: "A hora aponta para uma tarefa que nao apareceu na verificacao mais recente e nao tem exclusao oficial registrada. Revise acesso, filtro ou sincronizacao antes de descartar o lancamento.",
+      relatedTask,
+    };
   }
 
   if (linkedTaskId && !relatedTask) {
@@ -255,7 +256,7 @@ function summarizeElapsedProblem(entry: any, taskLookup: Map<number, any>) {
 }
 
 async function loadDiagnostics(adminClient: SupabaseClient) {
-  const [tasks, taskControls, elapsedTimes, elapsedControls, syncConfigs, syncRuns] = await Promise.all([
+  const [tasks, taskControls, elapsedTimes, elapsedControls, deleteEvents, syncConfigs, syncRuns] = await Promise.all([
     fetchAllRows(
       adminClient,
       "tasks",
@@ -281,6 +282,12 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
       "elapsed_id,visibility_mode,review_status,admin_note,updated_by,updated_at,created_at",
       "elapsed_id",
     ),
+    fetchAllRows(
+      adminClient,
+      "bitrix_task_delete_events",
+      "task_id,deleted_at,received_at,event_name",
+      "task_id",
+    ),
     adminClient
       .from("sync_job_configs")
       .select("job_name,cron_expression,enabled,last_scheduled_at,last_job_id,updated_at")
@@ -298,13 +305,19 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
   const taskControlMap = new Map((taskControls ?? []).map((row: any) => [Number(row.task_id), row]));
   const elapsedControlMap = new Map((elapsedControls ?? []).map((row: any) => [Number(row.elapsed_id), row]));
   const activeTaskLookup = new Map<number, any>();
-  const deletedTaskIds = new Set<number>();
+  const deletedTaskIds = new Set((deleteEvents ?? []).map((row: any) => Number(row.task_id)).filter(Boolean));
+
+  console.log("[admin-diagnostics] Carregando central com exclusoes confirmadas do Bitrix.", {
+    totalTasks: tasks.length,
+    totalElapsed: elapsedTimes.length,
+    confirmedDeletedTasks: deletedTaskIds.size,
+  });
 
   for (const task of tasks ?? []) {
     const taskId = Number(task.task_id);
     if (!taskId) continue;
-    if (parseDate(task.missing_from_bitrix_since)) {
-      deletedTaskIds.add(taskId);
+    if (deletedTaskIds.has(taskId)) {
+      console.log("[admin-diagnostics] Tarefa ocultada por exclusao confirmada via OnTaskDelete.", { taskId });
       continue;
     }
     activeTaskLookup.set(taskId, task);
@@ -312,8 +325,9 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
 
   const problematicTaskMap = new Map<number, any>();
   for (const task of tasks ?? []) {
+      if (deletedTaskIds.has(Number(task.task_id))) continue;
       const summary = summarizeTaskProblems(task);
-      if (summary.isDeletedFromSource || !summary.isProblematic) continue;
+      if (!summary.isProblematic) continue;
       const control = taskControlMap.get(Number(task.task_id)) ?? null;
       const nextTask = {
         task_id: Number(task.task_id),
@@ -360,6 +374,11 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
       const rawTaskId = validateBigintId(entry.bitrix_task_id_raw);
       const linkedTaskId = validateBigintId(entry.task_id);
       if ((rawTaskId && deletedTaskIds.has(rawTaskId)) || (linkedTaskId && deletedTaskIds.has(linkedTaskId))) {
+        console.log("[admin-diagnostics] Lancamento ocultado por tarefa excluida confirmada.", {
+          elapsedId: Number(entry.id),
+          rawTaskId,
+          linkedTaskId,
+        });
         return null;
       }
       const control = elapsedControlMap.get(Number(entry.id)) ?? null;
@@ -398,7 +417,7 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
 
   return {
     overview: {
-      total_tasks: tasks.length,
+      total_tasks: Math.max(0, tasks.length - deletedTaskIds.size),
       problematic_tasks: problematicTasks.length,
       projectless_tasks: problematicTasks.filter((task: any) => task.problems.some((problem: any) => problem.code === "missing_project")).length,
       missing_from_source_tasks: 0,
