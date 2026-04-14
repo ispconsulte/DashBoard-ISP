@@ -1,397 +1,789 @@
-import { useMemo, useState } from "react";
-import PageHeaderCard from "@/components/PageHeaderCard";
-import { motion, AnimatePresence } from "framer-motion";
-import { useAuth } from "@/modules/auth/hooks/useAuth";
-import { useTasks } from "@/modules/tasks/api/useTasks";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import {
-  Unlink,
-  ChevronLeft,
-  ChevronRight,
   AlertTriangle,
+  ArrowUpRight,
+  BadgeCheck,
+  Bug,
+  CalendarClock,
+  Clock3,
+  EyeOff,
+  Link2Off,
   RefreshCw,
   ShieldAlert,
-  CheckCircle2,
-  Bug,
+  Trash2,
+  Wrench,
 } from "lucide-react";
+import PageHeaderCard from "@/components/PageHeaderCard";
+import { Button } from "@/components/ui/button";
 import {
-  parseDateValue,
-  formatDatePtBR,
-  normalizeTaskTitle,
-} from "@/modules/tasks/utils";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/modules/auth/hooks/useAuth";
+import {
+  deleteIntegrityElapsed,
+  deleteIntegrityTask,
+  fetchIntegrityDashboard,
+  type IntegrityElapsedItem,
+  type IntegrityPayload,
+  type IntegrityProblem,
+  type IntegrityTaskItem,
+  upsertIntegrityElapsedControl,
+  upsertIntegrityTaskControl,
+} from "@/modules/diagnostics/api/adminDiagnosticsApi";
 
-const INTERNAL_PROJECT_ALIASES = ["sp", "isp", "interno", "internal"];
-const ORPHAN_PAGE_SIZE = 12;
+type ReviewStatus = "pending" | "reviewing" | "resolved" | "ignored";
+type VisibilityMode = "diagnostic_only" | "show_in_operations";
+type DialogState =
+  | { type: "task"; item: IntegrityTaskItem }
+  | { type: "elapsed"; item: IntegrityElapsedItem }
+  | null;
+
+const visibilityOptions: Array<{ value: VisibilityMode; label: string; helper: string }> = [
+  {
+    value: "diagnostic_only",
+    label: "Manter so na central",
+    helper: "A atividade continua isolada e nao entra nas telas operacionais.",
+  },
+  {
+    value: "show_in_operations",
+    label: "Liberar para operacao",
+    helper: "A atividade volta a aparecer nas telas normais mesmo com pendencias.",
+  },
+];
+
+const reviewOptions: Array<{ value: ReviewStatus; label: string }> = [
+  { value: "pending", label: "Pendente" },
+  { value: "reviewing", label: "Em revisao" },
+  { value: "resolved", label: "Resolvido" },
+  { value: "ignored", label: "Ignorado" },
+];
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "Sem registro";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Sem registro";
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(parsed);
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "Sem data";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Sem data";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(parsed);
+}
+
+function formatDuration(durationMs?: number | null) {
+  if (!durationMs || durationMs <= 0) return "Sem duracao registrada";
+  const totalSeconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  return `${minutes}min ${seconds}s`;
+}
+
+function formatMinutes(minutes?: number, seconds?: number) {
+  const totalSeconds = Math.max(0, Number(seconds ?? 0) + Number(minutes ?? 0) * 60);
+  if (!totalSeconds) return "0min";
+  const totalMinutes = Math.round(totalSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return `${hours}h ${mins}min`;
+}
+
+function summarizeCron(cron: string) {
+  if (cron === "*/10 * * * *") return "a cada 10 minutos";
+  if (cron === "*/30 * * * *") return "a cada 30 minutos";
+  if (cron === "0 */4 * * *") return "a cada 4 horas";
+  if (cron === "0 */6 * * *") return "a cada 6 horas";
+  return "agendamento personalizado";
+}
+
+function getStatusLabel(value: ReviewStatus) {
+  return reviewOptions.find((option) => option.value === value)?.label ?? value;
+}
+
+function getVisibilityLabel(value: VisibilityMode) {
+  return visibilityOptions.find((option) => option.value === value)?.label ?? value;
+}
+
+function getSeverityTone(severity: number) {
+  if (severity >= 90) return "border-red-500/30 bg-red-500/10 text-red-200";
+  if (severity >= 70) return "border-amber-500/30 bg-amber-500/10 text-amber-100";
+  return "border-sky-500/30 bg-sky-500/10 text-sky-100";
+}
+
+function StatCard({
+  label,
+  value,
+  helper,
+  icon: Icon,
+}: {
+  label: string;
+  value: string | number;
+  helper: string;
+  icon: typeof ShieldAlert;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-4 shadow-[0_18px_40px_hsl(222_45%_4%/0.35)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.14em] text-white/40">{label}</p>
+          <p className="mt-2 text-3xl font-semibold text-white">{value}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/5 p-2.5 text-amber-200">
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-white/55">{helper}</p>
+    </div>
+  );
+}
+
+function Pill({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}>
+      {children}
+    </span>
+  );
+}
+
+function TaskProblemPills({ problems }: { problems: IntegrityProblem[] }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {problems.map((problem) => (
+        <Pill key={problem.code} className={getSeverityTone(problem.severity)}>
+          {problem.label}
+        </Pill>
+      ))}
+    </div>
+  );
+}
+
+function EmptyPanel({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-6 py-10 text-center">
+      <p className="text-base font-semibold text-white">{title}</p>
+      <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-white/55">{description}</p>
+    </div>
+  );
+}
 
 export default function AdminDiagnostico() {
   const { session, loadingSession } = useAuth();
-  const isAdmin =
+  const isManager =
     session?.role === "admin" ||
     session?.role === "gerente" ||
     session?.role === "coordenador";
 
-  const { tasks, loading, reload } = useTasks({
-    accessToken: session?.accessToken ?? null,
-    period: "30d",
-  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [payload, setPayload] = useState<IntegrityPayload | null>(null);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [dialogState, setDialogState] = useState<DialogState>(null);
+  const [visibilityMode, setVisibilityMode] = useState<VisibilityMode>("diagnostic_only");
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("pending");
+  const [adminNote, setAdminNote] = useState("");
 
-  const [page, setPage] = useState(1);
+  const loadDashboard = async () => {
+    if (!session?.accessToken) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchIntegrityDashboard(session.accessToken);
+      setPayload(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Falha ao carregar a central.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const orphanTasks = useMemo(() => {
-    if (!tasks.length) return [];
-    return tasks
-      .map((task) => {
-        const rawProjectId = String(task["project_id"] ?? task["projectId"] ?? "").trim();
-        const projectFromJoin =
-          task.projects && typeof task.projects === "object"
-            ? String((task.projects as Record<string, unknown>)?.["name"] ?? "").trim()
-            : "";
-        const projectName = (
-          (task["project_name"] ?? task["project"] ?? task["group_name"] ?? "").toString()
-        ).trim();
-        const effectiveName = projectFromJoin || projectName;
-        const projectNorm = effectiveName
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "");
-        const hasNoProject = !effectiveName;
-        const isInternalProject = INTERNAL_PROJECT_ALIASES.some(
-          (alias) => projectNorm === alias || projectNorm === alias + " consulte"
-        );
-        if (!hasNoProject && !isInternalProject) return null;
-        return {
-          task_id: String(task["task_id"] ?? task["id"] ?? ""),
-          title: normalizeTaskTitle(String(task["title"] ?? task["nome"] ?? "Sem título")),
-          consultant: String(task["responsible_name"] ?? task["consultant"] ?? "—"),
-          deadline: parseDateValue(task["deadline"] ?? task["due_date"] ?? task["dueDate"]),
-          projectRaw: effectiveName || (rawProjectId ? `#${rawProjectId}` : "—"),
-          reason: hasNoProject ? "Sem projeto vinculado" : `Projeto interno: "${effectiveName}"`,
-          isInternal: isInternalProject,
-        };
-      })
-      .filter(Boolean) as {
-        task_id: string;
-        title: string;
-        consultant: string;
-        deadline: Date | null;
-        projectRaw: string;
-        reason: string;
-        isInternal: boolean;
-      }[];
-  }, [tasks]);
+  useEffect(() => {
+    if (session?.accessToken && isManager) {
+      void loadDashboard();
+    }
+  }, [session?.accessToken, isManager]);
 
-  const totalPages = Math.max(1, Math.ceil(orphanTasks.length / ORPHAN_PAGE_SIZE));
-  const paginated = useMemo(() => {
-    const start = (page - 1) * ORPHAN_PAGE_SIZE;
-    return orphanTasks.slice(start, start + ORPHAN_PAGE_SIZE);
-  }, [orphanTasks, page]);
+  useEffect(() => {
+    if (!dialogState) return;
+    setVisibilityMode(dialogState.item.visibility_mode);
+    setReviewStatus(dialogState.item.review_status);
+    setAdminNote(dialogState.item.admin_note ?? "");
+  }, [dialogState]);
 
-  // Guard — aguarda sessão antes de redirecionar
+  const hiddenTaskCount = payload?.problematic_tasks.filter((task) => task.visibility_mode !== "show_in_operations").length ?? 0;
+  const releasedTaskCount = payload?.problematic_tasks.filter((task) => task.visibility_mode === "show_in_operations").length ?? 0;
+
+  const taskInsights = useMemo(() => {
+    const items = payload?.problematic_tasks ?? [];
+    return {
+      withoutProject: items.filter((item) => item.problems.some((problem) => problem.code === "missing_project")).length,
+      withoutOwner: items.filter((item) => item.problems.some((problem) => problem.code === "missing_responsible")).length,
+      withoutDeadline: items.filter((item) => item.problems.some((problem) => problem.code === "missing_deadline")).length,
+      outOfMainBase: items.filter((item) => item.problems.some((problem) => problem.code === "missing_from_source")).length,
+    };
+  }, [payload]);
+
+  const submitReview = async () => {
+    if (!dialogState || !session?.accessToken) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const nextPayload =
+        dialogState.type === "task"
+          ? await upsertIntegrityTaskControl(session.accessToken, {
+              task_id: dialogState.item.task_id,
+              visibility_mode: visibilityMode,
+              review_status: reviewStatus,
+              admin_note: adminNote || null,
+            })
+          : await upsertIntegrityElapsedControl(session.accessToken, {
+              elapsed_id: dialogState.item.id,
+              visibility_mode: visibilityMode,
+              review_status: reviewStatus,
+              admin_note: adminNote || null,
+            });
+      setPayload(nextPayload);
+      setDialogState(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Falha ao salvar a revisao.";
+      setError(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!dialogState || !session?.accessToken) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const nextPayload =
+        dialogState.type === "task"
+          ? await deleteIntegrityTask(session.accessToken, dialogState.item.task_id)
+          : await deleteIntegrityElapsed(session.accessToken, dialogState.item.id);
+      setPayload(nextPayload);
+      setDialogState(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Falha ao excluir o registro.";
+      setError(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loadingSession) return null;
-  if (!isAdmin) return <Navigate to="/" replace />;
+  if (!isManager) return <Navigate to="/" replace />;
 
   return (
     <div className="page-gradient w-full">
-
       <div className="mx-auto w-full max-w-[1900px] space-y-6 px-4 py-10 sm:px-5 md:px-8">
         <PageHeaderCard
-          icon={Bug}
-          title="Diagnóstico de Tarefas"
-          subtitle="Tarefas sem projeto vinculado · últimos 30 dias · somente administradores"
+          icon={ShieldAlert}
+          title="Central de Integridade"
+          subtitle="Painel administrativo para monitorar sincronizacoes, isolar tarefas problematicas e decidir o que volta ou nao para a operacao."
           actions={
-            <button
+            <Button
               type="button"
-              onClick={() => reload()}
+              variant="outline"
+              onClick={() => void loadDashboard()}
               disabled={loading}
-              className="group flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-2 text-xs font-medium text-white/50 transition-all hover:border-white/[0.15] hover:bg-white/[0.05] hover:text-white/70 disabled:opacity-40"
+              className="border-white/10 bg-white/5 text-white hover:bg-white/10"
             >
-              <RefreshCw className={`h-3.5 w-3.5 transition-transform group-hover:scale-110 ${loading ? "animate-spin" : ""}`} />
-              {loading ? "Carregando…" : "Atualizar"}
-            </button>
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              {loading ? "Atualizando" : "Atualizar painel"}
+            </Button>
           }
         />
 
-        {/* ── Alert banner ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className="flex items-start gap-3.5 rounded-2xl px-5 py-4"
-          style={{
-            background: "linear-gradient(135deg, hsl(38 92% 50% / 0.08), hsl(38 92% 50% / 0.03))",
-            boxShadow: "0 0 0 1px hsl(38 92% 50% / 0.18)",
-          }}
-        >
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: "hsl(38 92% 60%)" }} />
-          <div className="text-xs leading-relaxed" style={{ color: "hsl(38 80% 70% / 0.75)" }}>
-            <strong style={{ color: "hsl(38 92% 62%)" }}>O que são tarefas órfãs?</strong>{" "}
-            Tarefas cujo campo{" "}
-            <code
-              className="rounded px-1.5 py-0.5 font-mono text-[10px]"
-              style={{ background: "hsl(38 92% 50% / 0.12)", color: "hsl(38 92% 62%)" }}
-            >
-              project_id
-            </code>{" "}
-            no banco de dados não corresponde a nenhum projeto ativo, ou aponta para um alias interno como{" "}
-            <code
-              className="rounded px-1.5 py-0.5 font-mono text-[10px]"
-              style={{ background: "hsl(38 92% 50% / 0.12)", color: "hsl(38 92% 62%)" }}
-            >
-              SP
-            </code>
-            .{" "}
-            <strong style={{ color: "hsl(38 92% 62%)" }}>Ação:</strong> corrija o vínculo de cada tarefa diretamente
-            na fonte de dados externa.
+        {error ? (
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            {error}
           </div>
-        </motion.div>
+        ) : null}
 
-        {/* ── Stats row ── */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.18 }}
-          className="flex items-center gap-3"
-        >
-          <span className="text-sm font-medium" style={{ color: "hsl(215 20% 55%)" }}>
-            Tarefas sem vínculo
-          </span>
-          {loading ? (
-            <span
-              className="animate-pulse rounded-full px-3 py-1 text-xs font-bold"
-              style={{ background: "hsl(222 30% 14%)", color: "hsl(215 20% 45%)" }}
-            >
-              …
-            </span>
-          ) : orphanTasks.length === 0 ? (
-            <span
-              className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold"
-              style={{
-                background: "hsl(160 60% 40% / 0.15)",
-                boxShadow: "0 0 0 1px hsl(160 60% 40% / 0.25)",
-                color: "hsl(160 60% 60%)",
-              }}
-            >
-              <CheckCircle2 className="h-3 w-3" /> Nenhuma encontrada
-            </span>
-          ) : (
-            <span
-              className="rounded-full px-3 py-1 text-xs font-bold"
-              style={{
-                background: "hsl(38 92% 50% / 0.15)",
-                boxShadow: "0 0 0 1px hsl(38 92% 50% / 0.25)",
-                color: "hsl(38 92% 62%)",
-              }}
-            >
-              {orphanTasks.length}
-            </span>
-          )}
-        </motion.div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
+          <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-2xl border border-white/10 bg-[hsl(230_25%_10%/0.85)] p-2">
+            <TabsTrigger value="overview" className="rounded-xl px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-950">
+              Visao geral
+            </TabsTrigger>
+            <TabsTrigger value="tasks" className="rounded-xl px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-950">
+              Tarefas com problema
+            </TabsTrigger>
+            <TabsTrigger value="elapsed" className="rounded-xl px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-950">
+              Horas sem vinculo
+            </TabsTrigger>
+            <TabsTrigger value="sync" className="rounded-xl px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-950">
+              Monitoramento
+            </TabsTrigger>
+          </TabsList>
 
-        {/* ── Table card ── */}
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.22 }}
-          className="overflow-hidden rounded-2xl"
-          style={{
-            background: "hsl(222 40% 8%)",
-            boxShadow: "0 0 0 1px hsl(222 25% 13%), 0 20px 40px hsl(222 47% 3% / 0.5)",
-          }}
-        >
-        {/* Table header — hidden on mobile, cards used instead */}
-          <div
-            className="hidden sm:grid grid-cols-[1fr_160px_110px_180px] gap-2 px-5 py-3.5"
-            style={{
-              background: "hsl(222 40% 10%)",
-              borderBottom: "1px solid hsl(222 25% 12%)",
-            }}
-          >
-            {["Tarefa", "Responsável", "Prazo", "Motivo"].map((col) => (
-              <span
-                key={col}
-                className="text-[10px] font-bold uppercase tracking-widest"
-                style={{ color: "hsl(215 20% 40%)" }}
-              >
-                {col}
-              </span>
-            ))}
-          </div>
-
-          {/* Table body */}
-          {loading && tasks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-20">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1.4, repeat: Infinity, ease: "linear" }}
-                className="h-7 w-7 rounded-full"
-                style={{ boxShadow: "0 0 0 2px hsl(38 92% 50% / 0.2), inset 0 0 0 2px hsl(38 92% 50% / 0.6)" }}
+          <TabsContent value="overview" className="space-y-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label="Ultimo envio de tarefas"
+                value={formatDateTime(payload?.sync.latest_tasks_run?.started_at)}
+                helper="Mostra quando a rotina mais recente trouxe tarefas e projetos para a base local."
+                icon={CalendarClock}
               />
-              <p className="text-sm" style={{ color: "hsl(215 20% 45%)" }}>
-                Carregando tarefas…
-              </p>
+              <StatCard
+                label="Tarefas resguardadas"
+                value={hiddenTaskCount}
+                helper="Sao atividades com risco de dado incompleto. Elas ficam so nesta central e nao entram no dia a dia."
+                icon={EyeOff}
+              />
+              <StatCard
+                label="Horas sem tarefa"
+                value={payload?.overview.orphan_elapsed_entries ?? 0}
+                helper="Lancamentos de horas que ficaram sem atividade valida para relacionar."
+                icon={Link2Off}
+              />
+              <StatCard
+                label="Liberadas para operacao"
+                value={releasedTaskCount}
+                helper="Casos revisados manualmente e autorizados a voltar para as telas normais."
+                icon={BadgeCheck}
+              />
             </div>
-          ) : orphanTasks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-20">
-              <div
-                className="flex h-14 w-14 items-center justify-center rounded-2xl"
-                style={{
-                  background: "hsl(160 60% 40% / 0.1)",
-                  boxShadow: "0 0 0 1px hsl(160 60% 40% / 0.2)",
-                }}
-              >
-                <CheckCircle2 className="h-6 w-6" style={{ color: "hsl(160 60% 55%)" }} />
-              </div>
-              <p className="text-sm font-semibold" style={{ color: "hsl(210 40% 75%)" }}>
-                {tasks.length > 0
-                  ? "Nenhuma tarefa órfã nos últimos 30 dias"
-                  : "Aguardando dados…"}
-              </p>
-              <p className="text-xs" style={{ color: "hsl(215 20% 40%)" }}>
-                {tasks.length > 0
-                  ? "Todos os projetos estão devidamente vinculados."
-                  : "Clique em Atualizar para carregar."}
-              </p>
-            </div>
-          ) : (
-            <AnimatePresence mode="wait">
-              <motion.div key={page}>
-                {paginated.map((ot, idx) => (
-                  <motion.div
-                    key={ot.task_id || idx}
-                    initial={{ opacity: 0, x: -6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.03 * idx }}
-                    className="hidden sm:grid grid-cols-[1fr_160px_110px_180px] items-center gap-2 px-5 py-3.5 transition-colors"
-                    style={{
-                      borderBottom: "1px solid hsl(222 25% 11%)",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "hsl(222 40% 10%)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                  >
-                    <div className="min-w-0 pr-2">
-                      <p className="truncate text-sm font-medium" style={{ color: "hsl(210 40% 85%)" }}>
-                        {ot.title}
-                      </p>
-                      {ot.projectRaw !== "—" && (
-                        <p className="mt-0.5 truncate text-[10px]" style={{ color: "hsl(38 70% 50% / 0.5)" }}>
-                          {ot.projectRaw}
-                        </p>
-                      )}
-                    </div>
-                    <p className="truncate text-xs" style={{ color: "hsl(215 20% 55%)" }}>
-                      {ot.consultant}
-                    </p>
-                    <p
-                      className="text-xs font-medium"
-                      style={{
-                        color: !ot.deadline
-                          ? "hsl(215 20% 38%)"
-                          : ot.deadline < new Date()
-                          ? "hsl(0 70% 60%)"
-                          : "hsl(215 20% 60%)",
-                      }}
-                    >
-                      {ot.deadline ? formatDatePtBR(ot.deadline) : "—"}
-                    </p>
-                    <span
-                      className="flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                      style={{
-                        background: "hsl(38 92% 50% / 0.1)",
-                        boxShadow: "0 0 0 1px hsl(38 92% 50% / 0.2)",
-                        color: "hsl(38 92% 60%)",
-                      }}
-                    >
-                      <Unlink className="h-2.5 w-2.5 shrink-0" />
-                      {ot.reason}
-                    </span>
-                  </motion.div>
-                ))}
-                {/* Mobile card layout */}
-                {paginated.map((ot, idx) => (
-                  <motion.div
-                    key={`m-${ot.task_id || idx}`}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.03 * idx }}
-                    className="sm:hidden flex flex-col gap-2 px-4 py-3.5"
-                    style={{ borderBottom: "1px solid hsl(222 25% 11%)" }}
-                  >
-                    <p className="text-sm font-medium leading-snug" style={{ color: "hsl(210 40% 85%)" }}>
-                      {ot.title}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" style={{ color: "hsl(215 20% 55%)" }}>
-                      <span>{ot.consultant}</span>
-                      <span
-                        style={{
-                          color: !ot.deadline
-                            ? "hsl(215 20% 38%)"
-                            : ot.deadline < new Date()
-                            ? "hsl(0 70% 60%)"
-                            : "hsl(215 20% 60%)",
-                        }}
-                      >
-                        {ot.deadline ? formatDatePtBR(ot.deadline) : "Sem prazo"}
-                      </span>
-                    </div>
-                    <span
-                      className="flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                      style={{
-                        background: "hsl(38 92% 50% / 0.1)",
-                        boxShadow: "0 0 0 1px hsl(38 92% 50% / 0.2)",
-                        color: "hsl(38 92% 60%)",
-                      }}
-                    >
-                      <Unlink className="h-2.5 w-2.5 shrink-0" />
-                      {ot.reason}
-                    </span>
-                  </motion.div>
-                ))}
-              </motion.div>
-            </AnimatePresence>
-          )}
-        </motion.div>
 
-        {/* ── Pagination ── */}
-        {orphanTasks.length > ORPHAN_PAGE_SIZE && (
-          <div className="mt-4 flex items-center justify-between">
-            <span className="text-xs" style={{ color: "hsl(215 20% 45%)" }}>
-              {Math.min((page - 1) * ORPHAN_PAGE_SIZE + 1, orphanTasks.length)}–
-              {Math.min(page * ORPHAN_PAGE_SIZE, orphanTasks.length)} de {orphanTasks.length}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:opacity-80 disabled:opacity-30"
-                style={{
-                  background: "hsl(222 40% 11%)",
-                  boxShadow: "0 0 0 1px hsl(222 25% 15%)",
-                  color: "hsl(215 20% 60%)",
-                }}
+            <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+              <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
+                <div className="flex items-center gap-2 text-white">
+                  <Bug className="h-4 w-4 text-amber-200" />
+                  <h2 className="text-base font-semibold">O que a central esta acompanhando</h2>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-sm font-semibold text-white">Sem projeto valido</p>
+                    <p className="mt-2 text-3xl font-semibold text-white">{taskInsights.withoutProject}</p>
+                    <p className="mt-2 text-sm leading-6 text-white/55">
+                      Atividades sem vinculo operacional. Elas perdem contexto e nao devem impactar paineis de producao.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-sm font-semibold text-white">Sem responsavel</p>
+                    <p className="mt-2 text-3xl font-semibold text-white">{taskInsights.withoutOwner}</p>
+                    <p className="mt-2 text-sm leading-6 text-white/55">
+                      Casos que chegaram sem dono definido. A ideia e revisar antes de recolocar no fluxo normal.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-sm font-semibold text-white">Sem prazo</p>
+                    <p className="mt-2 text-3xl font-semibold text-white">{taskInsights.withoutDeadline}</p>
+                    <p className="mt-2 text-sm leading-6 text-white/55">
+                      Atividades sem data de entrega. Isso compromete leitura de atraso, prioridade e agenda.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-sm font-semibold text-white">Fora da base principal</p>
+                    <p className="mt-2 text-3xl font-semibold text-white">{taskInsights.outOfMainBase}</p>
+                    <p className="mt-2 text-sm leading-6 text-white/55">
+                      Atividades que deixaram de aparecer na origem principal. Isso normalmente aponta exclusao, arquivamento ou mudanca na origem.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
+                <div className="flex items-center gap-2 text-white">
+                  <Wrench className="h-4 w-4 text-sky-200" />
+                  <h2 className="text-base font-semibold">Guia rapido de decisao</h2>
+                </div>
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-sm font-semibold text-white">Manter so na central</p>
+                    <p className="mt-2 text-sm leading-6 text-white/55">
+                      Use quando a atividade ainda precisa de correcao ou quando o historico precisa ficar guardado sem poluir gestao, analiticas e calendario.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-sm font-semibold text-white">Liberar para operacao</p>
+                    <p className="mt-2 text-sm leading-6 text-white/55">
+                      Use quando o caso foi revisado e faz sentido reaparecer nas telas normais mesmo com alguma observacao administrativa.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-sm font-semibold text-white">Excluir da base local</p>
+                    <p className="mt-2 text-sm leading-6 text-white/55">
+                      Use para limpar registros que realmente nao fazem mais sentido manter. A exclusao remove o item localmente desta base.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="tasks" className="space-y-4">
+            {!payload?.problematic_tasks.length ? (
+              <EmptyPanel
+                title="Nenhuma tarefa problematica encontrada"
+                description="Quando houver atividade sem projeto, sem prazo, sem responsavel ou fora da base principal, ela aparece aqui para revisao."
+              />
+            ) : (
+              payload.problematic_tasks.map((task) => (
+                <div key={task.task_id} className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-lg font-semibold text-white">{task.title}</p>
+                        <p className="mt-1 text-sm text-white/50">
+                          Tarefa #{task.task_id} • Projeto: {task.project_name ?? "Sem projeto"} • Responsavel: {task.responsible_name ?? "Sem responsavel"}
+                        </p>
+                      </div>
+                      <TaskProblemPills problems={task.problems} />
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {task.problems.map((problem) => (
+                          <div key={problem.code} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                            <p className="text-sm font-semibold text-white">{problem.label}</p>
+                            <p className="mt-2 text-sm leading-6 text-white/55">{problem.meaning}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs text-white/60">
+                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                          Prazo: {formatDate(task.deadline)}
+                        </Pill>
+                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                          Ultima atualizacao: {formatDateTime(task.updated_at)}
+                        </Pill>
+                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                          Exibicao: {getVisibilityLabel(task.visibility_mode)}
+                        </Pill>
+                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                          Revisao: {getStatusLabel(task.review_status)}
+                        </Pill>
+                      </div>
+                      {task.admin_note ? (
+                        <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-4 text-sm leading-6 text-sky-100">
+                          <strong className="font-semibold">Observacao administrativa:</strong> {task.admin_note}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-2 xl:w-[220px]">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="justify-start border-white/10 bg-white/5 text-white hover:bg-white/10"
+                        onClick={() => setDialogState({ type: "task", item: task })}
+                      >
+                        <ShieldAlert className="h-4 w-4" />
+                        Revisar caso
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="justify-start border-white/10 bg-white/5 text-white hover:bg-white/10"
+                        onClick={() =>
+                          setDialogState({
+                            type: "task",
+                            item: {
+                              ...task,
+                              visibility_mode:
+                                task.visibility_mode === "show_in_operations"
+                                  ? "diagnostic_only"
+                                  : "show_in_operations",
+                            },
+                          })
+                        }
+                      >
+                        <ArrowUpRight className="h-4 w-4" />
+                        {task.visibility_mode === "show_in_operations" ? "Resguardar na central" : "Liberar para operacao"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="elapsed" className="space-y-4">
+            {!payload?.orphan_elapsed.length ? (
+              <EmptyPanel
+                title="Nenhum lancamento sem vinculo"
+                description="Quando uma hora registrada chegar sem atividade valida, ela aparece aqui para revisao e limpeza."
+              />
+            ) : (
+              payload.orphan_elapsed.map((entry) => (
+                <div key={entry.id} className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-lg font-semibold text-white">{entry.label}</p>
+                        <p className="mt-1 text-sm text-white/50">
+                          Lancamento #{entry.id} • Duracao: {formatMinutes(entry.minutes, entry.seconds)} • Referencia:{" "}
+                          {entry.bitrix_task_id_raw ? `atividade ${entry.bitrix_task_id_raw}` : "sem referencia de atividade"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                        <p className="text-sm leading-6 text-white/55">{entry.meaning}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs text-white/60">
+                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                          Detectado em: {formatDateTime(entry.orphan_detected_at)}
+                        </Pill>
+                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                          Atualizado em: {formatDateTime(entry.updated_at)}
+                        </Pill>
+                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                          Exibicao: {getVisibilityLabel(entry.visibility_mode)}
+                        </Pill>
+                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                          Revisao: {getStatusLabel(entry.review_status)}
+                        </Pill>
+                      </div>
+                      {entry.comment_text ? (
+                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-6 text-white/55">
+                          <strong className="font-semibold text-white">Comentario do lancamento:</strong> {entry.comment_text}
+                        </div>
+                      ) : null}
+                      {entry.admin_note ? (
+                        <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-4 text-sm leading-6 text-sky-100">
+                          <strong className="font-semibold">Observacao administrativa:</strong> {entry.admin_note}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-2 xl:w-[220px]">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="justify-start border-white/10 bg-white/5 text-white hover:bg-white/10"
+                        onClick={() => setDialogState({ type: "elapsed", item: entry })}
+                      >
+                        <ShieldAlert className="h-4 w-4" />
+                        Revisar lancamento
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="sync" className="space-y-4">
+            <div className="grid gap-4 xl:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
+                <div className="flex items-center gap-2 text-white">
+                  <Clock3 className="h-4 w-4 text-sky-200" />
+                  <h2 className="text-base font-semibold">Ultimas execucoes</h2>
+                </div>
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-sm font-semibold text-white">Rotina de tarefas e projetos</p>
+                    <p className="mt-2 text-sm leading-6 text-white/55">
+                      Ultima execucao em {formatDateTime(payload?.sync.latest_tasks_run?.started_at)} com status{" "}
+                      <strong className="text-white">{payload?.sync.latest_tasks_run?.status ?? "sem registro"}</strong>.
+                    </p>
+                    <p className="mt-2 text-xs text-white/45">
+                      Duracao: {formatDuration(payload?.sync.latest_tasks_run?.duration_ms)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-sm font-semibold text-white">Rotina de tempos lancados</p>
+                    <p className="mt-2 text-sm leading-6 text-white/55">
+                      Ultima execucao em {formatDateTime(payload?.sync.latest_times_run?.started_at)} com status{" "}
+                      <strong className="text-white">{payload?.sync.latest_times_run?.status ?? "sem registro"}</strong>.
+                    </p>
+                    <p className="mt-2 text-xs text-white/45">
+                      Duracao: {formatDuration(payload?.sync.latest_times_run?.duration_ms)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
+                <div className="flex items-center gap-2 text-white">
+                  <CalendarClock className="h-4 w-4 text-amber-200" />
+                  <h2 className="text-base font-semibold">Agendamentos ativos</h2>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {(payload?.sync.configs ?? []).map((config) => (
+                    <div key={config.job_name} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{config.job_name}</p>
+                          <p className="mt-1 text-xs text-white/45">
+                            Cron: {config.cron_expression} • {summarizeCron(config.cron_expression)}
+                          </p>
+                        </div>
+                        <Pill className={config.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100" : "border-white/10 bg-white/[0.03] text-white/60"}>
+                          {config.enabled ? "Ativo" : "Desativado"}
+                        </Pill>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-white/55">
+                        Ultimo disparo programado: {formatDateTime(config.last_scheduled_at)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
+              <div className="flex items-center gap-2 text-white">
+                <AlertTriangle className="h-4 w-4 text-red-200" />
+                <h2 className="text-base font-semibold">Historico recente</h2>
+              </div>
+              <div className="mt-4 space-y-3">
+                {(payload?.sync.recent_runs ?? []).map((run, index) => (
+                  <div key={`${run.job_name}-${run.started_at}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{run.job_name}</p>
+                        <p className="mt-1 text-xs text-white/45">
+                          Iniciou em {formatDateTime(run.started_at)} • Duracao {formatDuration(run.duration_ms)}
+                        </p>
+                      </div>
+                      <Pill className={run.status === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100" : "border-red-500/30 bg-red-500/10 text-red-100"}>
+                        {run.status}
+                      </Pill>
+                    </div>
+                    {run.error_message ? (
+                      <p className="mt-3 text-sm leading-6 text-red-100">{run.error_message}</p>
+                    ) : (
+                      <p className="mt-3 text-sm leading-6 text-white/55">
+                        Execucao concluida sem erro registrado.
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      <Dialog open={Boolean(dialogState)} onOpenChange={(open) => !open && setDialogState(null)}>
+        <DialogContent className="border-white/10 bg-[hsl(230_28%_11%)] text-white sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>
+              {dialogState?.type === "task" ? "Revisar tarefa problematica" : "Revisar lancamento sem vinculo"}
+            </DialogTitle>
+            <DialogDescription className="text-white/55">
+              Defina se esse caso continua isolado na central, se pode voltar para a operacao ou se deve ser removido da base local.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-sm font-semibold text-white">
+                {dialogState?.type === "task"
+                  ? dialogState.item.title
+                  : `${dialogState?.item.label ?? "Lancamento sem vinculo"} #${dialogState?.type === "elapsed" ? dialogState.item.id : ""}`}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-white/55">
+                {dialogState?.type === "task"
+                  ? dialogState.item.problems.map((problem) => problem.meaning).join(" ")
+                  : dialogState?.item.meaning}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-white" htmlFor="visibility-mode">
+                Destino do caso
+              </label>
+              <select
+                id="visibility-mode"
+                value={visibilityMode}
+                onChange={(event) => setVisibilityMode(event.target.value as VisibilityMode)}
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none"
               >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="min-w-[60px] text-center text-xs font-medium" style={{ color: "hsl(215 20% 55%)" }}>
-                {page} / {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:opacity-80 disabled:opacity-30"
-                style={{
-                  background: "hsl(222 40% 11%)",
-                  boxShadow: "0 0 0 1px hsl(222 25% 15%)",
-                  color: "hsl(215 20% 60%)",
-                }}
+                {visibilityOptions.map((option) => (
+                  <option key={option.value} value={option.value} className="bg-slate-900 text-white">
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs leading-5 text-white/45">
+                {visibilityOptions.find((option) => option.value === visibilityMode)?.helper}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-white" htmlFor="review-status">
+                Etapa da revisao
+              </label>
+              <select
+                id="review-status"
+                value={reviewStatus}
+                onChange={(event) => setReviewStatus(event.target.value as ReviewStatus)}
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none"
               >
-                <ChevronRight className="h-4 w-4" />
-              </button>
+                {reviewOptions.map((option) => (
+                  <option key={option.value} value={option.value} className="bg-slate-900 text-white">
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-white" htmlFor="admin-note">
+                Observacao administrativa
+              </label>
+              <textarea
+                id="admin-note"
+                value={adminNote}
+                onChange={(event) => setAdminNote(event.target.value)}
+                rows={5}
+                placeholder="Ex.: atividade arquivada na origem, manter apenas para historico."
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm text-white outline-none placeholder:text-white/25"
+              />
             </div>
           </div>
-        )}
-      </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleDelete()}
+              disabled={saving}
+              className="sm:mr-auto"
+            >
+              <Trash2 className="h-4 w-4" />
+              Excluir da base local
+            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogState(null)}
+                disabled={saving}
+                className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+              >
+                Cancelar
+              </Button>
+              <Button type="button" onClick={() => void submitReview()} disabled={saving}>
+                {saving ? "Salvando..." : "Salvar revisao"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

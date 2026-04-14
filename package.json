@@ -12,9 +12,5 @@
     "build:dev": "npm --prefix frontend run build:dev",
     "preview": "npm --prefix frontend run preview",
     "lint": "npm --prefix frontend run lint"
-  },
-  "dependencies": {
-    "date-fns": "^4.1.0",
-    "react-day-picker": "^8.10.1"
   }
 }

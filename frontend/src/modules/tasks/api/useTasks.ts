@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { storage } from "@/modules/shared/storage";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { shouldShowTaskInOperations } from "../diagnostics";
 import type { TaskRecord } from "../types";
 
 type UseTasksResult = {
@@ -25,13 +26,43 @@ type UseTasksParams = {
   skip?: boolean;
 };
 
-const CACHE_KEY = "cache:tasks:v3";
+const CACHE_KEY = "cache:tasks:v4";
 const RELOAD_COOLDOWN_MS = 12_000; // 5 reloads per minute → 60s / 5 = 12s between
 const MAX_RELOADS_PER_MINUTE = 5;
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "25000");
 const PAGE_SIZE = 1000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — stale cache is ignored on hydration
 const MAX_PAGES = 10;
+
+async function fetchTaskDiagnosticControls(
+  baseUrl: string,
+  key: string,
+  bearer: string,
+  signal: AbortSignal,
+) {
+  const response = await fetch(
+    `${baseUrl}/rest/v1/task_diagnostic_controls?select=task_id,visibility_mode`,
+    {
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${bearer}`,
+      },
+      signal,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    return new Map<number, string>();
+  }
+
+  const rows = (await response.json()) as Array<{ task_id?: number | string; visibility_mode?: string | null }>;
+  return new Map(
+    rows
+      .map((row) => [Number(row.task_id), row.visibility_mode ?? null] as const)
+      .filter(([taskId]) => Number.isFinite(taskId) && taskId > 0),
+  );
+}
 
 const buildDateFilter = (period?: string, dateFrom?: string, dateTo?: string) => {
   const now = new Date();
@@ -90,6 +121,7 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
     "responsible_id",
     "responsible_name",
     "project_id",
+    "missing_from_bitrix_since",
     "inserted_at",
     "updated_at",
     "projects(name,cliente_id)",
@@ -263,6 +295,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
       setNoChanges(false);
       try {
         const bearer = params.accessToken || key;
+        const baseUrl = SUPABASE_URL.replace(/\/$/, "");
 
         // Read fresh cache state (might have been cleared by reload())
         const cachedForCheck = storage.get<{ data: TaskRecord[]; timestamp: number; latestUpdatedAtMs?: number | null } | null>(
@@ -362,8 +395,13 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
           }
         }
 
+        const controls = await fetchTaskDiagnosticControls(baseUrl, key, bearer, controller.signal);
+        const filteredData = data.filter((task) =>
+          shouldShowTaskInOperations(task, controls.get(Number(task.task_id ?? task.id ?? 0))),
+        );
+
         const timestamp = Date.now();
-        const latestUpdatedAtMs = data.reduce<number | null>((max, row) => {
+        const latestUpdatedAtMs = filteredData.reduce<number | null>((max, row) => {
           const rawUpdated = row?.updated_at ? String(row.updated_at) : null;
           const rawInserted = row?.inserted_at ? String(row.inserted_at) : null;
           const parsedUpdated = rawUpdated ? Date.parse(rawUpdated) : Number.NaN;
@@ -377,14 +415,16 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
           return parsed > max ? parsed : max;
         }, null);
 
-        if (!data.length && cached?.data?.length) {
+        if (!filteredData.length && cached?.data?.length) {
           console.warn("[tasks] vazio da API, usando cache como fallback");
           setTasks(cached.data);
           setLastUpdated(cached.timestamp ?? timestamp);
+          setTotalCount(cached.data.length);
         } else {
-          setTasks(data);
+          setTasks(filteredData);
           setLastUpdated(timestamp);
-          storage.set(cacheKey, { data, timestamp, latestUpdatedAtMs });
+          setTotalCount(filteredData.length);
+          storage.set(cacheKey, { data: filteredData, timestamp, latestUpdatedAtMs });
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "";

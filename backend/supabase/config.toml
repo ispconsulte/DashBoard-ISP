@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.manage-user]
 verify_jwt = false
 
+[functions.admin-diagnostics]
+verify_jwt = false
+
 [functions.Get-Projetcs-And-Tasks-Bitrix]
 verify_jwt = false
 

@@ -493,7 +493,7 @@ export function AppSidebar({
                 <>
                   {canAccessUsuarios && <SidebarNavItem to="/usuarios" icon={Shield} label="Painel de Usuários" iconColor="hsl(0 84% 60%)" />}
                   {canAccessIntegracoes && <SidebarNavItem to="/integracoes" icon={Plug} label="Integrações" iconColor="hsl(160 84% 39%)" />}
-                  {canAccessDiagnostico && <SidebarNavItem to="/admin/diagnostico" icon={Bug} label="Diagnóstico" iconColor="hsl(38 92% 50%)" />}
+                  {canAccessDiagnostico && <SidebarNavItem to="/admin/diagnostico" icon={Bug} label="Central de Integridade" iconColor="hsl(38 92% 50%)" />}
                 </>
               ) : (
                 <>
@@ -524,7 +524,7 @@ export function AppSidebar({
                       )}
                       {canAccessDiagnostico && (
                         <NavLink to="/admin/diagnostico" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
-                          <Bug className="h-4 w-4" style={{ color: "hsl(38 92% 50%)" }} /><span>Diagnóstico</span>
+                          <Bug className="h-4 w-4" style={{ color: "hsl(38 92% 50%)" }} /><span>Central de Integridade</span>
                         </NavLink>
                       )}
                     </div>

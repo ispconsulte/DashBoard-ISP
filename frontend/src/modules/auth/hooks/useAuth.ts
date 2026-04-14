@@ -60,8 +60,8 @@ type AuthResult = {
 
 export const ACCESS_RULES: Record<UserRole, Record<AccessArea, boolean>> = {
   admin: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, gamificacao: true, ferramentas: true, suporte: true, sprint: true, bonificacao: true, clientes: true, diagnostico: true },
-  gerente: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, gamificacao: true, ferramentas: true, suporte: true, sprint: true, bonificacao: true, clientes: true, diagnostico: false },
-  coordenador: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, gamificacao: true, ferramentas: true, suporte: true, sprint: true, bonificacao: true, clientes: true, diagnostico: false },
+  gerente: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, gamificacao: true, ferramentas: true, suporte: true, sprint: true, bonificacao: true, clientes: true, diagnostico: true },
+  coordenador: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, gamificacao: true, ferramentas: true, suporte: true, sprint: true, bonificacao: true, clientes: true, diagnostico: true },
   consultor: { home: true, comodato: false, integracoes: false, tarefas: true, usuarios: false, analiticas: false, calendario: true, gamificacao: true, ferramentas: true, suporte: true, sprint: false, bonificacao: false, clientes: false, diagnostico: false },
   cliente: { home: true, comodato: false, integracoes: false, tarefas: true, usuarios: false, analiticas: false, calendario: false, gamificacao: false, ferramentas: false, suporte: true, sprint: false, bonificacao: false, clientes: true, diagnostico: false },
 };
