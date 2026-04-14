@@ -189,13 +189,8 @@ function DashboardInner() {
   });
   const { tasks, loading, reload } = sharedTasksResult;
 
-  // Auto-refresh a cada minuto para refletir mudanças do sync sem depender de reload manual
-  const reloadRef = useRef(reload);
-  reloadRef.current = reload;
-  useEffect(() => {
-    const id = setInterval(() => reloadRef.current(), 60_000);
-    return () => clearInterval(id);
-  }, []);
+  // Auto-refresh is handled by each page (Tarefas, Analiticas, etc.)
+  // to avoid duplicated network requests.
 
   // Defer notification processing so it doesn't block page paint during navigation
   const deferredTasks = useDeferredValue(tasks);
