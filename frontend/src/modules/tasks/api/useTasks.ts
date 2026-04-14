@@ -21,6 +21,8 @@ type UseTasksParams = {
   period?: string;
   dateFrom?: string;
   dateTo?: string;
+  /** When true the hook returns empty defaults and skips all network requests. */
+  skip?: boolean;
 };
 
 const CACHE_KEY = "cache:tasks:v3";
@@ -100,7 +102,7 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
 };
 
 export function useTasks(params: UseTasksParams = {}): UseTasksResult {
-  const { period = "all", dateFrom, dateTo } = params;
+  const { period = "all", dateFrom, dateTo, skip = false } = params;
   const { endpoint, latestEndpoint, countEndpoint, key, error: envError } = useMemo(
     () => buildEndpoint(period, dateFrom, dateTo),
     [period, dateFrom, dateTo]
