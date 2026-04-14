@@ -69,6 +69,10 @@ export const ACCESS_RULES: Record<UserRole, Record<AccessArea, boolean>> = {
 const SESSION_KEY = "auth_session";
 const AUTH_SESSION_EVENT = "auth-session-changed";
 
+/**
+ * Read stored session metadata from localStorage.
+ * Tokens are NOT stored here — they are managed by the Supabase SDK.
+ */
 const readStoredSession = () => storage.get<AuthSession | null>(SESSION_KEY, null);
 
 type AuthStoreSnapshot = {
@@ -94,6 +98,23 @@ function setAuthStore(next: Partial<AuthStoreSnapshot>) {
     ...next,
   };
   emitAuthStore();
+}
+
+/**
+ * Get the current access token from the Supabase SDK session.
+ * This avoids reading tokens from localStorage directly.
+ */
+async function getSDKAccessToken(): Promise<{ accessToken: string; refreshToken: string } | null> {
+  try {
+    const { data } = await supabaseExt.auth.getSession();
+    if (data?.session?.access_token) {
+      return {
+        accessToken: data.session.access_token,
+        refreshToken: data.session.refresh_token ?? "",
+      };
+    }
+  } catch { /* ignore */ }
+  return null;
 }
 
 /** Build a full session from Supabase auth response data */
@@ -149,9 +170,18 @@ export function useAuth() {
   const failedAttemptsRef = useRef(0);
   const failedBlockedUntilRef = useRef(0);
 
+  /**
+   * Persist session metadata to localStorage WITHOUT tokens.
+   * Tokens are managed exclusively by the Supabase SDK.
+   */
   const persistSession = useCallback((data: AuthSession | null) => {
-    if (data) storage.set(SESSION_KEY, data);
-    else storage.remove(SESSION_KEY);
+    if (data) {
+      // Strip tokens — SDK handles token persistence in its own storage keys
+      const { accessToken: _at, refreshToken: _rt, ...metadata } = data;
+      storage.set(SESSION_KEY, metadata);
+    } else {
+      storage.remove(SESSION_KEY);
+    }
     setAuthStore({ session: data });
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent<AuthSession | null>(AUTH_SESSION_EVENT, { detail: data }));
@@ -166,30 +196,37 @@ export function useAuth() {
 
   const refreshSession = useCallback(
     async (stored: AuthSession, attempt = 0): Promise<AuthSession | null> => {
-      if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !stored.refreshToken) return null;
       try {
-        const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-          method: "POST",
-          headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh_token: stored.refreshToken }),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          const reason = String(data?.msg ?? data?.error_description ?? data?.error ?? "");
-          if (reason.toLowerCase().includes("refresh token") || response.status === 400 || response.status === 401 || response.status === 403) {
+        // Use SDK to refresh the session — it manages tokens internally
+        const { data, error } = await supabaseExt.auth.refreshSession();
+        if (error || !data?.session) {
+          const reason = error?.message ?? "";
+          if (reason.toLowerCase().includes("refresh token") || reason.toLowerCase().includes("invalid")) {
             console.warn("[auth] Invalid refresh token, clearing session");
             clearSession();
             return null;
           }
+          if (attempt < 1) {
+            await new Promise((r) => setTimeout(r, 2000));
+            return refreshSession(stored, attempt + 1);
+          }
+          clearSession();
           return null;
         }
 
-        // IMPORTANT: Always rebuild full session from DB (including project names)
-        // so that admin changes to project access take effect on next token refresh.
-        const refreshed = await buildSession(data, stored.email, stored);
+        const sess = data.session;
+        const refreshed = await buildSession(
+          {
+            access_token: sess.access_token,
+            refresh_token: sess.refresh_token,
+            user: sess.user,
+            expires_in: sess.expires_in,
+          },
+          stored.email,
+          stored,
+        );
         setSession(refreshed);
         persistSession(refreshed);
-        await syncSupabaseSession(data.access_token, data.refresh_token);
         return refreshed;
       } catch (err) {
         if (attempt < 1) {
@@ -217,73 +254,118 @@ export function useAuth() {
 
     const load = async () => {
       const saved = readStoredSession();
-      if (saved?.accessToken) {
-        setAuthStore({ session: saved, loading: false });
 
+      // Get tokens from the Supabase SDK (persisted in its own storage)
+      const sdkTokens = await getSDKAccessToken();
+
+      // Migration: if saved session has legacy tokens but SDK doesn't, seed the SDK
+      if (!sdkTokens && saved?.accessToken && saved?.refreshToken) {
+        await syncSupabaseSession(saved.accessToken, saved.refreshToken);
+        // Re-read SDK after seeding
+        const seeded = await getSDKAccessToken();
+        if (seeded) {
+          // Strip legacy tokens from our storage and continue
+          const merged: AuthSession = { ...saved, accessToken: seeded.accessToken, refreshToken: seeded.refreshToken };
+          persistSession(merged); // Will strip tokens from localStorage
+          setAuthStore({ session: merged, loading: false });
+
+          // Validate and hydrate
+          await hydrateSession(merged);
+          return;
+        }
+      }
+
+      if (sdkTokens && saved) {
+        // Merge SDK tokens with stored metadata
+        const merged: AuthSession = { ...saved, accessToken: sdkTokens.accessToken, refreshToken: sdkTokens.refreshToken };
+        setAuthStore({ session: merged, loading: false });
+
+        // Check if SDK session is expired and needs full rebuild
         const expired = saved.expiresAt ? saved.expiresAt < Date.now() : false;
-        if (expired && saved.refreshToken) {
-          const refreshed = await refreshSession(saved);
+        if (expired) {
+          const refreshed = await refreshSession(merged);
           if (refreshed) return;
           clearSession();
           return;
         }
 
-        await syncSupabaseSession(saved.accessToken!, saved.refreshToken);
-
-        if (saved.accessToken && saved.email) {
-          try {
-            const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-              headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${saved.accessToken}` },
-            });
-
-            if (!userRes.ok) {
-              console.warn("[auth] Token invalid (status", userRes.status, "), attempting refresh…");
-              if (saved.refreshToken) {
-                const refreshed = await refreshSession(saved);
-                if (refreshed) return;
-              }
-              console.warn("[auth] Refresh failed, clearing session");
-              clearSession();
-              return;
-            }
-
-            const userData = await userRes.json();
-            const userId = userData?.id;
-            if (userId) {
-              const [accessibleProjects, clienteInfo, dbName, bonusContext] = await Promise.all([
-                fetchAccessibleProjects(saved.accessToken, userId),
-                fetchClienteInfo(saved.accessToken, userId),
-                fetchUserName(saved.accessToken, userId),
-                fetchBonusUserContext(saved.accessToken, userId),
-              ]);
-              const updated: AuthSession = {
-                ...saved,
-                userId: bonusContext.userId,
-                authUserId: bonusContext.authUserId ?? userId,
-                name: dbName || saved.name,
-                bonusRole: bonusContext.bonusRole,
-                seniority: bonusContext.seniority,
-                bitrixUserId: bonusContext.bitrixUserId,
-                coordinatorOf: bonusContext.coordinatorOf,
-                myCoordinator: bonusContext.myCoordinator,
-                accessibleProjectIds: accessibleProjects?.ids ?? null,
-                accessibleProjectNames: accessibleProjects?.names ?? null,
-                company: clienteInfo.clienteName ?? saved.company ?? null,
-                clienteId: clienteInfo.clienteId ?? saved.clienteId ?? null,
-              };
-              setSession(updated);
-              persistSession(updated);
-            }
-          } catch {
-            // Network error — keep cached session
-          }
-        }
+        await hydrateSession(merged);
         return;
-      } else {
-        storage.remove(SESSION_KEY);
-        setAuthStore({ session: null, loading: false });
       }
+
+      if (sdkTokens && !saved) {
+        // SDK has a session but we have no metadata — rebuild everything
+        try {
+          const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${sdkTokens.accessToken}` },
+          });
+          if (userRes.ok) {
+            const userData = await userRes.json();
+            const fullSession = await buildSession(
+              { access_token: sdkTokens.accessToken, refresh_token: sdkTokens.refreshToken, user: userData, expires_in: 3600 },
+              userData?.email ?? "",
+            );
+            setSession(fullSession);
+            persistSession(fullSession);
+            setAuthStore({ session: fullSession, loading: false });
+            return;
+          }
+        } catch { /* fall through */ }
+      }
+
+      // No valid session anywhere
+      storage.remove(SESSION_KEY);
+      setAuthStore({ session: null, loading: false });
     };
+
+    /** Validate token and hydrate session metadata from DB */
+    async function hydrateSession(merged: AuthSession) {
+      if (!merged.accessToken || !merged.email) return;
+      try {
+        const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${merged.accessToken}` },
+        });
+
+        if (!userRes.ok) {
+          console.warn("[auth] Token invalid (status", userRes.status, "), attempting refresh…");
+          const refreshed = await refreshSession(merged);
+          if (refreshed) return;
+          console.warn("[auth] Refresh failed, clearing session");
+          clearSession();
+          return;
+        }
+
+        const userData = await userRes.json();
+        const userId = userData?.id;
+        if (userId) {
+          const [accessibleProjects, clienteInfo, dbName, bonusContext] = await Promise.all([
+            fetchAccessibleProjects(merged.accessToken, userId),
+            fetchClienteInfo(merged.accessToken, userId),
+            fetchUserName(merged.accessToken, userId),
+            fetchBonusUserContext(merged.accessToken, userId),
+          ]);
+          const updated: AuthSession = {
+            ...merged,
+            userId: bonusContext.userId,
+            authUserId: bonusContext.authUserId ?? userId,
+            name: dbName || merged.name,
+            bonusRole: bonusContext.bonusRole,
+            seniority: bonusContext.seniority,
+            bitrixUserId: bonusContext.bitrixUserId,
+            coordinatorOf: bonusContext.coordinatorOf,
+            myCoordinator: bonusContext.myCoordinator,
+            accessibleProjectIds: accessibleProjects?.ids ?? null,
+            accessibleProjectNames: accessibleProjects?.names ?? null,
+            company: clienteInfo.clienteName ?? merged.company ?? null,
+            clienteId: clienteInfo.clienteId ?? merged.clienteId ?? null,
+          };
+          setSession(updated);
+          persistSession(updated);
+        }
+      } catch {
+        // Network error — keep cached session
+      }
+    }
 
     if (!authBootstrapPromise) {
       authBootstrapPromise = load().finally(() => {
@@ -311,29 +393,30 @@ export function useAuth() {
   }, []);
 
   // ── Proactive token refresh timer ──
-  // Refreshes the JWT ~2 minutes before it expires so the user never sees
-  // "session expired" errors during normal usage.
   useEffect(() => {
-    const REFRESH_MARGIN_MS = 2 * 60 * 1000; // refresh 2 min before expiry
-    const MIN_INTERVAL_MS = 30_000; // never poll faster than 30s
+    const REFRESH_MARGIN_MS = 2 * 60 * 1000;
+    const MIN_INTERVAL_MS = 30_000;
 
     const tick = async () => {
       const current = storage.get<AuthSession | null>(SESSION_KEY, null);
-      if (!current?.refreshToken || !current?.expiresAt) return;
+      if (!current?.expiresAt) return;
+
+      // Get tokens from SDK — not from our custom storage
+      const sdkTokens = await getSDKAccessToken();
+      if (!sdkTokens) return;
 
       const msUntilExpiry = current.expiresAt - Date.now();
       if (msUntilExpiry <= REFRESH_MARGIN_MS) {
         console.info("[auth] Proactive token refresh (expires in", Math.round(msUntilExpiry / 1000), "s)");
-        const refreshed = await refreshSession(current);
+        const merged = { ...current, accessToken: sdkTokens.accessToken, refreshToken: sdkTokens.refreshToken };
+        const refreshed = await refreshSession(merged);
         if (!refreshed && msUntilExpiry <= 0) {
           clearSession();
         }
       }
     };
 
-    // Check every 60s whether we need to refresh
     const id = setInterval(tick, Math.max(MIN_INTERVAL_MS, 60_000));
-    // Also run immediately in case we loaded with a nearly-expired token
     void tick();
 
     return () => clearInterval(id);
@@ -388,6 +471,7 @@ export function useAuth() {
         const authSession = await buildSession(data, email);
         setAuthStore({ session: authSession, loading: false });
         persistSession(authSession);
+        // Sync to SDK so it persists tokens in its own storage
         await syncSupabaseSession(data.access_token, data.refresh_token);
         loginSpamCountRef.current = 0;
         loginBlockedUntilRef.current = 0;
@@ -419,6 +503,10 @@ export function useAuth() {
     supabaseExt.auth.signOut().catch(() => {});
     setAuthStore({ session: null, loading: false });
     persistSession(null);
+
+    // Clear cached data to prevent leakage to the next user on the same device
+    const cacheKeys = storage.keys("cache:");
+    cacheKeys.forEach((key) => storage.remove(key));
   }, [session?.accessToken, persistSession]);
 
   const canAccess = useCallback(
