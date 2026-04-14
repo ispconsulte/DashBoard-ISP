@@ -142,7 +142,7 @@ export default function Gamificacao() {
   const { session } = useAuth();
   // Reuse shared 180d tasks and filter to 90d client-side
   const shared = useSharedTasks();
-  const ownTasks = useTasks({ accessToken: session?.accessToken, period: "90d" });
+  const ownTasks = useTasks({ accessToken: session?.accessToken, period: "90d", skip: !!shared });
   const allTasks = shared ? shared.tasks : ownTasks.tasks;
   const tasks = useMemo(() => {
     const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);

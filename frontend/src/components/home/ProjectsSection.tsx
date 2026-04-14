@@ -63,7 +63,7 @@ export default function ProjectsSection() {
   const now = new Date();
 
   const shared = useSharedTasks();
-  const ownTasks = useTasks({ accessToken, period: "all" });
+  const ownTasks = useTasks({ accessToken, period: "all", skip: !!shared });
   const { tasks, loading: loadingTasks, error: errorTasks, reload: reloadTasks } = shared ?? ownTasks;
   const { times, loading: loadingTimes, reload: reloadTimes } = useElapsedTimes({ accessToken, period: "all" });
 
