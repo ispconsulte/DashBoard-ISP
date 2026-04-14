@@ -6,12 +6,18 @@ import {
   BadgeCheck,
   Bug,
   CalendarClock,
+  CheckCircle2,
   Clock3,
+  Eye,
   EyeOff,
+  FileQuestion,
+  Hash,
   Link2Off,
   RefreshCw,
   ShieldAlert,
+  ShieldCheck,
   Trash2,
+  User,
   Wrench,
 } from "lucide-react";
 import PageHeaderCard from "@/components/PageHeaderCard";
@@ -48,31 +54,30 @@ type DialogState =
 const visibilityOptions: Array<{ value: VisibilityMode; label: string; helper: string }> = [
   {
     value: "diagnostic_only",
-    label: "Manter so na central",
-    helper: "A atividade continua isolada e nao entra nas telas operacionais.",
+    label: "Manter somente na central",
+    helper: "A atividade permanece isolada e não aparece nas telas operacionais.",
   },
   {
     value: "show_in_operations",
-    label: "Liberar para operacao",
-    helper: "A atividade volta a aparecer nas telas normais mesmo com pendencias.",
+    label: "Liberar para operação",
+    helper: "A atividade volta a aparecer nas telas normais, mesmo com pendências registradas.",
   },
 ];
 
 const reviewOptions: Array<{ value: ReviewStatus; label: string }> = [
   { value: "pending", label: "Pendente" },
-  { value: "reviewing", label: "Em revisao" },
+  { value: "reviewing", label: "Em revisão" },
   { value: "resolved", label: "Resolvido" },
   { value: "ignored", label: "Ignorado" },
 ];
+
+/* ─── Formatação ─── */
 
 function formatDateTime(value?: string | null) {
   if (!value) return "Sem registro";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "Sem registro";
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(parsed);
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(parsed);
 }
 
 function formatDate(value?: string | null) {
@@ -83,7 +88,7 @@ function formatDate(value?: string | null) {
 }
 
 function formatDuration(durationMs?: number | null) {
-  if (!durationMs || durationMs <= 0) return "Sem duracao registrada";
+  if (!durationMs || durationMs <= 0) return "Sem duração registrada";
   const totalSeconds = Math.round(durationMs / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -110,39 +115,32 @@ function summarizeCron(cron: string) {
 }
 
 function getStatusLabel(value: ReviewStatus) {
-  return reviewOptions.find((option) => option.value === value)?.label ?? value;
+  return reviewOptions.find((o) => o.value === value)?.label ?? value;
 }
 
 function getVisibilityLabel(value: VisibilityMode) {
-  return visibilityOptions.find((option) => option.value === value)?.label ?? value;
+  return visibilityOptions.find((o) => o.value === value)?.label ?? value;
 }
 
 function formatTaskStatus(value: string | number | null | undefined) {
   if (typeof value === "number") {
     if (value === 1) return "Nova";
-    if (value === 2) return "Aguardando execucao";
+    if (value === 2) return "Aguardando execução";
     if (value === 3) return "Em andamento";
     if (value === 4) return "Aguardando controle";
-    if (value === 5) return "Concluida";
+    if (value === 5) return "Concluída";
     if (value === 6) return "Adiada";
     if (value === 7) return "Recusada";
     return `Status ${value}`;
   }
-
   const normalized = String(value ?? "").trim();
   if (!normalized) return "Sem status";
   const lowered = normalized.toLowerCase();
   if (["1", "new", "nova"].includes(lowered)) return "Nova";
-  if (["2", "pending", "waiting_for_execution", "aguardando execucao", "aguardando execução"].includes(lowered)) {
-    return "Aguardando execucao";
-  }
+  if (["2", "pending", "waiting_for_execution", "aguardando execucao", "aguardando execução"].includes(lowered)) return "Aguardando execução";
   if (["3", "in_progress", "em andamento"].includes(lowered)) return "Em andamento";
-  if (["4", "awaiting_control", "supposedly_completed", "aguardando controle"].includes(lowered)) {
-    return "Aguardando controle";
-  }
-  if (["5", "done", "concluido", "concluído", "completed", "finalizado"].includes(lowered)) {
-    return "Concluida";
-  }
+  if (["4", "awaiting_control", "supposedly_completed", "aguardando controle"].includes(lowered)) return "Aguardando controle";
+  if (["5", "done", "concluido", "concluído", "completed", "finalizado"].includes(lowered)) return "Concluída";
   if (["6", "deferred", "postponed", "adiada"].includes(lowered)) return "Adiada";
   if (["7", "declined", "recusada"].includes(lowered)) return "Recusada";
   return normalized;
@@ -157,11 +155,7 @@ function getSeverityTone(severity: number) {
 function dedupeTasks(items: IntegrityTaskItem[]) {
   const unique = new Map<number, IntegrityTaskItem>();
   for (const item of items) {
-    if (!unique.has(item.task_id)) {
-      unique.set(item.task_id, item);
-      continue;
-    }
-
+    if (!unique.has(item.task_id)) { unique.set(item.task_id, item); continue; }
     const existing = unique.get(item.task_id);
     if (!existing) continue;
     unique.set(item.task_id, existing.severity >= item.severity ? existing : item);
@@ -171,66 +165,45 @@ function dedupeTasks(items: IntegrityTaskItem[]) {
 
 function matchesTaskSearch(item: IntegrityTaskItem, query: string) {
   if (!query) return true;
-  const normalized = query.trim().toLowerCase();
-  return (
-    item.title.toLowerCase().includes(normalized) ||
-    String(item.task_id).includes(normalized) ||
-    String(item.status ?? "").toLowerCase().includes(normalized) ||
-    String(item.responsible_name ?? "").toLowerCase().includes(normalized)
-  );
+  const n = query.trim().toLowerCase();
+  return item.title.toLowerCase().includes(n) || String(item.task_id).includes(n) || String(item.status ?? "").toLowerCase().includes(n) || String(item.responsible_name ?? "").toLowerCase().includes(n);
 }
 
 function matchesElapsedSearch(item: IntegrityElapsedItem, query: string) {
   if (!query) return true;
-  const normalized = query.trim().toLowerCase();
-  return (
-    String(item.bitrix_task_id_raw ?? item.task_id ?? "").includes(normalized) ||
-    String(item.id).includes(normalized) ||
-    String(item.related_task_name ?? "").toLowerCase().includes(normalized) ||
-    String(item.related_task_responsible ?? "").toLowerCase().includes(normalized)
-  );
+  const n = query.trim().toLowerCase();
+  return String(item.bitrix_task_id_raw ?? item.task_id ?? "").includes(n) || String(item.id).includes(n) || String(item.related_task_name ?? "").toLowerCase().includes(n) || String(item.related_task_responsible ?? "").toLowerCase().includes(n);
 }
 
 function getPrimaryReason(item: IntegrityTaskItem) {
   return item.problems[0] ?? null;
 }
 
-function StatCard({
-  label,
-  value,
-  helper,
-  icon: Icon,
-}: {
-  label: string;
-  value: string | number;
-  helper: string;
-  icon: typeof ShieldAlert;
-}) {
+/* ─── Componentes auxiliares ─── */
+
+const CARD = "rounded-2xl border border-white/[0.08] bg-[hsl(228_25%_10%/0.9)] shadow-[0_2px_24px_hsl(222_45%_4%/0.25)]";
+const INNER = "rounded-xl border border-white/[0.06] bg-white/[0.025]";
+
+function StatCard({ label, value, helper, icon: Icon }: { label: string; value: string | number; helper: string; icon: typeof ShieldAlert }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-4 shadow-[0_18px_40px_hsl(222_45%_4%/0.35)]">
+    <div className={`${CARD} p-5`}>
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.14em] text-white/40">{label}</p>
-          <p className="mt-2 text-3xl font-semibold text-white">{value}</p>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">{label}</p>
+          <p className="mt-2.5 text-3xl font-bold tracking-tight text-white">{value}</p>
         </div>
-        <div className="rounded-xl border border-white/10 bg-white/5 p-2.5 text-amber-200">
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.04] p-2.5 text-amber-300/80">
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <p className="mt-3 text-sm leading-6 text-white/55">{helper}</p>
+      <p className="mt-3.5 text-[13px] leading-[1.65] text-white/50">{helper}</p>
     </div>
   );
 }
 
-function Pill({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Pill({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}>
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium leading-5 ${className}`}>
       {children}
     </span>
   );
@@ -238,37 +211,72 @@ function Pill({
 
 function TaskProblemPills({ problems }: { problems: IntegrityProblem[] }) {
   return (
-    <div className="flex flex-wrap gap-2">
-      {problems.map((problem) => (
-        <Pill key={problem.code} className={getSeverityTone(problem.severity)}>
-          {problem.label}
-        </Pill>
+    <div className="flex flex-wrap gap-1.5">
+      {problems.map((p) => (
+        <Pill key={p.code} className={getSeverityTone(p.severity)}>{p.label}</Pill>
       ))}
     </div>
   );
 }
 
-function EmptyPanel({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function EmptyPanel({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-6 py-10 text-center">
-      <p className="text-base font-semibold text-white">{title}</p>
-      <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-white/55">{description}</p>
+    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-12 text-center">
+      <FileQuestion className="mx-auto h-8 w-8 text-white/20" />
+      <p className="mt-3 text-base font-semibold text-white/80">{title}</p>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-white/45">{description}</p>
     </div>
   );
 }
 
+function MetaField({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Hash }) {
+  return (
+    <div className="flex items-start gap-2.5 min-w-0">
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/30" />
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-white/35">{label}</p>
+        <p className="mt-0.5 truncate text-sm text-white/80">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({ icon: Icon, title, subtitle }: { icon: typeof Bug; title: string; subtitle?: string }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="rounded-lg border border-white/[0.06] bg-white/[0.04] p-2 text-sky-300/70">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div>
+        <h2 className="text-[15px] font-semibold text-white">{title}</h2>
+        {subtitle && <p className="text-[13px] text-white/45">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+function PaginationBar({ page, totalPages, onPrev, onNext, label }: { page: number; totalPages: number; onPrev: () => void; onNext: () => void; label?: string }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className={`flex items-center justify-between ${CARD} px-5 py-3`}>
+      <p className="text-sm text-white/50">{label ?? `Página ${page} de ${totalPages}`}</p>
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" disabled={page <= 1} onClick={onPrev} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
+          Anterior
+        </Button>
+        <Button type="button" variant="outline" disabled={page >= totalPages} onClick={onNext} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
+          Próxima
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Página principal ─── */
+
 export default function AdminDiagnostico() {
   const { session, loadingSession } = useAuth();
-  const isManager =
-    session?.role === "admin" ||
-    session?.role === "gerente" ||
-    session?.role === "coordenador";
+  const isManager = session?.role === "admin" || session?.role === "gerente" || session?.role === "coordenador";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -292,94 +300,54 @@ export default function AdminDiagnostico() {
       const data = await fetchIntegrityDashboard(session.accessToken);
       setPayload(data);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Falha ao carregar a central.";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Falha ao carregar a central.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (session?.accessToken && isManager) {
-      void loadDashboard();
-    }
-  }, [session?.accessToken, isManager]);
+  useEffect(() => { if (session?.accessToken && isManager) void loadDashboard(); }, [session?.accessToken, isManager]);
+  useEffect(() => { if (!dialogState) return; setVisibilityMode(dialogState.item.visibility_mode); setReviewStatus(dialogState.item.review_status); setAdminNote(dialogState.item.admin_note ?? ""); }, [dialogState]);
 
-  useEffect(() => {
-    if (!dialogState) return;
-    setVisibilityMode(dialogState.item.visibility_mode);
-    setReviewStatus(dialogState.item.review_status);
-    setAdminNote(dialogState.item.admin_note ?? "");
-  }, [dialogState]);
-
-  const hiddenTaskCount = payload?.problematic_tasks.filter((task) => task.visibility_mode !== "show_in_operations").length ?? 0;
-  const releasedTaskCount = payload?.problematic_tasks.filter((task) => task.visibility_mode === "show_in_operations").length ?? 0;
+  const hiddenTaskCount = payload?.problematic_tasks.filter((t) => t.visibility_mode !== "show_in_operations").length ?? 0;
+  const releasedTaskCount = payload?.problematic_tasks.filter((t) => t.visibility_mode === "show_in_operations").length ?? 0;
 
   const taskInsights = useMemo(() => {
     const items = dedupeTasks(payload?.problematic_tasks ?? []);
     return {
-      withoutProject: items.filter((item) => item.problems.some((problem) => problem.code === "missing_project")).length,
-      withoutOwner: items.filter((item) => item.problems.some((problem) => problem.code === "missing_responsible")).length,
-      withoutDeadline: items.filter((item) => item.problems.some((problem) => problem.code === "missing_deadline")).length,
-      archived: items.filter((item) => item.problems.some((problem) => problem.code === "archived_task")).length,
+      withoutProject: items.filter((i) => i.problems.some((p) => p.code === "missing_project")).length,
+      withoutOwner: items.filter((i) => i.problems.some((p) => p.code === "missing_responsible")).length,
+      withoutDeadline: items.filter((i) => i.problems.some((p) => p.code === "missing_deadline")).length,
+      archived: items.filter((i) => i.problems.some((p) => p.code === "archived_task")).length,
     };
   }, [payload]);
 
-  const filteredTasks = useMemo(() => {
-    return dedupeTasks(payload?.problematic_tasks ?? []).filter((item) => matchesTaskSearch(item, taskSearch));
-  }, [payload, taskSearch]);
+  const filteredTasks = useMemo(() => dedupeTasks(payload?.problematic_tasks ?? []).filter((i) => matchesTaskSearch(i, taskSearch)), [payload, taskSearch]);
+  const filteredElapsed = useMemo(() => (payload?.orphan_elapsed ?? []).filter((i) => matchesElapsedSearch(i, elapsedSearch)), [payload, elapsedSearch]);
 
-  const filteredElapsed = useMemo(() => {
-    return (payload?.orphan_elapsed ?? []).filter((item) => matchesElapsedSearch(item, elapsedSearch));
-  }, [payload, elapsedSearch]);
+  const PAGE_SIZE = 8;
+  const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
+  const elapsedTotalPages = Math.max(1, Math.ceil(filteredElapsed.length / PAGE_SIZE));
+  const pagedTasks = filteredTasks.slice((taskPage - 1) * PAGE_SIZE, taskPage * PAGE_SIZE);
+  const pagedElapsed = filteredElapsed.slice((elapsedPage - 1) * PAGE_SIZE, elapsedPage * PAGE_SIZE);
 
-  const taskPageSize = 8;
-  const elapsedPageSize = 8;
-  const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / taskPageSize));
-  const elapsedTotalPages = Math.max(1, Math.ceil(filteredElapsed.length / elapsedPageSize));
-  const pagedTasks = filteredTasks.slice((taskPage - 1) * taskPageSize, taskPage * taskPageSize);
-  const pagedElapsed = filteredElapsed.slice((elapsedPage - 1) * elapsedPageSize, elapsedPage * elapsedPageSize);
-
-  useEffect(() => {
-    setTaskPage(1);
-  }, [taskSearch, payload?.problematic_tasks.length]);
-
-  useEffect(() => {
-    setElapsedPage(1);
-  }, [elapsedSearch, payload?.orphan_elapsed.length]);
-
-  useEffect(() => {
-    if (taskPage > taskTotalPages) setTaskPage(taskTotalPages);
-  }, [taskPage, taskTotalPages]);
-
-  useEffect(() => {
-    if (elapsedPage > elapsedTotalPages) setElapsedPage(elapsedTotalPages);
-  }, [elapsedPage, elapsedTotalPages]);
+  useEffect(() => { setTaskPage(1); }, [taskSearch, payload?.problematic_tasks.length]);
+  useEffect(() => { setElapsedPage(1); }, [elapsedSearch, payload?.orphan_elapsed.length]);
+  useEffect(() => { if (taskPage > taskTotalPages) setTaskPage(taskTotalPages); }, [taskPage, taskTotalPages]);
+  useEffect(() => { if (elapsedPage > elapsedTotalPages) setElapsedPage(elapsedTotalPages); }, [elapsedPage, elapsedTotalPages]);
 
   const submitReview = async () => {
     if (!dialogState || !session?.accessToken) return;
     setSaving(true);
     setError(null);
     try {
-      const nextPayload =
-        dialogState.type === "task"
-          ? await upsertIntegrityTaskControl(session.accessToken, {
-              task_id: dialogState.item.task_id,
-              visibility_mode: visibilityMode,
-              review_status: reviewStatus,
-              admin_note: adminNote || null,
-            })
-          : await upsertIntegrityElapsedControl(session.accessToken, {
-              elapsed_id: dialogState.item.id,
-              visibility_mode: visibilityMode,
-              review_status: reviewStatus,
-              admin_note: adminNote || null,
-            });
+      const nextPayload = dialogState.type === "task"
+        ? await upsertIntegrityTaskControl(session.accessToken, { task_id: dialogState.item.task_id, visibility_mode: visibilityMode, review_status: reviewStatus, admin_note: adminNote || null })
+        : await upsertIntegrityElapsedControl(session.accessToken, { elapsed_id: dialogState.item.id, visibility_mode: visibilityMode, review_status: reviewStatus, admin_note: adminNote || null });
       setPayload(nextPayload);
       setDialogState(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Falha ao salvar a revisao.";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Falha ao salvar a revisão.");
     } finally {
       setSaving(false);
     }
@@ -390,15 +358,13 @@ export default function AdminDiagnostico() {
     setSaving(true);
     setError(null);
     try {
-      const nextPayload =
-        dialogState.type === "task"
-          ? await deleteIntegrityTask(session.accessToken, dialogState.item.task_id)
-          : await deleteIntegrityElapsed(session.accessToken, dialogState.item.id);
+      const nextPayload = dialogState.type === "task"
+        ? await deleteIntegrityTask(session.accessToken, dialogState.item.task_id)
+        : await deleteIntegrityElapsed(session.accessToken, dialogState.item.id);
       setPayload(nextPayload);
       setDialogState(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Falha ao excluir o registro.";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Falha ao excluir o registro.");
     } finally {
       setSaving(false);
     }
@@ -413,157 +379,124 @@ export default function AdminDiagnostico() {
         <PageHeaderCard
           icon={ShieldAlert}
           title="Central de Integridade"
-          subtitle="Painel administrativo para monitorar sincronizacoes, isolar tarefas problematicas e decidir o que volta ou nao para a operacao."
+          subtitle="Painel administrativo para monitorar sincronizações, isolar tarefas problemáticas e decidir o que volta ou não para a operação."
           actions={
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void loadDashboard()}
-              disabled={loading}
-              className="border-white/10 bg-white/5 text-white hover:bg-white/10"
-            >
+            <Button type="button" variant="outline" onClick={() => void loadDashboard()} disabled={loading} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              {loading ? "Atualizando" : "Atualizar painel"}
+              {loading ? "Atualizando…" : "Atualizar painel"}
             </Button>
           }
         />
 
-        {error ? (
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-            {error}
-          </div>
-        ) : null}
+        {error && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</div>
+        )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
-          <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-2xl border border-white/10 bg-[hsl(230_25%_10%/0.85)] p-2">
-            <TabsTrigger value="overview" className="rounded-xl px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-950">
-              Visao geral
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="h-auto w-full flex-wrap justify-start gap-1.5 rounded-xl border border-white/[0.08] bg-[hsl(230_25%_10%/0.85)] p-1.5">
+            <TabsTrigger value="overview" className="rounded-lg px-4 py-2 text-[13px] data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-sm">
+              Visão geral
             </TabsTrigger>
-            <TabsTrigger value="tasks" className="rounded-xl px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-950">
-              Tarefas para revisao
+            <TabsTrigger value="tasks" className="rounded-lg px-4 py-2 text-[13px] data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-sm">
+              Tarefas para revisão
             </TabsTrigger>
-            <TabsTrigger value="elapsed" className="rounded-xl px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-950">
-              Horas sem vinculo
+            <TabsTrigger value="elapsed" className="rounded-lg px-4 py-2 text-[13px] data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-sm">
+              Horas sem vínculo
             </TabsTrigger>
-            <TabsTrigger value="sync" className="rounded-xl px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-950">
+            <TabsTrigger value="sync" className="rounded-lg px-4 py-2 text-[13px] data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-sm">
               Monitoramento
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-5">
+          {/* ═══════ VISÃO GERAL ═══════ */}
+          <TabsContent value="overview" className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <StatCard
-                label="Ultimo envio de tarefas"
+                label="Última sincronização"
                 value={formatDateTime(payload?.sync.latest_tasks_run?.started_at)}
-                helper="Mostra quando a rotina mais recente trouxe tarefas e projetos para a base local."
+                helper="Data e horário da rotina mais recente que trouxe tarefas e projetos para a base local."
                 icon={CalendarClock}
               />
               <StatCard
                 label="Tarefas resguardadas"
                 value={hiddenTaskCount}
-                helper="Sao atividades com risco de dado incompleto. Elas ficam so nesta central e nao entram no dia a dia."
+                helper="Atividades com dados incompletos, mantidas isoladas nesta central para não impactar a operação."
                 icon={EyeOff}
               />
               <StatCard
                 label="Horas sem tarefa"
                 value={payload?.overview.orphan_elapsed_entries ?? 0}
-                helper="Lancamentos de horas que ficaram sem atividade valida para relacionar."
+                helper="Lançamentos de horas que não possuem uma tarefa válida associada na base local."
                 icon={Link2Off}
               />
               <StatCard
-                label="Liberadas para operacao"
+                label="Liberadas para operação"
                 value={releasedTaskCount}
-                helper="Casos revisados manualmente e autorizados a voltar para as telas normais."
+                helper="Casos revisados e autorizados a voltar para as telas operacionais normais."
                 icon={BadgeCheck}
               />
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-              <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
-                <div className="flex items-center gap-2 text-white">
-                  <Bug className="h-4 w-4 text-amber-200" />
-                  <h2 className="text-base font-semibold">O que a central esta acompanhando</h2>
-                </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-sm font-semibold text-white">Sem projeto valido</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">{taskInsights.withoutProject}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/55">
-                      Atividades sem vinculo operacional. Elas perdem contexto e nao devem impactar paineis de producao.
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-sm font-semibold text-white">Sem responsavel</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">{taskInsights.withoutOwner}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/55">
-                      Casos que chegaram sem dono definido. A ideia e revisar antes de recolocar no fluxo normal.
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-sm font-semibold text-white">Sem prazo</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">{taskInsights.withoutDeadline}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/55">
-                      Atividades sem data de entrega. Isso compromete leitura de atraso, prioridade e agenda.
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-sm font-semibold text-white">Tarefas arquivadas</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">{taskInsights.archived}</p>
-                    <p className="mt-2 text-sm leading-6 text-white/55">
-                      Casos que continuam existindo, mas estao arquivados no contexto atual e por isso precisam de revisao manual antes de voltar para a operacao.
-                    </p>
-                  </div>
+            <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
+              {/* Acompanhamento */}
+              <div className={`${CARD} p-6`}>
+                <SectionHeader icon={Bug} title="O que a central está acompanhando" />
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {[
+                    { title: "Sem projeto válido", count: taskInsights.withoutProject, desc: "Atividades sem vínculo a um projeto. Perdem contexto e não devem impactar painéis de produção." },
+                    { title: "Sem responsável", count: taskInsights.withoutOwner, desc: "Tarefas que chegaram sem um responsável definido. Precisam de revisão antes de voltar ao fluxo." },
+                    { title: "Sem prazo", count: taskInsights.withoutDeadline, desc: "Atividades sem data de entrega. Isso compromete a leitura de atraso, prioridade e agenda." },
+                    { title: "Tarefas arquivadas", count: taskInsights.archived, desc: "Tarefas que ainda existem na base, mas estão arquivadas e precisam de revisão manual." },
+                  ].map((item) => (
+                    <div key={item.title} className={`${INNER} p-4`}>
+                      <p className="text-sm font-semibold text-white">{item.title}</p>
+                      <p className="mt-2 text-2xl font-bold tracking-tight text-white">{item.count}</p>
+                      <p className="mt-2 text-[13px] leading-[1.6] text-white/50">{item.desc}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
-                <div className="flex items-center gap-2 text-white">
-                  <Wrench className="h-4 w-4 text-sky-200" />
-                  <h2 className="text-base font-semibold">Guia rapido de decisao</h2>
-                </div>
-                <div className="mt-4 space-y-3">
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-sm font-semibold text-white">Manter so na central</p>
-                    <p className="mt-2 text-sm leading-6 text-white/55">
-                      Use quando a atividade ainda precisa de correcao ou quando o historico precisa ficar guardado sem poluir gestao, analiticas e calendario.
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-sm font-semibold text-white">Liberar para operacao</p>
-                    <p className="mt-2 text-sm leading-6 text-white/55">
-                      Use quando o caso foi revisado e faz sentido reaparecer nas telas normais mesmo com alguma observacao administrativa.
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-sm font-semibold text-white">Excluir da base local</p>
-                    <p className="mt-2 text-sm leading-6 text-white/55">
-                      Use para limpar registros que realmente nao fazem mais sentido manter. A exclusao remove o item localmente desta base.
-                    </p>
-                  </div>
+              {/* Guia de decisão */}
+              <div className={`${CARD} p-6`}>
+                <SectionHeader icon={Wrench} title="Guia rápido de decisão" />
+                <div className="mt-5 space-y-3">
+                  {[
+                    { title: "Manter somente na central", desc: "Use quando a atividade ainda precisa de correção ou quando o histórico deve ficar guardado sem poluir gestão, analíticas e calendário." },
+                    { title: "Liberar para operação", desc: "Use quando o caso foi revisado e faz sentido reaparecer nas telas normais, mesmo com alguma observação administrativa." },
+                    { title: "Excluir da base local", desc: "Use para remover registros que não fazem mais sentido. A exclusão remove o item apenas desta base local." },
+                  ].map((item) => (
+                    <div key={item.title} className={`${INNER} p-4`}>
+                      <p className="text-sm font-semibold text-white">{item.title}</p>
+                      <p className="mt-1.5 text-[13px] leading-[1.6] text-white/50">{item.desc}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           </TabsContent>
 
-          <TabsContent value="tasks" className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          {/* ═══════ TAREFAS PARA REVISÃO ═══════ */}
+          <TabsContent value="tasks" className="space-y-5">
+            {/* Header / busca */}
+            <div className={`${CARD} p-5`}>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-white">Tarefas para revisao</p>
-                  <p className="mt-1 text-sm text-white/55">
-                    Itens que ainda existem na base atual, mas precisam de validacao antes de voltar ao fluxo operacional.
+                  <p className="text-[15px] font-semibold text-white">Tarefas para revisão</p>
+                  <p className="mt-1 text-[13px] text-white/50">
+                    Itens que existem na base local mas precisam de validação antes de voltar ao fluxo operacional.
                   </p>
                 </div>
-                <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[360px]">
+                <div className="flex w-full flex-col gap-2 lg:w-auto lg:min-w-[360px]">
                   <input
                     type="search"
                     value={taskSearch}
-                    onChange={(event) => setTaskSearch(event.target.value)}
-                    placeholder="Buscar por nome da tarefa ou ID"
-                    className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/25"
+                    onChange={(e) => setTaskSearch(e.target.value)}
+                    placeholder="Buscar por nome, responsável ou ID…"
+                    className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
                   />
-                  <p className="text-xs text-white/45">
-                    Mostrando {pagedTasks.length} de {filteredTasks.length} tarefa(s).
+                  <p className="text-[11px] text-white/40">
+                    Exibindo {pagedTasks.length} de {filteredTasks.length} tarefa(s)
                   </p>
                 </div>
               </div>
@@ -571,150 +504,137 @@ export default function AdminDiagnostico() {
 
             {!filteredTasks.length ? (
               <EmptyPanel
-                title="Nenhuma tarefa pendente de revisao"
-                description="Quando houver tarefa ativa sem projeto valido, sem responsavel, sem prazo ou arquivada, ela aparece aqui para revisao."
+                title="Nenhuma tarefa pendente de revisão"
+                description="Quando houver tarefas com dados incompletos (sem projeto, sem responsável, sem prazo ou arquivadas), elas aparecerão aqui para revisão."
               />
             ) : (
               <>
-              {pagedTasks.map((task) => (
-                <div key={task.task_id} className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="space-y-3">
-                      {getPrimaryReason(task) ? (
-                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-100/80">Por que esta na central</p>
-                          <p className="mt-2 text-base font-semibold text-white">{getPrimaryReason(task)?.label}</p>
-                          <p className="mt-1 text-sm leading-6 text-white/60">{getPrimaryReason(task)?.meaning}</p>
+                {pagedTasks.map((task) => {
+                  const reason = getPrimaryReason(task);
+                  return (
+                    <div key={task.task_id} className={`${CARD} overflow-hidden`}>
+                      {/* Reason banner */}
+                      {reason && (
+                        <div className="border-b border-amber-500/15 bg-amber-500/[0.06] px-6 py-3.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-300/70">Por que está na central</p>
+                          <p className="mt-1 text-sm font-medium text-white/90">{reason.label}</p>
+                          <p className="mt-0.5 text-[13px] leading-[1.55] text-white/50">{reason.meaning}</p>
                         </div>
-                      ) : null}
-                      <div className="space-y-2">
-                        <p className="text-lg font-semibold text-white">{task.title}</p>
-                        <div className="flex flex-wrap gap-2 text-xs text-white/70">
-                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Tarefa #{task.task_id}</Pill>
-                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Responsavel: {task.responsible_name ?? "Nao encontrado"}</Pill>
-                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Status: {formatTaskStatus(task.status)}</Pill>
-                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Projeto: {task.project_name ?? "Sem projeto valido"}</Pill>
-                        </div>
-                      </div>
-                      <TaskProblemPills problems={task.problems} />
-                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                        <p className="text-sm font-semibold text-white">Checklist da revisao</p>
-                        <p className="mt-1 text-sm leading-6 text-white/45">
-                          Cada item abaixo explica de forma objetiva o que precisa ser corrigido ou confirmado antes da tarefa sair da central.
-                        </p>
-                        <div className="mt-3 space-y-3">
-                        {task.problems.map((problem) => (
-                          <div key={problem.code} className="rounded-xl border border-white/10 bg-[hsl(228_20%_12%/0.9)] p-3">
-                            <p className="text-sm font-semibold text-white">{problem.label}</p>
-                            <p className="mt-1 text-sm leading-6 text-white/55">{problem.meaning}</p>
+                      )}
+
+                      <div className="p-6">
+                        <div className="flex flex-col gap-5 xl:flex-row xl:gap-8">
+                          {/* Main content */}
+                          <div className="min-w-0 flex-1 space-y-5">
+                            {/* Title + pills */}
+                            <div>
+                              <h3 className="text-lg font-semibold leading-tight text-white">{task.title}</h3>
+                              <div className="mt-2">
+                                <TaskProblemPills problems={task.problems} />
+                              </div>
+                            </div>
+
+                            {/* Metadata grid */}
+                            <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                              <MetaField icon={Hash} label="ID da tarefa" value={`#${task.task_id}`} />
+                              <MetaField icon={User} label="Responsável" value={task.responsible_name ?? "Não encontrado"} />
+                              <MetaField icon={CheckCircle2} label="Status" value={formatTaskStatus(task.status)} />
+                              <MetaField icon={Bug} label="Projeto" value={task.project_name ?? "Sem projeto válido"} />
+                              <MetaField icon={CalendarClock} label="Prazo" value={formatDate(task.deadline)} />
+                              <MetaField icon={Clock3} label="Última atualização" value={formatDateTime(task.updated_at)} />
+                              <MetaField icon={Eye} label="Exibição" value={getVisibilityLabel(task.visibility_mode)} />
+                              <MetaField icon={ShieldCheck} label="Revisão" value={getStatusLabel(task.review_status)} />
+                            </div>
+
+                            {/* Checklist */}
+                            {task.problems.length > 0 && (
+                              <div className={`${INNER} p-4`}>
+                                <p className="text-sm font-semibold text-white">Checklist da revisão</p>
+                                <p className="mt-1 text-[13px] leading-relaxed text-white/40">
+                                  Cada item abaixo descreve o que precisa ser corrigido ou confirmado antes de liberar esta tarefa.
+                                </p>
+                                <div className="mt-3 space-y-2">
+                                  {task.problems.map((p) => (
+                                    <div key={p.code} className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3.5 py-2.5">
+                                      <p className="text-sm font-medium text-white/85">{p.label}</p>
+                                      <p className="mt-0.5 text-[13px] leading-[1.55] text-white/45">{p.meaning}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Admin note */}
+                            {task.admin_note && (
+                              <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.07] px-4 py-3 text-sm leading-relaxed text-sky-100">
+                                <strong className="font-semibold">Observação administrativa:</strong> {task.admin_note}
+                              </div>
+                            )}
                           </div>
-                        ))}
+
+                          {/* Actions column */}
+                          <div className="flex shrink-0 flex-col gap-2.5 xl:w-[220px]">
+                            <Button
+                              type="button"
+                              className="justify-start gap-2.5 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                              variant="outline"
+                              onClick={() => setDialogState({ type: "task", item: task })}
+                            >
+                              <ShieldAlert className="h-4 w-4 text-amber-300/80" />
+                              Revisar caso
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="justify-start gap-2.5 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                              onClick={() =>
+                                setDialogState({
+                                  type: "task",
+                                  item: { ...task, visibility_mode: task.visibility_mode === "show_in_operations" ? "diagnostic_only" : "show_in_operations" },
+                                })
+                              }
+                            >
+                              <ArrowUpRight className="h-4 w-4 text-sky-300/80" />
+                              {task.visibility_mode === "show_in_operations" ? "Resguardar na central" : "Liberar para operação"}
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2 text-xs text-white/60">
-                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                          Prazo: {formatDate(task.deadline)}
-                        </Pill>
-                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                          Ultima atualizacao: {formatDateTime(task.updated_at)}
-                        </Pill>
-                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                          Exibicao: {getVisibilityLabel(task.visibility_mode)}
-                        </Pill>
-                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                          Revisao: {getStatusLabel(task.review_status)}
-                        </Pill>
-                      </div>
-                      {task.admin_note ? (
-                        <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-4 text-sm leading-6 text-sky-100">
-                          <strong className="font-semibold">Observacao administrativa:</strong> {task.admin_note}
-                        </div>
-                      ) : null}
                     </div>
-                    <div className="flex shrink-0 flex-col gap-2 xl:w-[220px]">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="justify-start border-white/10 bg-white/5 text-white hover:bg-white/10"
-                        onClick={() => setDialogState({ type: "task", item: task })}
-                      >
-                        <ShieldAlert className="h-4 w-4" />
-                        Revisar caso
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="justify-start border-white/10 bg-white/5 text-white hover:bg-white/10"
-                        onClick={() =>
-                          setDialogState({
-                            type: "task",
-                            item: {
-                              ...task,
-                              visibility_mode:
-                                task.visibility_mode === "show_in_operations"
-                                  ? "diagnostic_only"
-                                  : "show_in_operations",
-                            },
-                          })
-                        }
-                      >
-                        <ArrowUpRight className="h-4 w-4" />
-                        {task.visibility_mode === "show_in_operations" ? "Resguardar na central" : "Liberar para operacao"}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {taskTotalPages > 1 ? (
-                <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] px-4 py-3">
-                  <p className="text-sm text-white/55">
-                    Pagina {taskPage} de {taskTotalPages}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={taskPage <= 1}
-                      onClick={() => setTaskPage((current) => Math.max(1, current - 1))}
-                      className="border-white/10 bg-white/5 text-white hover:bg-white/10"
-                    >
-                      Anterior
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={taskPage >= taskTotalPages}
-                      onClick={() => setTaskPage((current) => Math.min(taskTotalPages, current + 1))}
-                      className="border-white/10 bg-white/5 text-white hover:bg-white/10"
-                    >
-                      Proxima
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
+                  );
+                })}
+
+                <PaginationBar
+                  page={taskPage}
+                  totalPages={taskTotalPages}
+                  onPrev={() => setTaskPage((c) => Math.max(1, c - 1))}
+                  onNext={() => setTaskPage((c) => Math.min(taskTotalPages, c + 1))}
+                  label={`Página ${taskPage} de ${taskTotalPages}`}
+                />
               </>
             )}
           </TabsContent>
 
-          <TabsContent value="elapsed" className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          {/* ═══════ HORAS SEM VÍNCULO ═══════ */}
+          <TabsContent value="elapsed" className="space-y-5">
+            <div className={`${CARD} p-5`}>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-white">Horas sem vinculo</p>
-                  <p className="mt-1 text-sm text-white/55">
-                    Lancamentos que ainda existem, mas precisam de revisao porque o relacionamento com a tarefa nao ficou consistente.
+                  <p className="text-[15px] font-semibold text-white">Horas sem vínculo</p>
+                  <p className="mt-1 text-[13px] text-white/50">
+                    Lançamentos de horas que não possuem uma tarefa válida associada e precisam de revisão.
                   </p>
                 </div>
-                <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[360px]">
+                <div className="flex w-full flex-col gap-2 lg:w-auto lg:min-w-[360px]">
                   <input
                     type="search"
                     value={elapsedSearch}
-                    onChange={(event) => setElapsedSearch(event.target.value)}
-                    placeholder="Buscar por tarefa, responsavel ou ID"
-                    className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/25"
+                    onChange={(e) => setElapsedSearch(e.target.value)}
+                    placeholder="Buscar por tarefa, responsável ou ID…"
+                    className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
                   />
-                  <p className="text-xs text-white/45">
-                    Mostrando {pagedElapsed.length} de {filteredElapsed.length} lancamento(s).
+                  <p className="text-[11px] text-white/40">
+                    Exibindo {pagedElapsed.length} de {filteredElapsed.length} lançamento(s)
                   </p>
                 </div>
               </div>
@@ -722,162 +642,128 @@ export default function AdminDiagnostico() {
 
             {!filteredElapsed.length ? (
               <EmptyPanel
-                title="Nenhum lancamento sem vinculo"
-                description="Quando uma hora registrada continuar sem relacionamento local valido, ela aparece aqui para revisao e limpeza."
+                title="Nenhum lançamento sem vínculo"
+                description="Quando um lançamento de horas não possuir uma tarefa válida associada na base local, ele aparecerá aqui para revisão."
               />
             ) : (
               <>
-              {pagedElapsed.map((entry) => (
-                <div key={entry.id} className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-lg font-semibold text-white">{entry.label}</p>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/70">
-                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Lancamento #{entry.id}</Pill>
-                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Duracao: {formatMinutes(entry.minutes, entry.seconds)}</Pill>
-                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                            Tarefa: {entry.related_task_name ?? "Nao localizada"}
-                          </Pill>
-                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                            ID da tarefa: {entry.bitrix_task_id_raw ?? entry.task_id ?? "Sem ID"}
-                          </Pill>
-                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                            Status da tarefa: {formatTaskStatus(entry.related_task_status)}
-                          </Pill>
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                        <p className="text-sm font-semibold text-white">Motivo da revisao</p>
-                        <p className="mt-2 text-sm leading-6 text-white/55">{entry.meaning}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 text-xs text-white/60">
-                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                          Detectado em: {formatDateTime(entry.orphan_detected_at)}
-                        </Pill>
-                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                          Atualizado em: {formatDateTime(entry.updated_at)}
-                        </Pill>
-                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                          Exibicao: {getVisibilityLabel(entry.visibility_mode)}
-                        </Pill>
-                        <Pill className="border-white/10 bg-white/[0.03] text-white/70">
-                          Revisao: {getStatusLabel(entry.review_status)}
-                        </Pill>
-                      </div>
-                      {entry.related_task_responsible ? (
-                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-6 text-white/55">
-                          <strong className="font-semibold text-white">Responsavel da tarefa:</strong> {entry.related_task_responsible}
-                        </div>
-                      ) : null}
-                      {entry.comment_text ? (
-                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-6 text-white/55">
-                          <strong className="font-semibold text-white">Comentario do lancamento:</strong> {entry.comment_text}
-                        </div>
-                      ) : null}
-                      {entry.admin_note ? (
-                        <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-4 text-sm leading-6 text-sky-100">
-                          <strong className="font-semibold">Observacao administrativa:</strong> {entry.admin_note}
-                        </div>
-                      ) : null}
+                {pagedElapsed.map((entry) => (
+                  <div key={entry.id} className={`${CARD} overflow-hidden`}>
+                    {/* Reason banner */}
+                    <div className="border-b border-amber-500/15 bg-amber-500/[0.06] px-6 py-3.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-300/70">Motivo da revisão</p>
+                      <p className="mt-1 text-[13px] leading-[1.55] text-white/60">
+                        {entry.meaning || "Este lançamento de horas referencia uma tarefa que não foi encontrada na última verificação. A tarefa pode ter sido excluída, ou estar indisponível por questões de permissão, filtro ou sincronização."}
+                      </p>
                     </div>
-                    <div className="flex shrink-0 flex-col gap-2 xl:w-[220px]">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="justify-start border-white/10 bg-white/5 text-white hover:bg-white/10"
-                        onClick={() => setDialogState({ type: "elapsed", item: entry })}
-                      >
-                        <ShieldAlert className="h-4 w-4" />
-                        Revisar lancamento
-                      </Button>
+
+                    <div className="p-6">
+                      <div className="flex flex-col gap-5 xl:flex-row xl:gap-8">
+                        <div className="min-w-0 flex-1 space-y-5">
+                          {/* Title */}
+                          <h3 className="text-lg font-semibold leading-tight text-white">{entry.label}</h3>
+
+                          {/* Metadata grid */}
+                          <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                            <MetaField icon={Hash} label="ID do lançamento" value={`#${entry.id}`} />
+                            <MetaField icon={Hash} label="ID da tarefa" value={entry.bitrix_task_id_raw != null ? `#${entry.bitrix_task_id_raw}` : (entry.task_id != null ? `#${entry.task_id}` : "Sem ID")} />
+                            <MetaField icon={User} label="Responsável da tarefa" value={entry.related_task_responsible ?? "Não encontrado"} />
+                            <MetaField icon={CheckCircle2} label="Status da tarefa" value={formatTaskStatus(entry.related_task_status)} />
+                            <MetaField icon={Bug} label="Tarefa relacionada" value={entry.related_task_name ?? "Não localizada"} />
+                            <MetaField icon={Clock3} label="Duração" value={formatMinutes(entry.minutes, entry.seconds)} />
+                            <MetaField icon={CalendarClock} label="Detectado em" value={formatDateTime(entry.orphan_detected_at)} />
+                            <MetaField icon={Clock3} label="Última atualização" value={formatDateTime(entry.updated_at)} />
+                            <MetaField icon={Eye} label="Exibição" value={getVisibilityLabel(entry.visibility_mode)} />
+                            <MetaField icon={ShieldCheck} label="Revisão" value={getStatusLabel(entry.review_status)} />
+                          </div>
+
+                          {/* Comment */}
+                          {entry.comment_text && (
+                            <div className={`${INNER} px-4 py-3 text-sm leading-relaxed text-white/55`}>
+                              <strong className="font-semibold text-white/80">Comentário do lançamento:</strong> {entry.comment_text}
+                            </div>
+                          )}
+
+                          {/* Admin note */}
+                          {entry.admin_note && (
+                            <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.07] px-4 py-3 text-sm leading-relaxed text-sky-100">
+                              <strong className="font-semibold">Observação administrativa:</strong> {entry.admin_note}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex shrink-0 flex-col gap-2.5 xl:w-[220px]">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="justify-start gap-2.5 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                            onClick={() => setDialogState({ type: "elapsed", item: entry })}
+                          >
+                            <ShieldAlert className="h-4 w-4 text-amber-300/80" />
+                            Revisar lançamento
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-              {elapsedTotalPages > 1 ? (
-                <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] px-4 py-3">
-                  <p className="text-sm text-white/55">
-                    Pagina {elapsedPage} de {elapsedTotalPages}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={elapsedPage <= 1}
-                      onClick={() => setElapsedPage((current) => Math.max(1, current - 1))}
-                      className="border-white/10 bg-white/5 text-white hover:bg-white/10"
-                    >
-                      Anterior
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={elapsedPage >= elapsedTotalPages}
-                      onClick={() => setElapsedPage((current) => Math.min(elapsedTotalPages, current + 1))}
-                      className="border-white/10 bg-white/5 text-white hover:bg-white/10"
-                    >
-                      Proxima
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
+                ))}
+
+                <PaginationBar
+                  page={elapsedPage}
+                  totalPages={elapsedTotalPages}
+                  onPrev={() => setElapsedPage((c) => Math.max(1, c - 1))}
+                  onNext={() => setElapsedPage((c) => Math.min(elapsedTotalPages, c + 1))}
+                  label={`Página ${elapsedPage} de ${elapsedTotalPages}`}
+                />
               </>
             )}
           </TabsContent>
 
-          <TabsContent value="sync" className="space-y-4">
-            <div className="grid gap-4 xl:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
-                <div className="flex items-center gap-2 text-white">
-                  <Clock3 className="h-4 w-4 text-sky-200" />
-                  <h2 className="text-base font-semibold">Ultimas execucoes</h2>
-                </div>
-                <div className="mt-4 space-y-3">
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-sm font-semibold text-white">Rotina de tarefas e projetos</p>
-                    <p className="mt-2 text-sm leading-6 text-white/55">
-                      Ultima execucao em {formatDateTime(payload?.sync.latest_tasks_run?.started_at)} com status{" "}
-                      <strong className="text-white">{payload?.sync.latest_tasks_run?.status ?? "sem registro"}</strong>.
-                    </p>
-                    <p className="mt-2 text-xs text-white/45">
-                      Duracao: {formatDuration(payload?.sync.latest_tasks_run?.duration_ms)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-sm font-semibold text-white">Rotina de tempos lancados</p>
-                    <p className="mt-2 text-sm leading-6 text-white/55">
-                      Ultima execucao em {formatDateTime(payload?.sync.latest_times_run?.started_at)} com status{" "}
-                      <strong className="text-white">{payload?.sync.latest_times_run?.status ?? "sem registro"}</strong>.
-                    </p>
-                    <p className="mt-2 text-xs text-white/45">
-                      Duracao: {formatDuration(payload?.sync.latest_times_run?.duration_ms)}
-                    </p>
-                  </div>
+          {/* ═══════ MONITORAMENTO ═══════ */}
+          <TabsContent value="sync" className="space-y-5">
+            <div className="grid gap-5 xl:grid-cols-2">
+              {/* Últimas execuções */}
+              <div className={`${CARD} p-6`}>
+                <SectionHeader icon={Clock3} title="Últimas execuções" subtitle="Resultado das rotinas de sincronização mais recentes" />
+                <div className="mt-5 space-y-3">
+                  {[
+                    { label: "Rotina de tarefas e projetos", run: payload?.sync.latest_tasks_run },
+                    { label: "Rotina de tempos lançados", run: payload?.sync.latest_times_run },
+                  ].map((item) => (
+                    <div key={item.label} className={`${INNER} p-4`}>
+                      <p className="text-sm font-semibold text-white">{item.label}</p>
+                      <p className="mt-2 text-[13px] leading-[1.6] text-white/55">
+                        Última execução em {formatDateTime(item.run?.started_at)} com status{" "}
+                        <strong className="text-white">{item.run?.status ?? "sem registro"}</strong>.
+                      </p>
+                      <p className="mt-1.5 text-[11px] text-white/40">
+                        Duração: {formatDuration(item.run?.duration_ms)}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
-                <div className="flex items-center gap-2 text-white">
-                  <CalendarClock className="h-4 w-4 text-amber-200" />
-                  <h2 className="text-base font-semibold">Agendamentos ativos</h2>
-                </div>
-                <div className="mt-4 space-y-3">
+              {/* Agendamentos */}
+              <div className={`${CARD} p-6`}>
+                <SectionHeader icon={CalendarClock} title="Agendamentos ativos" subtitle="Rotinas de sincronização programadas" />
+                <div className="mt-5 space-y-3">
                   {(payload?.sync.configs ?? []).map((config) => (
-                    <div key={config.job_name} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                    <div key={config.job_name} className={`${INNER} p-4`}>
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-sm font-semibold text-white">{config.job_name}</p>
-                          <p className="mt-1 text-xs text-white/45">
-                            Cron: {config.cron_expression} • {summarizeCron(config.cron_expression)}
+                          <p className="mt-1 text-[11px] text-white/40">
+                            Cron: {config.cron_expression} · {summarizeCron(config.cron_expression)}
                           </p>
                         </div>
-                        <Pill className={config.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100" : "border-white/10 bg-white/[0.03] text-white/60"}>
+                        <Pill className={config.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-white/10 bg-white/[0.03] text-white/50"}>
                           {config.enabled ? "Ativo" : "Desativado"}
                         </Pill>
                       </div>
-                      <p className="mt-3 text-sm leading-6 text-white/55">
-                        Ultimo disparo programado: {formatDateTime(config.last_scheduled_at)}
+                      <p className="mt-3 text-[13px] leading-[1.6] text-white/50">
+                        Último disparo programado: {formatDateTime(config.last_scheduled_at)}
                       </p>
                     </div>
                   ))}
@@ -885,31 +771,27 @@ export default function AdminDiagnostico() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
-              <div className="flex items-center gap-2 text-white">
-                <AlertTriangle className="h-4 w-4 text-red-200" />
-                <h2 className="text-base font-semibold">Historico recente</h2>
-              </div>
-              <div className="mt-4 space-y-3">
+            {/* Histórico recente */}
+            <div className={`${CARD} p-6`}>
+              <SectionHeader icon={AlertTriangle} title="Histórico recente" subtitle="Execuções registradas nas últimas horas" />
+              <div className="mt-5 space-y-3">
                 {(payload?.sync.recent_runs ?? []).map((run, index) => (
-                  <div key={`${run.job_name}-${run.started_at}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
+                  <div key={`${run.job_name}-${run.started_at}-${index}`} className={`${INNER} p-4`}>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
                         <p className="text-sm font-semibold text-white">{run.job_name}</p>
-                        <p className="mt-1 text-xs text-white/45">
-                          Iniciou em {formatDateTime(run.started_at)} • Duracao {formatDuration(run.duration_ms)}
+                        <p className="mt-1 text-[11px] text-white/40">
+                          Iniciou em {formatDateTime(run.started_at)} · Duração: {formatDuration(run.duration_ms)}
                         </p>
                       </div>
-                      <Pill className={run.status === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100" : "border-red-500/30 bg-red-500/10 text-red-100"}>
-                        {run.status}
+                      <Pill className={run.status === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200"}>
+                        {run.status === "success" ? "Sucesso" : run.status}
                       </Pill>
                     </div>
                     {run.error_message ? (
-                      <p className="mt-3 text-sm leading-6 text-red-100">{run.error_message}</p>
+                      <p className="mt-2.5 text-sm leading-relaxed text-red-200/80">{run.error_message}</p>
                     ) : (
-                      <p className="mt-3 text-sm leading-6 text-white/55">
-                        Execucao concluida sem erro registrado.
-                      </p>
+                      <p className="mt-2.5 text-[13px] leading-relaxed text-white/45">Execução concluída sem erros registrados.</p>
                     )}
                   </div>
                 ))}
@@ -919,108 +801,85 @@ export default function AdminDiagnostico() {
         </Tabs>
       </div>
 
+      {/* ═══════ DIALOG DE REVISÃO ═══════ */}
       <Dialog open={Boolean(dialogState)} onOpenChange={(open) => !open && setDialogState(null)}>
         <DialogContent className="border-white/10 bg-[hsl(230_28%_11%)] text-white sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>
-              {dialogState?.type === "task" ? "Revisar tarefa da central" : "Revisar lancamento sem vinculo"}
+              {dialogState?.type === "task" ? "Revisar tarefa" : "Revisar lançamento"}
             </DialogTitle>
-            <DialogDescription className="text-white/55">
-              Defina se esse caso continua isolado na central, se pode voltar para a operacao ou se deve ser removido da base local.
+            <DialogDescription className="text-white/50">
+              Defina se este caso permanece isolado na central, se pode voltar para a operação ou se deve ser removido da base local.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className={`${INNER} p-4`}>
               <p className="text-sm font-semibold text-white">
                 {dialogState?.type === "task"
                   ? dialogState.item.title
-                  : `${dialogState?.item.label ?? "Lancamento sem vinculo"} #${dialogState?.type === "elapsed" ? dialogState.item.id : ""}`}
+                  : `${dialogState?.item.label ?? "Lançamento sem vínculo"} #${dialogState?.type === "elapsed" ? dialogState.item.id : ""}`}
               </p>
-              <p className="mt-2 text-sm leading-6 text-white/55">
+              <p className="mt-2 text-[13px] leading-[1.6] text-white/50">
                 {dialogState?.type === "task"
-                  ? dialogState.item.problems.map((problem) => problem.meaning).join(" ")
+                  ? dialogState.item.problems.map((p) => p.meaning).join(" ")
                   : dialogState?.item.meaning}
               </p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white" htmlFor="visibility-mode">
-                Destino do caso
-              </label>
+              <label className="text-sm font-medium text-white" htmlFor="visibility-mode">Destino do caso</label>
               <select
                 id="visibility-mode"
                 value={visibilityMode}
-                onChange={(event) => setVisibilityMode(event.target.value as VisibilityMode)}
-                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none"
+                onChange={(e) => setVisibilityMode(e.target.value as VisibilityMode)}
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none"
               >
-                {visibilityOptions.map((option) => (
-                  <option key={option.value} value={option.value} className="bg-slate-900 text-white">
-                    {option.label}
-                  </option>
+                {visibilityOptions.map((o) => (
+                  <option key={o.value} value={o.value} className="bg-slate-900 text-white">{o.label}</option>
                 ))}
               </select>
-              <p className="text-xs leading-5 text-white/45">
-                {visibilityOptions.find((option) => option.value === visibilityMode)?.helper}
-              </p>
+              <p className="text-[12px] leading-5 text-white/40">{visibilityOptions.find((o) => o.value === visibilityMode)?.helper}</p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white" htmlFor="review-status">
-                Etapa da revisao
-              </label>
+              <label className="text-sm font-medium text-white" htmlFor="review-status">Etapa da revisão</label>
               <select
                 id="review-status"
                 value={reviewStatus}
-                onChange={(event) => setReviewStatus(event.target.value as ReviewStatus)}
-                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none"
+                onChange={(e) => setReviewStatus(e.target.value as ReviewStatus)}
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none"
               >
-                {reviewOptions.map((option) => (
-                  <option key={option.value} value={option.value} className="bg-slate-900 text-white">
-                    {option.label}
-                  </option>
+                {reviewOptions.map((o) => (
+                  <option key={o.value} value={o.value} className="bg-slate-900 text-white">{o.label}</option>
                 ))}
               </select>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white" htmlFor="admin-note">
-                Observacao administrativa
-              </label>
+              <label className="text-sm font-medium text-white" htmlFor="admin-note">Observação administrativa</label>
               <textarea
                 id="admin-note"
                 value={adminNote}
-                onChange={(event) => setAdminNote(event.target.value)}
-                rows={5}
-                placeholder="Ex.: atividade arquivada na origem, manter apenas para historico."
-                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm text-white outline-none placeholder:text-white/25"
+                onChange={(e) => setAdminNote(e.target.value)}
+                rows={4}
+                placeholder="Ex.: atividade arquivada na origem, manter apenas para histórico."
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-3 text-sm text-white outline-none placeholder:text-white/25"
               />
             </div>
           </div>
 
           <DialogFooter className="gap-2 sm:justify-between">
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => void handleDelete()}
-              disabled={saving}
-              className="sm:mr-auto"
-            >
+            <Button type="button" variant="destructive" onClick={() => void handleDelete()} disabled={saving} className="sm:mr-auto">
               <Trash2 className="h-4 w-4" />
               Excluir da base local
             </Button>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDialogState(null)}
-                disabled={saving}
-                className="border-white/10 bg-white/5 text-white hover:bg-white/10"
-              >
+              <Button type="button" variant="outline" onClick={() => setDialogState(null)} disabled={saving} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
                 Cancelar
               </Button>
               <Button type="button" onClick={() => void submitReview()} disabled={saving}>
-                {saving ? "Salvando..." : "Salvar revisao"}
+                {saving ? "Salvando…" : "Salvar revisão"}
               </Button>
             </div>
           </DialogFooter>
