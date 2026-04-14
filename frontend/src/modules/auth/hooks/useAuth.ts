@@ -80,9 +80,13 @@ type AuthStoreSnapshot = {
   loading: boolean;
 };
 
+const initialStored = readStoredSession();
+
 let authStore: AuthStoreSnapshot = {
-  session: readStoredSession(),
-  loading: !readStoredSession(),
+  session: initialStored,
+  // If we have stored metadata but no accessToken, we still need to hydrate
+  // tokens from the SDK — keep loading=true until load() completes.
+  loading: !initialStored || !initialStored.accessToken,
 };
 
 let authBootstrapPromise: Promise<void> | null = null;
