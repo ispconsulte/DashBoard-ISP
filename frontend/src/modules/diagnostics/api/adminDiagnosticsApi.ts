@@ -48,6 +48,9 @@ export type IntegrityElapsedItem = {
   comment_text: string | null;
   label: string;
   meaning: string;
+  related_task_name: string | null;
+  related_task_status: string | number | null;
+  related_task_responsible: string | null;
   visibility_mode: VisibilityMode;
   review_status: ReviewStatus;
   admin_note: string | null;

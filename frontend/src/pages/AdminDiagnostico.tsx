@@ -117,10 +117,61 @@ function getVisibilityLabel(value: VisibilityMode) {
   return visibilityOptions.find((option) => option.value === value)?.label ?? value;
 }
 
+function formatTaskStatus(value: string | number | null | undefined) {
+  if (typeof value === "number") {
+    if (value === 5) return "Concluida";
+    return `Status ${value}`;
+  }
+
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "Sem status";
+  if (["5", "done", "concluido", "concluído", "completed", "finalizado"].includes(normalized.toLowerCase())) {
+    return "Concluida";
+  }
+  return normalized;
+}
+
 function getSeverityTone(severity: number) {
   if (severity >= 90) return "border-red-500/30 bg-red-500/10 text-red-200";
   if (severity >= 70) return "border-amber-500/30 bg-amber-500/10 text-amber-100";
   return "border-sky-500/30 bg-sky-500/10 text-sky-100";
+}
+
+function dedupeTasks(items: IntegrityTaskItem[]) {
+  const unique = new Map<number, IntegrityTaskItem>();
+  for (const item of items) {
+    if (!unique.has(item.task_id)) {
+      unique.set(item.task_id, item);
+      continue;
+    }
+
+    const existing = unique.get(item.task_id);
+    if (!existing) continue;
+    unique.set(item.task_id, existing.severity >= item.severity ? existing : item);
+  }
+  return Array.from(unique.values());
+}
+
+function matchesTaskSearch(item: IntegrityTaskItem, query: string) {
+  if (!query) return true;
+  const normalized = query.trim().toLowerCase();
+  return (
+    item.title.toLowerCase().includes(normalized) ||
+    String(item.task_id).includes(normalized) ||
+    String(item.status ?? "").toLowerCase().includes(normalized) ||
+    String(item.responsible_name ?? "").toLowerCase().includes(normalized)
+  );
+}
+
+function matchesElapsedSearch(item: IntegrityElapsedItem, query: string) {
+  if (!query) return true;
+  const normalized = query.trim().toLowerCase();
+  return (
+    String(item.bitrix_task_id_raw ?? item.task_id ?? "").includes(normalized) ||
+    String(item.id).includes(normalized) ||
+    String(item.related_task_name ?? "").toLowerCase().includes(normalized) ||
+    String(item.related_task_responsible ?? "").toLowerCase().includes(normalized)
+  );
 }
 
 function StatCard({
@@ -207,6 +258,10 @@ export default function AdminDiagnostico() {
   const [visibilityMode, setVisibilityMode] = useState<VisibilityMode>("diagnostic_only");
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("pending");
   const [adminNote, setAdminNote] = useState("");
+  const [taskSearch, setTaskSearch] = useState("");
+  const [elapsedSearch, setElapsedSearch] = useState("");
+  const [taskPage, setTaskPage] = useState(1);
+  const [elapsedPage, setElapsedPage] = useState(1);
 
   const loadDashboard = async () => {
     if (!session?.accessToken) return;
@@ -240,14 +295,45 @@ export default function AdminDiagnostico() {
   const releasedTaskCount = payload?.problematic_tasks.filter((task) => task.visibility_mode === "show_in_operations").length ?? 0;
 
   const taskInsights = useMemo(() => {
-    const items = payload?.problematic_tasks ?? [];
+    const items = dedupeTasks(payload?.problematic_tasks ?? []);
     return {
       withoutProject: items.filter((item) => item.problems.some((problem) => problem.code === "missing_project")).length,
       withoutOwner: items.filter((item) => item.problems.some((problem) => problem.code === "missing_responsible")).length,
       withoutDeadline: items.filter((item) => item.problems.some((problem) => problem.code === "missing_deadline")).length,
-      outOfMainBase: items.filter((item) => item.problems.some((problem) => problem.code === "missing_from_source")).length,
+      archived: items.filter((item) => item.problems.some((problem) => problem.code === "archived_task")).length,
     };
   }, [payload]);
+
+  const filteredTasks = useMemo(() => {
+    return dedupeTasks(payload?.problematic_tasks ?? []).filter((item) => matchesTaskSearch(item, taskSearch));
+  }, [payload, taskSearch]);
+
+  const filteredElapsed = useMemo(() => {
+    return (payload?.orphan_elapsed ?? []).filter((item) => matchesElapsedSearch(item, elapsedSearch));
+  }, [payload, elapsedSearch]);
+
+  const taskPageSize = 8;
+  const elapsedPageSize = 8;
+  const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / taskPageSize));
+  const elapsedTotalPages = Math.max(1, Math.ceil(filteredElapsed.length / elapsedPageSize));
+  const pagedTasks = filteredTasks.slice((taskPage - 1) * taskPageSize, taskPage * taskPageSize);
+  const pagedElapsed = filteredElapsed.slice((elapsedPage - 1) * elapsedPageSize, elapsedPage * elapsedPageSize);
+
+  useEffect(() => {
+    setTaskPage(1);
+  }, [taskSearch, payload?.problematic_tasks.length]);
+
+  useEffect(() => {
+    setElapsedPage(1);
+  }, [elapsedSearch, payload?.orphan_elapsed.length]);
+
+  useEffect(() => {
+    if (taskPage > taskTotalPages) setTaskPage(taskTotalPages);
+  }, [taskPage, taskTotalPages]);
+
+  useEffect(() => {
+    if (elapsedPage > elapsedTotalPages) setElapsedPage(elapsedTotalPages);
+  }, [elapsedPage, elapsedTotalPages]);
 
   const submitReview = async () => {
     if (!dialogState || !session?.accessToken) return;
@@ -333,7 +419,7 @@ export default function AdminDiagnostico() {
               Visao geral
             </TabsTrigger>
             <TabsTrigger value="tasks" className="rounded-xl px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-950">
-              Tarefas com problema
+              Tarefas para revisao
             </TabsTrigger>
             <TabsTrigger value="elapsed" className="rounded-xl px-4 py-2 data-[state=active]:bg-white data-[state=active]:text-slate-950">
               Horas sem vinculo
@@ -400,10 +486,10 @@ export default function AdminDiagnostico() {
                     </p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-sm font-semibold text-white">Fora da base principal</p>
-                    <p className="mt-2 text-3xl font-semibold text-white">{taskInsights.outOfMainBase}</p>
+                    <p className="text-sm font-semibold text-white">Tarefas arquivadas</p>
+                    <p className="mt-2 text-3xl font-semibold text-white">{taskInsights.archived}</p>
                     <p className="mt-2 text-sm leading-6 text-white/55">
-                      Atividades que deixaram de aparecer na origem principal. Isso normalmente aponta exclusao, arquivamento ou mudanca na origem.
+                      Casos que continuam existindo, mas estao arquivados no contexto atual e por isso precisam de revisao manual antes de voltar para a operacao.
                     </p>
                   </div>
                 </div>
@@ -439,30 +525,60 @@ export default function AdminDiagnostico() {
           </TabsContent>
 
           <TabsContent value="tasks" className="space-y-4">
-            {!payload?.problematic_tasks.length ? (
+            <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Tarefas para revisao</p>
+                  <p className="mt-1 text-sm text-white/55">
+                    Itens que ainda existem na base atual, mas precisam de validacao antes de voltar ao fluxo operacional.
+                  </p>
+                </div>
+                <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[360px]">
+                  <input
+                    type="search"
+                    value={taskSearch}
+                    onChange={(event) => setTaskSearch(event.target.value)}
+                    placeholder="Buscar por nome da tarefa ou ID"
+                    className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/25"
+                  />
+                  <p className="text-xs text-white/45">
+                    Mostrando {pagedTasks.length} de {filteredTasks.length} tarefa(s).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {!filteredTasks.length ? (
               <EmptyPanel
-                title="Nenhuma tarefa problematica encontrada"
-                description="Quando houver atividade sem projeto, sem prazo, sem responsavel ou fora da base principal, ela aparece aqui para revisao."
+                title="Nenhuma tarefa pendente de revisao"
+                description="Quando houver tarefa ativa sem projeto valido, sem responsavel, sem prazo ou arquivada, ela aparece aqui para revisao."
               />
             ) : (
-              payload.problematic_tasks.map((task) => (
+              <>
+              {pagedTasks.map((task) => (
                 <div key={task.task_id} className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="space-y-3">
-                      <div>
+                      <div className="space-y-2">
                         <p className="text-lg font-semibold text-white">{task.title}</p>
-                        <p className="mt-1 text-sm text-white/50">
-                          Tarefa #{task.task_id} • Projeto: {task.project_name ?? "Sem projeto"} • Responsavel: {task.responsible_name ?? "Sem responsavel"}
-                        </p>
+                        <div className="flex flex-wrap gap-2 text-xs text-white/70">
+                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Tarefa #{task.task_id}</Pill>
+                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Responsavel: {task.responsible_name ?? "Nao encontrado"}</Pill>
+                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Status: {formatTaskStatus(task.status)}</Pill>
+                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Projeto: {task.project_name ?? "Sem projeto valido"}</Pill>
+                        </div>
                       </div>
                       <TaskProblemPills problems={task.problems} />
-                      <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                        <p className="text-sm font-semibold text-white">Motivos da revisao</p>
+                        <div className="mt-3 space-y-3">
                         {task.problems.map((problem) => (
-                          <div key={problem.code} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                          <div key={problem.code} className="rounded-xl border border-white/10 bg-[hsl(228_20%_12%/0.9)] p-3">
                             <p className="text-sm font-semibold text-white">{problem.label}</p>
-                            <p className="mt-2 text-sm leading-6 text-white/55">{problem.meaning}</p>
+                            <p className="mt-1 text-sm leading-6 text-white/55">{problem.meaning}</p>
                           </div>
                         ))}
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs text-white/60">
                         <Pill className="border-white/10 bg-white/[0.03] text-white/70">
@@ -517,30 +633,92 @@ export default function AdminDiagnostico() {
                     </div>
                   </div>
                 </div>
-              ))
+              ))}
+              {taskTotalPages > 1 ? (
+                <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] px-4 py-3">
+                  <p className="text-sm text-white/55">
+                    Pagina {taskPage} de {taskTotalPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={taskPage <= 1}
+                      onClick={() => setTaskPage((current) => Math.max(1, current - 1))}
+                      className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={taskPage >= taskTotalPages}
+                      onClick={() => setTaskPage((current) => Math.min(taskTotalPages, current + 1))}
+                      className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+                    >
+                      Proxima
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              </>
             )}
           </TabsContent>
 
           <TabsContent value="elapsed" className="space-y-4">
-            {!payload?.orphan_elapsed.length ? (
+            <div className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Horas sem vinculo</p>
+                  <p className="mt-1 text-sm text-white/55">
+                    Lancamentos que ainda existem, mas precisam de revisao porque o relacionamento com a tarefa nao ficou consistente.
+                  </p>
+                </div>
+                <div className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[360px]">
+                  <input
+                    type="search"
+                    value={elapsedSearch}
+                    onChange={(event) => setElapsedSearch(event.target.value)}
+                    placeholder="Buscar por tarefa, responsavel ou ID"
+                    className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/25"
+                  />
+                  <p className="text-xs text-white/45">
+                    Mostrando {pagedElapsed.length} de {filteredElapsed.length} lancamento(s).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {!filteredElapsed.length ? (
               <EmptyPanel
                 title="Nenhum lancamento sem vinculo"
-                description="Quando uma hora registrada chegar sem atividade valida, ela aparece aqui para revisao e limpeza."
+                description="Quando uma hora registrada continuar sem relacionamento local valido, ela aparece aqui para revisao e limpeza."
               />
             ) : (
-              payload.orphan_elapsed.map((entry) => (
+              <>
+              {pagedElapsed.map((entry) => (
                 <div key={entry.id} className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="space-y-3">
                       <div>
                         <p className="text-lg font-semibold text-white">{entry.label}</p>
-                        <p className="mt-1 text-sm text-white/50">
-                          Lancamento #{entry.id} • Duracao: {formatMinutes(entry.minutes, entry.seconds)} • Referencia:{" "}
-                          {entry.bitrix_task_id_raw ? `atividade ${entry.bitrix_task_id_raw}` : "sem referencia de atividade"}
-                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/70">
+                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Lancamento #{entry.id}</Pill>
+                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">Duracao: {formatMinutes(entry.minutes, entry.seconds)}</Pill>
+                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                            Tarefa: {entry.related_task_name ?? "Nao localizada"}
+                          </Pill>
+                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                            ID da tarefa: {entry.bitrix_task_id_raw ?? entry.task_id ?? "Sem ID"}
+                          </Pill>
+                          <Pill className="border-white/10 bg-white/[0.03] text-white/70">
+                            Status da tarefa: {formatTaskStatus(entry.related_task_status)}
+                          </Pill>
+                        </div>
                       </div>
                       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                        <p className="text-sm leading-6 text-white/55">{entry.meaning}</p>
+                        <p className="text-sm font-semibold text-white">Motivo da revisao</p>
+                        <p className="mt-2 text-sm leading-6 text-white/55">{entry.meaning}</p>
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs text-white/60">
                         <Pill className="border-white/10 bg-white/[0.03] text-white/70">
@@ -556,6 +734,11 @@ export default function AdminDiagnostico() {
                           Revisao: {getStatusLabel(entry.review_status)}
                         </Pill>
                       </div>
+                      {entry.related_task_responsible ? (
+                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-6 text-white/55">
+                          <strong className="font-semibold text-white">Responsavel da tarefa:</strong> {entry.related_task_responsible}
+                        </div>
+                      ) : null}
                       {entry.comment_text ? (
                         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-6 text-white/55">
                           <strong className="font-semibold text-white">Comentario do lancamento:</strong> {entry.comment_text}
@@ -580,7 +763,35 @@ export default function AdminDiagnostico() {
                     </div>
                   </div>
                 </div>
-              ))
+              ))}
+              {elapsedTotalPages > 1 ? (
+                <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] px-4 py-3">
+                  <p className="text-sm text-white/55">
+                    Pagina {elapsedPage} de {elapsedTotalPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={elapsedPage <= 1}
+                      onClick={() => setElapsedPage((current) => Math.max(1, current - 1))}
+                      className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={elapsedPage >= elapsedTotalPages}
+                      onClick={() => setElapsedPage((current) => Math.min(elapsedTotalPages, current + 1))}
+                      className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+                    >
+                      Proxima
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              </>
             )}
           </TabsContent>
 
@@ -681,7 +892,7 @@ export default function AdminDiagnostico() {
         <DialogContent className="border-white/10 bg-[hsl(230_28%_11%)] text-white sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>
-              {dialogState?.type === "task" ? "Revisar tarefa problematica" : "Revisar lancamento sem vinculo"}
+              {dialogState?.type === "task" ? "Revisar tarefa da central" : "Revisar lancamento sem vinculo"}
             </DialogTitle>
             <DialogDescription className="text-white/55">
               Defina se esse caso continua isolado na central, se pode voltar para a operacao ou se deve ser removido da base local.

@@ -69,6 +69,34 @@ function toIsoOrNull(value: unknown) {
   return parsed ? parsed.toISOString() : null;
 }
 
+function normalizeStatusValue(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isTaskArchived(task: any) {
+  const normalizedStatus = normalizeStatusValue(task.status);
+  if (["arquivada", "arquivado", "archived", "archive"].includes(normalizedStatus)) {
+    return true;
+  }
+
+  return Boolean(task.projects?.closed === true);
+}
+
+function dedupeProblems(items: Array<{ code: string; label: string; meaning: string; severity: number }>) {
+  const unique = new Map<string, { code: string; label: string; meaning: string; severity: number }>();
+  for (const item of items) {
+    const existing = unique.get(item.code);
+    if (!existing || item.severity > existing.severity) {
+      unique.set(item.code, item);
+    }
+  }
+  return Array.from(unique.values()).sort((a, b) => b.severity - a.severity || a.label.localeCompare(b.label));
+}
+
 async function resolveCallerRole(adminClient: SupabaseClient, uid: string): Promise<string | null> {
   const { data: roleRows } = await adminClient
     .from("user_roles")
@@ -125,24 +153,36 @@ function summarizeTaskProblems(task: any) {
   const normalizedProjectName = normalizeText(projectName);
   const deadline = parseDate(task.deadline);
   const missingFromBitrixSince = parseDate(task.missing_from_bitrix_since);
+  const archivedTask = isTaskArchived(task);
   const isInternalAlias = !projectId && INTERNAL_PROJECT_ALIASES.some((alias) =>
     normalizedProjectName === alias || normalizedProjectName === `${alias} consulte`
   );
 
   if (missingFromBitrixSince) {
+    return {
+      problems: [],
+      severity: 0,
+      isProblematic: false,
+      isDeletedFromSource: true,
+      projectName,
+      archivedTask,
+    };
+  }
+
+  if (archivedTask) {
     problems.push({
-      code: "missing_from_source",
-      label: "Fora da base principal",
-      meaning: "A atividade deixou de aparecer na sincronização principal. Normalmente isso indica remoção, arquivamento ou mudança na origem.",
-      severity: 100,
+      code: "archived_task",
+      label: "Tarefa arquivada",
+      meaning: "A tarefa continua registrada, mas está arquivada no contexto atual e precisa de revisão antes de voltar ao fluxo operacional.",
+      severity: 85,
     });
   }
 
   if (!projectId || isInternalAlias) {
     problems.push({
       code: "missing_project",
-      label: "Sem projeto válido",
-      meaning: "A atividade está sem vínculo operacional de projeto. Assim, ela perde contexto em gestão, relatórios e painéis.",
+      label: "Vinculo inconsistente",
+      meaning: "A tarefa está sem um projeto operacional valido ou aponta para um alias interno, entao ela fica sem contexto para operacao e acompanhamento.",
       severity: 90,
     });
   }
@@ -175,20 +215,47 @@ function summarizeTaskProblems(task: any) {
   }
 
   return {
-    problems,
+    problems: dedupeProblems(problems),
     severity: problems.reduce((max, item) => Math.max(max, item.severity), 0),
     isProblematic: problems.length > 0,
+    isDeletedFromSource: false,
     projectName,
+    archivedTask,
   };
 }
 
-function summarizeElapsedProblem(entry: any) {
+function summarizeElapsedProblem(entry: any, taskLookup: Map<number, any>) {
   const rawTaskId = validateBigintId(entry.bitrix_task_id_raw);
+  const linkedTaskId = validateBigintId(entry.task_id);
+  const relatedTask = taskLookup.get(linkedTaskId ?? rawTaskId ?? -1) ?? null;
+  const orphanReason = validateString(entry.orphan_reason, 300) ?? null;
+
+  if (orphanReason === "missing_task_in_local_snapshot" && rawTaskId) {
+    return null;
+  }
+
+  if (linkedTaskId && !relatedTask) {
+    return {
+      label: "Hora sem tarefa local valida",
+      meaning: "Esse lancamento ficou vinculado a uma tarefa local que nao pode mais ser usada nesta central. Revise o relacionamento antes de considerar a hora nos acompanhamentos.",
+      relatedTask,
+    };
+  }
+
+  if (rawTaskId && relatedTask) {
+    return {
+      label: "Vinculo local inconsistente",
+      meaning: "A hora referencia a tarefa informada, mas o relacionamento local nao foi consolidado corretamente. Revise o vinculo antes de liberar o registro.",
+      relatedTask,
+    };
+  }
+
   return {
-    label: "Horas sem tarefa associada",
+    label: "Hora sem tarefa associada",
     meaning: rawTaskId
-      ? "Esse lançamento de horas chegou apontando para uma tarefa que não existe mais no retrato local. Pode indicar exclusão, arquivamento ou atraso de sincronização."
-      : "Esse lançamento de horas chegou sem uma tarefa associada válida, então ele não deve alimentar relatórios operacionais.",
+      ? "Esse lancamento informa a tarefa de origem, mas o relacionamento local ainda nao foi concluido. Revise o vinculo antes de usar a hora na operacao."
+      : "Esse lancamento chegou sem uma tarefa identificavel na origem, entao nao deve entrar nos acompanhamentos operacionais ate revisao.",
+    relatedTask,
   };
 }
 
@@ -197,7 +264,7 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
     fetchAllRows(
       adminClient,
       "tasks",
-      "task_id,title,status,deadline,closed_date,group_name,responsible_name,project_id,updated_at,inserted_at,last_seen_in_bitrix_at,missing_from_bitrix_since,projects(name,cliente_id)",
+      "task_id,title,status,deadline,closed_date,group_name,responsible_name,project_id,updated_at,inserted_at,last_seen_in_bitrix_at,missing_from_bitrix_since,projects(name,cliente_id,active,closed,visible)",
       "task_id",
     ),
     fetchAllRows(
@@ -235,13 +302,25 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
 
   const taskControlMap = new Map((taskControls ?? []).map((row: any) => [Number(row.task_id), row]));
   const elapsedControlMap = new Map((elapsedControls ?? []).map((row: any) => [Number(row.elapsed_id), row]));
+  const activeTaskLookup = new Map<number, any>();
+  const deletedTaskIds = new Set<number>();
 
-  const problematicTasks = (tasks ?? [])
-    .map((task: any) => {
+  for (const task of tasks ?? []) {
+    const taskId = Number(task.task_id);
+    if (!taskId) continue;
+    if (parseDate(task.missing_from_bitrix_since)) {
+      deletedTaskIds.add(taskId);
+      continue;
+    }
+    activeTaskLookup.set(taskId, task);
+  }
+
+  const problematicTaskMap = new Map<number, any>();
+  for (const task of tasks ?? []) {
       const summary = summarizeTaskProblems(task);
-      if (!summary.isProblematic) return null;
+      if (summary.isDeletedFromSource || !summary.isProblematic) continue;
       const control = taskControlMap.get(Number(task.task_id)) ?? null;
-      return {
+      const nextTask = {
         task_id: Number(task.task_id),
         title: validateString(task.title, 400) ?? "Sem nome definido",
         status: task.status ?? null,
@@ -261,18 +340,41 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
         admin_note: control?.admin_note ?? null,
         control_updated_at: control?.updated_at ?? null,
       };
-    })
-    .filter(Boolean)
+      const existing = problematicTaskMap.get(nextTask.task_id);
+      if (!existing) {
+        problematicTaskMap.set(nextTask.task_id, nextTask);
+        continue;
+      }
+
+      const mergedProblems = dedupeProblems([...existing.problems, ...nextTask.problems]);
+      problematicTaskMap.set(nextTask.task_id, {
+        ...existing,
+        ...nextTask,
+        problems: mergedProblems,
+        severity: Math.max(existing.severity, nextTask.severity),
+        admin_note: nextTask.admin_note ?? existing.admin_note,
+        control_updated_at: nextTask.control_updated_at ?? existing.control_updated_at,
+      });
+  }
+
+  const problematicTasks = Array.from(problematicTaskMap.values())
     .sort((a: any, b: any) => b.severity - a.severity || String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? "")));
 
   const orphanElapsed = (elapsedTimes ?? [])
     .map((entry: any) => {
+      const rawTaskId = validateBigintId(entry.bitrix_task_id_raw);
+      const linkedTaskId = validateBigintId(entry.task_id);
+      if ((rawTaskId && deletedTaskIds.has(rawTaskId)) || (linkedTaskId && deletedTaskIds.has(linkedTaskId))) {
+        return null;
+      }
       const control = elapsedControlMap.get(Number(entry.id)) ?? null;
-      const summary = summarizeElapsedProblem(entry);
+      const summary = summarizeElapsedProblem(entry, activeTaskLookup);
+      if (!summary) return null;
+      const relatedTask = summary.relatedTask;
       return {
         id: Number(entry.id),
-        task_id: validateBigintId(entry.task_id),
-        bitrix_task_id_raw: validateBigintId(entry.bitrix_task_id_raw),
+        task_id: linkedTaskId,
+        bitrix_task_id_raw: rawTaskId,
         orphan_reason: validateString(entry.orphan_reason, 300),
         orphan_detected_at: toIsoOrNull(entry.orphan_detected_at),
         created_date: toIsoOrNull(entry.created_date),
@@ -284,12 +386,16 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
         comment_text: validateString(entry.comment_text, 500),
         label: summary.label,
         meaning: summary.meaning,
+        related_task_name: validateString(relatedTask?.title, 400),
+        related_task_status: relatedTask?.status ?? null,
+        related_task_responsible: validateString(relatedTask?.responsible_name, 200),
         visibility_mode: control?.visibility_mode ?? "diagnostic_only",
         review_status: control?.review_status ?? "pending",
         admin_note: control?.admin_note ?? null,
         control_updated_at: control?.updated_at ?? null,
       };
     })
+    .filter(Boolean)
     .sort((a: any, b: any) => String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? "")));
 
   const latestTasksRun = (syncRuns.data ?? []).find((row: any) => row.job_name === "Get-Projetcs-And-Tasks-Bitrix") ?? null;
@@ -300,7 +406,7 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
       total_tasks: tasks.length,
       problematic_tasks: problematicTasks.length,
       projectless_tasks: problematicTasks.filter((task: any) => task.problems.some((problem: any) => problem.code === "missing_project")).length,
-      missing_from_source_tasks: problematicTasks.filter((task: any) => task.problems.some((problem: any) => problem.code === "missing_from_source")).length,
+      missing_from_source_tasks: 0,
       incomplete_tasks: problematicTasks.filter((task: any) =>
         task.problems.some((problem: any) => ["missing_title", "missing_responsible", "missing_deadline"].includes(problem.code))
       ).length,
