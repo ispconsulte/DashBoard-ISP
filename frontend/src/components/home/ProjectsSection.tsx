@@ -64,8 +64,14 @@ export default function ProjectsSection() {
 
   const shared = useSharedTasks();
   const ownTasks = useTasks({ accessToken, period: "all" });
-  const { tasks, loading: loadingTasks, error: errorTasks } = shared ?? ownTasks;
-  const { times, loading: loadingTimes } = useElapsedTimes({ accessToken, period: "all" });
+  const { tasks, loading: loadingTasks, error: errorTasks, reload: reloadTasks } = shared ?? ownTasks;
+  const { times, loading: loadingTimes, reload: reloadTimes } = useElapsedTimes({ accessToken, period: "all" });
+
+  // Auto-refresh every 60s so the home page stays current
+  useEffect(() => {
+    const id = setInterval(() => { reloadTasks?.(); reloadTimes?.(); }, 60_000);
+    return () => clearInterval(id);
+  }, [reloadTasks, reloadTimes]);
 
   const startIso = useMemo(() => {
     const d = new Date();
