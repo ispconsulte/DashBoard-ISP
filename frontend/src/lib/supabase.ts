@@ -1,7 +1,6 @@
 // Supabase public configuration — ISP Consulte external project
 // These are PUBLIC keys (anon key is safe to expose in client-side code)
 import { createClient } from "@supabase/supabase-js";
-import { supabaseMemoryStorage } from "@/modules/shared/storage";
 
 export const SUPABASE_URL = "https://stubkeeuttixteqckshd.supabase.co";
 
@@ -11,11 +10,14 @@ export const SUPABASE_ANON_KEY =
 /**
  * Single Supabase client for the external ISP Consulte project.
  * All modules should import this instead of creating their own clients.
+ *
+ * persistSession: true — SDK manages token storage in its own localStorage
+ * keys (sb-{ref}-auth-token). Tokens are NOT stored in our custom
+ * "auth_session" key.
  */
 export const supabaseExt = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    storage: supabaseMemoryStorage,
-    persistSession: false,
+    persistSession: true,
     autoRefreshToken: true,
   },
 });
