@@ -180,6 +180,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
 
   // Total count query
   useEffect(() => {
+    if (skip) return;
     if (envError) return;
     if (!countEndpoint || !key) return;
     const cached = countCacheRef.current;
@@ -220,6 +221,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
 
   // Main fetch effect
   useEffect(() => {
+    if (skip) return;
     if (envError) return;
     if (!endpoint || !latestEndpoint || !key) return;
 
