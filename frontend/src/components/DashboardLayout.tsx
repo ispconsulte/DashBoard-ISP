@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, useMemo, useEffect, useDeferredValue } from "react";
+import { Component, type ErrorInfo, useMemo, useEffect, useDeferredValue, useRef } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { useAuth, type AccessArea } from "@/modules/auth/hooks/useAuth";
@@ -188,6 +188,26 @@ function DashboardInner() {
     period: "180d",
   });
   const { tasks, loading, reload } = sharedTasksResult;
+
+  // Background chunk preloading — warm up most-used route bundles after login
+  // so subsequent navigation feels instant. Only JS chunks, no data fetches.
+  const preloadedRef = useRef(false);
+  useEffect(() => {
+    if (preloadedRef.current || !isAuthenticated) return;
+    preloadedRef.current = true;
+    const preload = () => {
+      import("@/pages/Tarefas").catch(() => {});
+      import("@/pages/Analiticas").catch(() => {});
+      import("@/pages/Calendario").catch(() => {});
+      import("@/pages/Gamificacao").catch(() => {});
+    };
+    // Use requestIdleCallback when available, otherwise a 3s delay
+    if ("requestIdleCallback" in window) {
+      (window as any).requestIdleCallback(preload, { timeout: 5000 });
+    } else {
+      setTimeout(preload, 3000);
+    }
+  }, [isAuthenticated]);
 
   // Auto-refresh is handled by each page (Tarefas, Analiticas, etc.)
   // to avoid duplicated network requests.
