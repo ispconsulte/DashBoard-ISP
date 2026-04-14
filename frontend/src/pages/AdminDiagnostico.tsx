@@ -12,6 +12,7 @@ import {
   EyeOff,
   FileQuestion,
   Hash,
+  Info,
   Link2Off,
   RefreshCw,
   ShieldAlert,
@@ -38,7 +39,7 @@ import {
   fetchIntegrityDashboard,
   type IntegrityElapsedItem,
   type IntegrityPayload,
-  type IntegrityProblem,
+  type IntegrityRun,
   type IntegrityTaskItem,
   upsertIntegrityElapsedControl,
   upsertIntegrityTaskControl,
@@ -114,18 +115,10 @@ function summarizeCron(cron: string) {
   return "agendamento personalizado";
 }
 
-function getStatusLabel(value: ReviewStatus) {
-  return reviewOptions.find((o) => o.value === value)?.label ?? value;
-}
-
-function getVisibilityLabel(value: VisibilityMode) {
-  return visibilityOptions.find((o) => o.value === value)?.label ?? value;
-}
-
 function formatTaskStatus(value: string | number | null | undefined) {
   if (typeof value === "number") {
     if (value === 1) return "Nova";
-    if (value === 2) return "Aguardando execução";
+    if (value === 2) return "Aguardando execução (tarefa não iniciada)";
     if (value === 3) return "Em andamento";
     if (value === 4) return "Aguardando controle";
     if (value === 5) return "Concluída";
@@ -137,19 +130,13 @@ function formatTaskStatus(value: string | number | null | undefined) {
   if (!normalized) return "Sem status";
   const lowered = normalized.toLowerCase();
   if (["1", "new", "nova"].includes(lowered)) return "Nova";
-  if (["2", "pending", "waiting_for_execution", "aguardando execucao", "aguardando execução"].includes(lowered)) return "Aguardando execução";
+  if (["2", "pending", "waiting_for_execution", "aguardando execucao", "aguardando execução"].includes(lowered)) return "Aguardando execução (tarefa não iniciada)";
   if (["3", "in_progress", "em andamento"].includes(lowered)) return "Em andamento";
   if (["4", "awaiting_control", "supposedly_completed", "aguardando controle"].includes(lowered)) return "Aguardando controle";
   if (["5", "done", "concluido", "concluído", "completed", "finalizado"].includes(lowered)) return "Concluída";
   if (["6", "deferred", "postponed", "adiada"].includes(lowered)) return "Adiada";
   if (["7", "declined", "recusada"].includes(lowered)) return "Recusada";
   return normalized;
-}
-
-function getSeverityTone(severity: number) {
-  if (severity >= 90) return "border-red-500/30 bg-red-500/10 text-red-200";
-  if (severity >= 70) return "border-amber-500/30 bg-amber-500/10 text-amber-100";
-  return "border-sky-500/30 bg-sky-500/10 text-sky-100";
 }
 
 function dedupeTasks(items: IntegrityTaskItem[]) {
@@ -175,8 +162,28 @@ function matchesElapsedSearch(item: IntegrityElapsedItem, query: string) {
   return String(item.bitrix_task_id_raw ?? item.task_id ?? "").includes(n) || String(item.id).includes(n) || String(item.related_task_name ?? "").toLowerCase().includes(n) || String(item.related_task_responsible ?? "").toLowerCase().includes(n);
 }
 
-function getPrimaryReason(item: IntegrityTaskItem) {
-  return item.problems[0] ?? null;
+function getReasonSummary(item: IntegrityTaskItem): string {
+  if (!item.problems.length) return "Tarefa sinalizada para revisão.";
+  const codes = item.problems.map((p) => p.code);
+  const parts: string[] = [];
+  if (codes.includes("missing_from_source")) parts.push("não encontrada na última verificação — pode ter sido excluída, arquivada ou estar inacessível");
+  if (codes.includes("missing_project")) parts.push("sem projeto válido associado");
+  if (codes.includes("missing_responsible")) parts.push("sem responsável definido");
+  if (codes.includes("missing_deadline")) parts.push("sem prazo de entrega");
+  if (codes.includes("missing_title")) parts.push("sem título");
+  if (codes.includes("archived_task")) parts.push("tarefa arquivada na origem");
+  if (!parts.length) return item.problems.map((p) => p.meaning).join(". ");
+  return parts.length === 1
+    ? `Tarefa ${parts[0]}.`
+    : `Tarefa ${parts.slice(0, -1).join(", ")} e ${parts[parts.length - 1]}.`;
+}
+
+/** Find the real latest run for a given job_name from recent_runs */
+function findLatestRunForJob(recentRuns: IntegrityRun[], jobName: string): IntegrityRun | null {
+  const matching = recentRuns.filter((r) => r.job_name === jobName);
+  if (!matching.length) return null;
+  matching.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+  return matching[0];
 }
 
 /* ─── Componentes auxiliares ─── */
@@ -197,24 +204,6 @@ function StatCard({ label, value, helper, icon: Icon }: { label: string; value: 
         </div>
       </div>
       <p className="mt-3.5 text-[13px] leading-[1.65] text-white/50">{helper}</p>
-    </div>
-  );
-}
-
-function Pill({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium leading-5 ${className}`}>
-      {children}
-    </span>
-  );
-}
-
-function TaskProblemPills({ problems }: { problems: IntegrityProblem[] }) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {problems.map((p) => (
-        <Pill key={p.code} className={getSeverityTone(p.severity)}>{p.label}</Pill>
-      ))}
     </div>
   );
 }
@@ -269,6 +258,14 @@ function PaginationBar({ page, totalPages, onPrev, onNext, label }: { page: numb
         </Button>
       </div>
     </div>
+  );
+}
+
+function Pill({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium leading-5 ${className}`}>
+      {children}
+    </span>
   );
 }
 
@@ -379,7 +376,7 @@ export default function AdminDiagnostico() {
         <PageHeaderCard
           icon={ShieldAlert}
           title="Central de Integridade"
-          subtitle="Painel administrativo para monitorar sincronizações, isolar tarefas problemáticas e decidir o que volta ou não para a operação."
+          subtitle="Painel administrativo para monitorar sincronizações, revisar tarefas problemáticas e decidir o que volta ou não para a operação."
           actions={
             <Button type="button" variant="outline" onClick={() => void loadDashboard()} disabled={loading} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -432,13 +429,12 @@ export default function AdminDiagnostico() {
               <StatCard
                 label="Liberadas para operação"
                 value={releasedTaskCount}
-                helper="Casos revisados e autorizados a voltar para as telas operacionais normais."
+                helper="Casos revisados e autorizados a voltar para as telas operacionais."
                 icon={BadgeCheck}
               />
             </div>
 
             <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
-              {/* Acompanhamento */}
               <div className={`${CARD} p-6`}>
                 <SectionHeader icon={Bug} title="O que a central está acompanhando" />
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -457,13 +453,12 @@ export default function AdminDiagnostico() {
                 </div>
               </div>
 
-              {/* Guia de decisão */}
               <div className={`${CARD} p-6`}>
                 <SectionHeader icon={Wrench} title="Guia rápido de decisão" />
                 <div className="mt-5 space-y-3">
                   {[
-                    { title: "Manter somente na central", desc: "Use quando a atividade ainda precisa de correção ou quando o histórico deve ficar guardado sem poluir gestão, analíticas e calendário." },
-                    { title: "Liberar para operação", desc: "Use quando o caso foi revisado e faz sentido reaparecer nas telas normais, mesmo com alguma observação administrativa." },
+                    { title: "Manter somente na central", desc: "Use quando a atividade ainda precisa de correção ou quando o histórico deve ser preservado sem poluir gestão, analíticas e calendário." },
+                    { title: "Liberar para operação", desc: "Use quando o caso foi revisado e faz sentido reaparecer nas telas normais, mesmo com alguma observação." },
                     { title: "Excluir da base local", desc: "Use para remover registros que não fazem mais sentido. A exclusão remove o item apenas desta base local." },
                   ].map((item) => (
                     <div key={item.title} className={`${INNER} p-4`}>
@@ -478,7 +473,7 @@ export default function AdminDiagnostico() {
 
           {/* ═══════ TAREFAS PARA REVISÃO ═══════ */}
           <TabsContent value="tasks" className="space-y-5">
-            {/* Header / busca */}
+            {/* Header + busca */}
             <div className={`${CARD} p-5`}>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -502,6 +497,21 @@ export default function AdminDiagnostico() {
               </div>
             </div>
 
+            {/* Global explanation block */}
+            {filteredTasks.length > 0 && (
+              <div className={`${CARD} flex items-start gap-3 px-5 py-4`}>
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/60" />
+                <div className="space-y-1.5 text-[13px] leading-[1.6] text-white/55">
+                  <p className="font-semibold text-white/70">Por que estas tarefas estão aqui?</p>
+                  <div className="flex flex-col gap-1">
+                    <p><span className="font-medium text-white/65">Não encontrada ou sem acesso</span> — a tarefa pode ter sido excluída, arquivada, filtrada ou estar sem permissão de acesso na origem.</p>
+                    <p><span className="font-medium text-white/65">Dados incompletos</span> — a tarefa chegou sem projeto, sem responsável ou sem prazo de entrega.</p>
+                    <p><span className="font-medium text-white/65">Sincronização</span> — falhas temporárias podem ter impedido a atualização. Revise antes de tomar qualquer decisão.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {!filteredTasks.length ? (
               <EmptyPanel
                 title="Nenhuma tarefa pendente de revisão"
@@ -509,100 +519,66 @@ export default function AdminDiagnostico() {
               />
             ) : (
               <>
-                {pagedTasks.map((task) => {
-                  const reason = getPrimaryReason(task);
-                  return (
-                    <div key={task.task_id} className={`${CARD} overflow-hidden`}>
-                      {/* Reason banner */}
-                      {reason && (
-                        <div className="border-b border-amber-500/15 bg-amber-500/[0.06] px-6 py-3.5">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-300/70">Por que está na central</p>
-                          <p className="mt-1 text-sm font-medium text-white/90">{reason.label}</p>
-                          <p className="mt-0.5 text-[13px] leading-[1.55] text-white/50">{reason.meaning}</p>
+                {pagedTasks.map((task) => (
+                  <div key={task.task_id} className={`${CARD} p-5`}>
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:gap-6">
+                      {/* Main content */}
+                      <div className="min-w-0 flex-1 space-y-4">
+                        {/* Title */}
+                        <h3 className="text-base font-semibold leading-snug text-white">{task.title}</h3>
+
+                        {/* Metadata grid */}
+                        <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                          <MetaField icon={Hash} label="ID da tarefa" value={`#${task.task_id}`} />
+                          <MetaField icon={User} label="Responsável" value={task.responsible_name ?? "Não encontrado"} />
+                          <MetaField icon={CheckCircle2} label="Status" value={formatTaskStatus(task.status)} />
+                          <MetaField icon={Bug} label="Projeto" value={task.project_name ?? "Sem projeto válido"} />
+                          <MetaField icon={CalendarClock} label="Prazo" value={formatDate(task.deadline)} />
+                          <MetaField icon={Clock3} label="Última atualização" value={formatDateTime(task.updated_at)} />
                         </div>
-                      )}
 
-                      <div className="p-6">
-                        <div className="flex flex-col gap-5 xl:flex-row xl:gap-8">
-                          {/* Main content */}
-                          <div className="min-w-0 flex-1 space-y-5">
-                            {/* Title + pills */}
-                            <div>
-                              <h3 className="text-lg font-semibold leading-tight text-white">{task.title}</h3>
-                              <div className="mt-2">
-                                <TaskProblemPills problems={task.problems} />
-                              </div>
-                            </div>
+                        {/* Concise reason */}
+                        <p className="text-[13px] leading-[1.6] text-amber-200/60">
+                          {getReasonSummary(task)}
+                        </p>
 
-                            {/* Metadata grid */}
-                            <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-                              <MetaField icon={Hash} label="ID da tarefa" value={`#${task.task_id}`} />
-                              <MetaField icon={User} label="Responsável" value={task.responsible_name ?? "Não encontrado"} />
-                              <MetaField icon={CheckCircle2} label="Status" value={formatTaskStatus(task.status)} />
-                              <MetaField icon={Bug} label="Projeto" value={task.project_name ?? "Sem projeto válido"} />
-                              <MetaField icon={CalendarClock} label="Prazo" value={formatDate(task.deadline)} />
-                              <MetaField icon={Clock3} label="Última atualização" value={formatDateTime(task.updated_at)} />
-                              <MetaField icon={Eye} label="Exibição" value={getVisibilityLabel(task.visibility_mode)} />
-                              <MetaField icon={ShieldCheck} label="Revisão" value={getStatusLabel(task.review_status)} />
-                            </div>
-
-                            {/* Checklist */}
-                            {task.problems.length > 0 && (
-                              <div className={`${INNER} p-4`}>
-                                <p className="text-sm font-semibold text-white">Checklist da revisão</p>
-                                <p className="mt-1 text-[13px] leading-relaxed text-white/40">
-                                  Cada item abaixo descreve o que precisa ser corrigido ou confirmado antes de liberar esta tarefa.
-                                </p>
-                                <div className="mt-3 space-y-2">
-                                  {task.problems.map((p) => (
-                                    <div key={p.code} className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3.5 py-2.5">
-                                      <p className="text-sm font-medium text-white/85">{p.label}</p>
-                                      <p className="mt-0.5 text-[13px] leading-[1.55] text-white/45">{p.meaning}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Admin note */}
-                            {task.admin_note && (
-                              <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.07] px-4 py-3 text-sm leading-relaxed text-sky-100">
-                                <strong className="font-semibold">Observação administrativa:</strong> {task.admin_note}
-                              </div>
-                            )}
+                        {/* Admin note */}
+                        {task.admin_note && (
+                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.06] px-3.5 py-2.5 text-[13px] leading-relaxed text-sky-100">
+                            <strong className="font-semibold">Nota:</strong> {task.admin_note}
                           </div>
+                        )}
+                      </div>
 
-                          {/* Actions column */}
-                          <div className="flex shrink-0 flex-col gap-2.5 xl:w-[220px]">
-                            <Button
-                              type="button"
-                              className="justify-start gap-2.5 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
-                              variant="outline"
-                              onClick={() => setDialogState({ type: "task", item: task })}
-                            >
-                              <ShieldAlert className="h-4 w-4 text-amber-300/80" />
-                              Revisar caso
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="justify-start gap-2.5 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
-                              onClick={() =>
-                                setDialogState({
-                                  type: "task",
-                                  item: { ...task, visibility_mode: task.visibility_mode === "show_in_operations" ? "diagnostic_only" : "show_in_operations" },
-                                })
-                              }
-                            >
-                              <ArrowUpRight className="h-4 w-4 text-sky-300/80" />
-                              {task.visibility_mode === "show_in_operations" ? "Resguardar na central" : "Liberar para operação"}
-                            </Button>
-                          </div>
-                        </div>
+                      {/* Actions */}
+                      <div className="flex shrink-0 flex-row gap-2 xl:w-[200px] xl:flex-col">
+                        <Button
+                          type="button"
+                          className="justify-start gap-2 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                          variant="outline"
+                          onClick={() => setDialogState({ type: "task", item: task })}
+                        >
+                          <ShieldAlert className="h-4 w-4 text-amber-300/80" />
+                          Revisar caso
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="justify-start gap-2 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                          onClick={() =>
+                            setDialogState({
+                              type: "task",
+                              item: { ...task, visibility_mode: task.visibility_mode === "show_in_operations" ? "diagnostic_only" : "show_in_operations" },
+                            })
+                          }
+                        >
+                          <ArrowUpRight className="h-4 w-4 text-sky-300/80" />
+                          {task.visibility_mode === "show_in_operations" ? "Resguardar na central" : "Liberar para operação"}
+                        </Button>
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
 
                 <PaginationBar
                   page={taskPage}
@@ -640,6 +616,17 @@ export default function AdminDiagnostico() {
               </div>
             </div>
 
+            {/* Global explanation */}
+            {filteredElapsed.length > 0 && (
+              <div className={`${CARD} flex items-start gap-3 px-5 py-4`}>
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/60" />
+                <p className="text-[13px] leading-[1.6] text-white/55">
+                  <span className="font-semibold text-white/70">Por que estes lançamentos estão aqui?</span>{" "}
+                  Cada lançamento referencia uma tarefa que não foi encontrada na última verificação. A tarefa pode ter sido excluída, arquivada ou estar inacessível por questões de permissão, filtro ou sincronização.
+                </p>
+              </div>
+            )}
+
             {!filteredElapsed.length ? (
               <EmptyPanel
                 title="Nenhum lançamento sem vínculo"
@@ -648,62 +635,48 @@ export default function AdminDiagnostico() {
             ) : (
               <>
                 {pagedElapsed.map((entry) => (
-                  <div key={entry.id} className={`${CARD} overflow-hidden`}>
-                    {/* Reason banner */}
-                    <div className="border-b border-amber-500/15 bg-amber-500/[0.06] px-6 py-3.5">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-300/70">Motivo da revisão</p>
-                      <p className="mt-1 text-[13px] leading-[1.55] text-white/60">
-                        {entry.meaning || "Este lançamento de horas referencia uma tarefa que não foi encontrada na última verificação. A tarefa pode ter sido excluída, ou estar indisponível por questões de permissão, filtro ou sincronização."}
-                      </p>
-                    </div>
+                  <div key={entry.id} className={`${CARD} p-5`}>
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:gap-6">
+                      <div className="min-w-0 flex-1 space-y-4">
+                        <h3 className="text-base font-semibold leading-snug text-white">{entry.label}</h3>
 
-                    <div className="p-6">
-                      <div className="flex flex-col gap-5 xl:flex-row xl:gap-8">
-                        <div className="min-w-0 flex-1 space-y-5">
-                          {/* Title */}
-                          <h3 className="text-lg font-semibold leading-tight text-white">{entry.label}</h3>
+                        <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                          <MetaField icon={Hash} label="ID do lançamento" value={`#${entry.id}`} />
+                          <MetaField icon={Hash} label="ID da tarefa" value={entry.bitrix_task_id_raw != null ? `#${entry.bitrix_task_id_raw}` : (entry.task_id != null ? `#${entry.task_id}` : "Sem ID")} />
+                          <MetaField icon={User} label="Responsável da tarefa" value={entry.related_task_responsible ?? "Não encontrado"} />
+                          <MetaField icon={CheckCircle2} label="Status da tarefa" value={formatTaskStatus(entry.related_task_status)} />
+                          <MetaField icon={Bug} label="Projeto vinculado" value={entry.related_task_name ?? "Não localizado"} />
+                          <MetaField icon={Clock3} label="Duração" value={formatMinutes(entry.minutes, entry.seconds)} />
+                          <MetaField icon={CalendarClock} label="Detectado em" value={formatDateTime(entry.orphan_detected_at)} />
+                          <MetaField icon={Clock3} label="Última atualização" value={formatDateTime(entry.updated_at)} />
+                        </div>
 
-                          {/* Metadata grid */}
-                          <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-                            <MetaField icon={Hash} label="ID do lançamento" value={`#${entry.id}`} />
-                            <MetaField icon={Hash} label="ID da tarefa" value={entry.bitrix_task_id_raw != null ? `#${entry.bitrix_task_id_raw}` : (entry.task_id != null ? `#${entry.task_id}` : "Sem ID")} />
-                            <MetaField icon={User} label="Responsável da tarefa" value={entry.related_task_responsible ?? "Não encontrado"} />
-                            <MetaField icon={CheckCircle2} label="Status da tarefa" value={formatTaskStatus(entry.related_task_status)} />
-                            <MetaField icon={Bug} label="Tarefa relacionada" value={entry.related_task_name ?? "Não localizada"} />
-                            <MetaField icon={Clock3} label="Duração" value={formatMinutes(entry.minutes, entry.seconds)} />
-                            <MetaField icon={CalendarClock} label="Detectado em" value={formatDateTime(entry.orphan_detected_at)} />
-                            <MetaField icon={Clock3} label="Última atualização" value={formatDateTime(entry.updated_at)} />
-                            <MetaField icon={Eye} label="Exibição" value={getVisibilityLabel(entry.visibility_mode)} />
-                            <MetaField icon={ShieldCheck} label="Revisão" value={getStatusLabel(entry.review_status)} />
+                        {/* Comment */}
+                        {entry.comment_text && (
+                          <p className="text-[13px] leading-relaxed text-white/50">
+                            <strong className="font-semibold text-white/70">Comentário:</strong> {entry.comment_text}
+                          </p>
+                        )}
+
+                        {/* Admin note */}
+                        {entry.admin_note && (
+                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.06] px-3.5 py-2.5 text-[13px] leading-relaxed text-sky-100">
+                            <strong className="font-semibold">Nota:</strong> {entry.admin_note}
                           </div>
+                        )}
+                      </div>
 
-                          {/* Comment */}
-                          {entry.comment_text && (
-                            <div className={`${INNER} px-4 py-3 text-sm leading-relaxed text-white/55`}>
-                              <strong className="font-semibold text-white/80">Comentário do lançamento:</strong> {entry.comment_text}
-                            </div>
-                          )}
-
-                          {/* Admin note */}
-                          {entry.admin_note && (
-                            <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.07] px-4 py-3 text-sm leading-relaxed text-sky-100">
-                              <strong className="font-semibold">Observação administrativa:</strong> {entry.admin_note}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex shrink-0 flex-col gap-2.5 xl:w-[220px]">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="justify-start gap-2.5 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
-                            onClick={() => setDialogState({ type: "elapsed", item: entry })}
-                          >
-                            <ShieldAlert className="h-4 w-4 text-amber-300/80" />
-                            Revisar lançamento
-                          </Button>
-                        </div>
+                      {/* Actions */}
+                      <div className="flex shrink-0 flex-row gap-2 xl:w-[200px] xl:flex-col">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="justify-start gap-2 border-white/10 bg-white/[0.06] text-white hover:bg-white/[0.12]"
+                          onClick={() => setDialogState({ type: "elapsed", item: entry })}
+                        >
+                          <ShieldAlert className="h-4 w-4 text-amber-300/80" />
+                          Revisar lançamento
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -732,12 +705,19 @@ export default function AdminDiagnostico() {
                     { label: "Rotina de tempos lançados", run: payload?.sync.latest_times_run },
                   ].map((item) => (
                     <div key={item.label} className={`${INNER} p-4`}>
-                      <p className="text-sm font-semibold text-white">{item.label}</p>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-white">{item.label}</p>
+                        {item.run && (
+                          <Pill className={item.run.status === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200"}>
+                            {item.run.status === "success" ? "Sucesso" : item.run.status ?? "sem registro"}
+                          </Pill>
+                        )}
+                      </div>
                       <p className="mt-2 text-[13px] leading-[1.6] text-white/55">
-                        Última execução em {formatDateTime(item.run?.started_at)} com status{" "}
-                        <strong className="text-white">{item.run?.status ?? "sem registro"}</strong>.
+                        Executada em {formatDateTime(item.run?.started_at)}
+                        {item.run?.finished_at && <> · Concluída em {formatDateTime(item.run.finished_at)}</>}
                       </p>
-                      <p className="mt-1.5 text-[11px] text-white/40">
+                      <p className="mt-1 text-[11px] text-white/40">
                         Duração: {formatDuration(item.run?.duration_ms)}
                       </p>
                     </div>
@@ -745,28 +725,34 @@ export default function AdminDiagnostico() {
                 </div>
               </div>
 
-              {/* Agendamentos */}
+              {/* Agendamentos ativos — show real latest run from recent_runs */}
               <div className={`${CARD} p-6`}>
                 <SectionHeader icon={CalendarClock} title="Agendamentos ativos" subtitle="Rotinas de sincronização programadas" />
                 <div className="mt-5 space-y-3">
-                  {(payload?.sync.configs ?? []).map((config) => (
-                    <div key={config.job_name} className={`${INNER} p-4`}>
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white">{config.job_name}</p>
-                          <p className="mt-1 text-[11px] text-white/40">
-                            Cron: {config.cron_expression} · {summarizeCron(config.cron_expression)}
-                          </p>
+                  {(payload?.sync.configs ?? []).map((config) => {
+                    const realLatest = findLatestRunForJob(payload?.sync.recent_runs ?? [], config.job_name);
+                    return (
+                      <div key={config.job_name} className={`${INNER} p-4`}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white">{config.job_name}</p>
+                            <p className="mt-1 text-[11px] text-white/40">
+                              Cron: {config.cron_expression} · {summarizeCron(config.cron_expression)}
+                            </p>
+                          </div>
+                          <Pill className={config.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-white/10 bg-white/[0.03] text-white/50"}>
+                            {config.enabled ? "Ativo" : "Desativado"}
+                          </Pill>
                         </div>
-                        <Pill className={config.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-white/10 bg-white/[0.03] text-white/50"}>
-                          {config.enabled ? "Ativo" : "Desativado"}
-                        </Pill>
+                        <p className="mt-3 text-[13px] leading-[1.6] text-white/50">
+                          Última execução real: {formatDateTime(realLatest?.started_at ?? config.last_scheduled_at)}
+                          {realLatest && (
+                            <> · <span className={realLatest.status === "success" ? "text-emerald-300/70" : "text-red-300/70"}>{realLatest.status === "success" ? "Sucesso" : realLatest.status}</span></>
+                          )}
+                        </p>
                       </div>
-                      <p className="mt-3 text-[13px] leading-[1.6] text-white/50">
-                        Último disparo programado: {formatDateTime(config.last_scheduled_at)}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -774,28 +760,32 @@ export default function AdminDiagnostico() {
             {/* Histórico recente */}
             <div className={`${CARD} p-6`}>
               <SectionHeader icon={AlertTriangle} title="Histórico recente" subtitle="Execuções registradas nas últimas horas" />
-              <div className="mt-5 space-y-3">
-                {(payload?.sync.recent_runs ?? []).map((run, index) => (
-                  <div key={`${run.job_name}-${run.started_at}-${index}`} className={`${INNER} p-4`}>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-white">{run.job_name}</p>
-                        <p className="mt-1 text-[11px] text-white/40">
-                          Iniciou em {formatDateTime(run.started_at)} · Duração: {formatDuration(run.duration_ms)}
-                        </p>
+              {!(payload?.sync.recent_runs ?? []).length ? (
+                <p className="mt-5 text-[13px] text-white/40">Nenhuma execução recente registrada.</p>
+              ) : (
+                <div className="mt-5 space-y-3">
+                  {(payload?.sync.recent_runs ?? []).map((run, index) => (
+                    <div key={`${run.job_name}-${run.started_at}-${index}`} className={`${INNER} p-4`}>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white">{run.job_name}</p>
+                          <p className="mt-1 text-[11px] text-white/40">
+                            Iniciou em {formatDateTime(run.started_at)}
+                            {run.finished_at && <> · Concluiu em {formatDateTime(run.finished_at)}</>}
+                            {" · Duração: "}{formatDuration(run.duration_ms)}
+                          </p>
+                        </div>
+                        <Pill className={run.status === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200"}>
+                          {run.status === "success" ? "Sucesso" : run.status}
+                        </Pill>
                       </div>
-                      <Pill className={run.status === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200"}>
-                        {run.status === "success" ? "Sucesso" : run.status}
-                      </Pill>
+                      {run.error_message && (
+                        <p className="mt-2.5 text-sm leading-relaxed text-red-200/80">{run.error_message}</p>
+                      )}
                     </div>
-                    {run.error_message ? (
-                      <p className="mt-2.5 text-sm leading-relaxed text-red-200/80">{run.error_message}</p>
-                    ) : (
-                      <p className="mt-2.5 text-[13px] leading-relaxed text-white/45">Execução concluída sem erros registrados.</p>
-                    )}
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </TabsContent>
         </Tabs>
@@ -809,7 +799,7 @@ export default function AdminDiagnostico() {
               {dialogState?.type === "task" ? "Revisar tarefa" : "Revisar lançamento"}
             </DialogTitle>
             <DialogDescription className="text-white/50">
-              Defina se este caso permanece isolado na central, se pode voltar para a operação ou se deve ser removido da base local.
+              Defina se este caso permanece isolado na central, se pode voltar para a operação ou se deve ser removido.
             </DialogDescription>
           </DialogHeader>
 
@@ -822,8 +812,8 @@ export default function AdminDiagnostico() {
               </p>
               <p className="mt-2 text-[13px] leading-[1.6] text-white/50">
                 {dialogState?.type === "task"
-                  ? dialogState.item.problems.map((p) => p.meaning).join(" ")
-                  : dialogState?.item.meaning}
+                  ? getReasonSummary(dialogState.item)
+                  : dialogState?.item.meaning || "Lançamento referencia uma tarefa não encontrada na última verificação."}
               </p>
             </div>
 
@@ -862,7 +852,7 @@ export default function AdminDiagnostico() {
                 id="admin-note"
                 value={adminNote}
                 onChange={(e) => setAdminNote(e.target.value)}
-                rows={4}
+                rows={3}
                 placeholder="Ex.: atividade arquivada na origem, manter apenas para histórico."
                 className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-3 text-sm text-white outline-none placeholder:text-white/25"
               />
