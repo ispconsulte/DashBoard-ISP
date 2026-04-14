@@ -119,15 +119,32 @@ function getVisibilityLabel(value: VisibilityMode) {
 
 function formatTaskStatus(value: string | number | null | undefined) {
   if (typeof value === "number") {
+    if (value === 1) return "Nova";
+    if (value === 2) return "Aguardando execucao";
+    if (value === 3) return "Em andamento";
+    if (value === 4) return "Aguardando controle";
     if (value === 5) return "Concluida";
+    if (value === 6) return "Adiada";
+    if (value === 7) return "Recusada";
     return `Status ${value}`;
   }
 
   const normalized = String(value ?? "").trim();
   if (!normalized) return "Sem status";
-  if (["5", "done", "concluido", "concluído", "completed", "finalizado"].includes(normalized.toLowerCase())) {
+  const lowered = normalized.toLowerCase();
+  if (["1", "new", "nova"].includes(lowered)) return "Nova";
+  if (["2", "pending", "waiting_for_execution", "aguardando execucao", "aguardando execução"].includes(lowered)) {
+    return "Aguardando execucao";
+  }
+  if (["3", "in_progress", "em andamento"].includes(lowered)) return "Em andamento";
+  if (["4", "awaiting_control", "supposedly_completed", "aguardando controle"].includes(lowered)) {
+    return "Aguardando controle";
+  }
+  if (["5", "done", "concluido", "concluído", "completed", "finalizado"].includes(lowered)) {
     return "Concluida";
   }
+  if (["6", "deferred", "postponed", "adiada"].includes(lowered)) return "Adiada";
+  if (["7", "declined", "recusada"].includes(lowered)) return "Recusada";
   return normalized;
 }
 
@@ -172,6 +189,10 @@ function matchesElapsedSearch(item: IntegrityElapsedItem, query: string) {
     String(item.related_task_name ?? "").toLowerCase().includes(normalized) ||
     String(item.related_task_responsible ?? "").toLowerCase().includes(normalized)
   );
+}
+
+function getPrimaryReason(item: IntegrityTaskItem) {
+  return item.problems[0] ?? null;
 }
 
 function StatCard({
@@ -559,6 +580,13 @@ export default function AdminDiagnostico() {
                 <div key={task.task_id} className="rounded-2xl border border-white/10 bg-[hsl(228_25%_10%/0.9)] p-5">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="space-y-3">
+                      {getPrimaryReason(task) ? (
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-100/80">Por que esta na central</p>
+                          <p className="mt-2 text-base font-semibold text-white">{getPrimaryReason(task)?.label}</p>
+                          <p className="mt-1 text-sm leading-6 text-white/60">{getPrimaryReason(task)?.meaning}</p>
+                        </div>
+                      ) : null}
                       <div className="space-y-2">
                         <p className="text-lg font-semibold text-white">{task.title}</p>
                         <div className="flex flex-wrap gap-2 text-xs text-white/70">
@@ -570,7 +598,10 @@ export default function AdminDiagnostico() {
                       </div>
                       <TaskProblemPills problems={task.problems} />
                       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                        <p className="text-sm font-semibold text-white">Motivos da revisao</p>
+                        <p className="text-sm font-semibold text-white">Checklist da revisao</p>
+                        <p className="mt-1 text-sm leading-6 text-white/45">
+                          Cada item abaixo explica de forma objetiva o que precisa ser corrigido ou confirmado antes da tarefa sair da central.
+                        </p>
                         <div className="mt-3 space-y-3">
                         {task.problems.map((problem) => (
                           <div key={problem.code} className="rounded-xl border border-white/10 bg-[hsl(228_20%_12%/0.9)] p-3">

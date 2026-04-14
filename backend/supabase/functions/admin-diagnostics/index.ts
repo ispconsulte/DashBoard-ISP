@@ -78,11 +78,6 @@ function normalizeStatusValue(value: unknown) {
 }
 
 function isTaskArchived(task: any) {
-  const normalizedStatus = normalizeStatusValue(task.status);
-  if (["arquivada", "arquivado", "archived", "archive"].includes(normalizedStatus)) {
-    return true;
-  }
-
   return Boolean(task.projects?.closed === true);
 }
 
@@ -172,8 +167,8 @@ function summarizeTaskProblems(task: any) {
   if (archivedTask) {
     problems.push({
       code: "archived_task",
-      label: "Tarefa arquivada",
-      meaning: "A tarefa continua registrada, mas está arquivada no contexto atual e precisa de revisão antes de voltar ao fluxo operacional.",
+      label: "Projeto arquivado",
+      meaning: "A tarefa ainda existe, mas o projeto ou grupo vinculado esta arquivado. Revise se ela deve continuar isolada na central ou ser tratada como historico.",
       severity: 85,
     });
   }
@@ -181,8 +176,8 @@ function summarizeTaskProblems(task: any) {
   if (!projectId || isInternalAlias) {
     problems.push({
       code: "missing_project",
-      label: "Vinculo inconsistente",
-      meaning: "A tarefa está sem um projeto operacional valido ou aponta para um alias interno, entao ela fica sem contexto para operacao e acompanhamento.",
+      label: "Sem projeto vinculado",
+      meaning: "A tarefa esta sem projeto operacional valido ou aponta para um vinculo interno. Por isso, ela fica sem contexto confiavel para operacao e relatorios.",
       severity: 90,
     });
   }
@@ -199,8 +194,8 @@ function summarizeTaskProblems(task: any) {
   if (!responsible) {
     problems.push({
       code: "missing_responsible",
-      label: "Sem responsável",
-      meaning: "A atividade não tem responsável definido localmente, então ela não deveria entrar no fluxo operacional normal.",
+      label: "Responsavel nao encontrado",
+      meaning: "A tarefa chegou sem um responsavel identificado na base local. Antes de voltar para operacao, e preciso revisar quem responde por ela.",
       severity: 70,
     });
   }
@@ -208,8 +203,8 @@ function summarizeTaskProblems(task: any) {
   if (!deadline) {
     problems.push({
       code: "missing_deadline",
-      label: "Sem prazo",
-      meaning: "A atividade está sem data de entrega. Isso reduz a confiança de atrasos, prioridades e acompanhamento de rotina.",
+      label: "Sem prazo definido",
+      meaning: "A tarefa nao tem data de entrega informada. Isso impede uma leitura confiavel de atraso, prioridade e planejamento.",
       severity: 60,
     });
   }
