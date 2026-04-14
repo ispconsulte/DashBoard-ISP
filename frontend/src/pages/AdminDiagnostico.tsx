@@ -178,12 +178,13 @@ function getReasonSummary(item: IntegrityTaskItem): string {
   if (!item.problems.length) return "Tarefa sinalizada para revisão.";
   const codes = item.problems.map((p) => p.code);
   const parts: string[] = [];
-  if (codes.includes("missing_from_source")) parts.push("não encontrada na última verificação — pode ter sido excluída, arquivada ou estar inacessível");
+  if (codes.includes("not_found_or_no_access")) parts.push("não foi localizada na origem com o usuário técnico e não possui exclusão confirmada");
+  if (codes.includes("stale_not_seen")) parts.push("está há tempo demais sem aparecer novamente na sincronização");
   if (codes.includes("missing_project")) parts.push("sem projeto válido associado");
   if (codes.includes("missing_responsible")) parts.push("sem responsável definido");
   if (codes.includes("missing_deadline")) parts.push("sem prazo de entrega");
   if (codes.includes("missing_title")) parts.push("sem título");
-  if (codes.includes("archived_task")) parts.push("tarefa arquivada na origem");
+  if (codes.includes("archived_task")) parts.push("ligada a projeto ou grupo arquivado");
   if (!parts.length) return item.problems.map((p) => p.meaning).join(". ");
   return parts.length === 1
     ? `Tarefa ${parts[0]}.`
@@ -203,16 +204,17 @@ function getTaskProblemCodes(item: IntegrityTaskItem) {
   return item.problems.map((p) => p.code);
 }
 
-type TaskFilterCategory = "missing_from_source" | "missing_project" | "missing_responsible" | "missing_deadline" | "archived_task" | "";
+type TaskFilterCategory = "not_found_or_no_access" | "missing_project" | "missing_responsible" | "missing_deadline" | "archived_task" | "stale_not_seen" | "";
 type PeriodFilter = "" | "7d" | "30d" | "90d";
 
 const TASK_CATEGORY_OPTIONS: Array<{ value: TaskFilterCategory; label: string }> = [
   { value: "", label: "Todas as categorias" },
-  { value: "missing_from_source", label: "Não encontrada / sem acesso" },
+  { value: "not_found_or_no_access", label: "Não encontrada / sem acesso" },
   { value: "missing_project", label: "Sem projeto válido" },
   { value: "missing_responsible", label: "Sem responsável" },
   { value: "missing_deadline", label: "Sem prazo" },
-  { value: "archived_task", label: "Arquivada" },
+  { value: "archived_task", label: "Projeto arquivado" },
+  { value: "stale_not_seen", label: "Sem atualização recente" },
 ];
 
 const PERIOD_OPTIONS: Array<{ value: PeriodFilter; label: string }> = [
@@ -429,7 +431,7 @@ export default function AdminDiagnostico() {
       if (taskResponsible && i.responsible_name !== taskResponsible) return false;
       if (taskProject && i.project_name !== taskProject) return false;
       if (cutoff) {
-        const d = new Date(i.updated_at ?? i.created_at ?? "");
+        const d = new Date(i.updated_at ?? i.inserted_at ?? "");
         if (Number.isNaN(d.getTime()) || d < cutoff) return false;
       }
       return true;
@@ -691,9 +693,10 @@ export default function AdminDiagnostico() {
               <div className={`${CARD} flex items-start gap-3 px-5 py-3.5`}>
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/60" />
                 <div className="flex flex-wrap gap-x-6 gap-y-1 text-[12px] leading-[1.6] text-white/50">
-                  <span><span className="font-medium text-white/60">Não encontrada</span> — excluída, arquivada ou sem acesso</span>
+                  <span><span className="font-medium text-white/60">Não encontrada / sem acesso</span> — não houve exclusão confirmada por evento oficial</span>
+                  <span><span className="font-medium text-white/60">Projeto arquivado</span> — a tarefa existe, mas o grupo/projeto está fechado no Bitrix</span>
                   <span><span className="font-medium text-white/60">Dados incompletos</span> — sem projeto, responsável ou prazo</span>
-                  <span><span className="font-medium text-white/60">Sincronização</span> — falha temporária na atualização</span>
+                  <span><span className="font-medium text-white/60">Sem atualização recente</span> — a tarefa ficou tempo demais sem ser vista novamente</span>
                 </div>
               </div>
             )}
@@ -850,7 +853,7 @@ export default function AdminDiagnostico() {
               <div className={`${CARD} flex items-start gap-3 px-5 py-3.5`}>
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/60" />
                 <p className="text-[12px] leading-[1.6] text-white/50">
-                  Cada lançamento referencia uma tarefa não encontrada na última verificação — pode ter sido excluída, arquivada ou estar inacessível por permissão ou sincronização.
+                  A duração exibida usa os campos oficiais `SECONDS` e `MINUTES` do Bitrix. Quando o lançamento foi feito manualmente e `DATE_START` = `DATE_STOP`, a central usa a data de criação como referência para não sugerir um intervalo falso.
                 </p>
               </div>
             )}
@@ -887,9 +890,17 @@ export default function AdminDiagnostico() {
                           <MetaField icon={CheckCircle2} label="Status" value={formatTaskStatus(entry.related_task_status)} />
                           <MetaField icon={Bug} label="Projeto" value={entry.related_task_name ?? "Não localizado"} />
                           <MetaField icon={Clock3} label="Duração" value={formatMinutes(entry.minutes, entry.seconds)} />
-                          <MetaField icon={CalendarClock} label="Detectado em" value={formatDateTime(entry.orphan_detected_at)} />
+                          <MetaField
+                            icon={CalendarClock}
+                            label={entry.is_manual_backdated ? "Lançamento manual" : "Referência"}
+                            value={formatDateTime(entry.reference_date ?? entry.created_date ?? entry.orphan_detected_at)}
+                          />
                           <MetaField icon={Clock3} label="Atualização" value={formatDateTime(entry.updated_at)} />
                         </div>
+
+                        <p className="text-[12px] leading-[1.55] text-amber-200/55">
+                          {entry.orphan_detail ?? entry.meaning}
+                        </p>
 
                         {entry.comment_text && (
                           <p className="text-[12px] leading-relaxed text-white/50">

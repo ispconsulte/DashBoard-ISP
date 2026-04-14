@@ -16,6 +16,7 @@ export type IntegrityTaskItem = {
   task_id: number;
   title: string;
   status: string | number | null;
+  local_state?: string | null;
   responsible_name: string | null;
   deadline: string | null;
   closed_date: string | null;
@@ -23,6 +24,7 @@ export type IntegrityTaskItem = {
   project_name: string | null;
   inserted_at: string | null;
   updated_at: string | null;
+  changed_date?: string | null;
   last_seen_in_bitrix_at: string | null;
   missing_from_bitrix_since: string | null;
   problems: IntegrityProblem[];
@@ -43,9 +45,13 @@ export type IntegrityElapsedItem = {
   date_start: string | null;
   date_stop: string | null;
   updated_at: string | null;
+  reference_date?: string | null;
+  local_state?: string | null;
+  is_manual_backdated?: boolean;
   minutes: number;
   seconds: number;
   comment_text: string | null;
+  orphan_detail?: string | null;
   label: string;
   meaning: string;
   related_task_name: string | null;

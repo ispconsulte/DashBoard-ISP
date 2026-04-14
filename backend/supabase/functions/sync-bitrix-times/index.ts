@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const BITRIX_BASE_URL = Deno.env.get('BITRIX_BASE_URL');
+const BITRIX_BASE_URL = Deno.env.get('BITRIX_ADMIN_BASE_URL') ?? Deno.env.get('BITRIX_BASE_URL');
 
 const PAGE_SIZE = 50;
 const UPSERT_BATCH_SIZE = 500;
@@ -166,30 +166,80 @@ async function fetchAllElapsedTimes(startAfterId = 0): Promise<any[]> {
   return allItems;
 }
 
-function parseElapsed(raw: Record<string, any>, validTaskIds: Set<number>, detectedAt: string) {
+function parseElapsed(
+  raw: Record<string, any>,
+  taskStateById: Map<number, { local_state: string; project_closed: boolean }>,
+  tombstones: Set<number>,
+  detectedAt: string,
+) {
   const id = toInt(getField(raw, 'id', 'ID'));
   if (!id) return null;
 
   const rawTaskId = toInt(getField(raw, 'taskId', 'TASK_ID', 'task_id'));
-  const hasLinkedTask = !!(rawTaskId && validTaskIds.has(rawTaskId));
+  const taskSnapshot = rawTaskId ? taskStateById.get(rawTaskId) ?? null : null;
+  const hasLinkedTask = !!taskSnapshot;
+  const deletedConfirmed = !!(rawTaskId && tombstones.has(rawTaskId));
+  const seconds = toInt(getField(raw, 'seconds', 'SECONDS')) ?? 0;
+  const minutes = toInt(getField(raw, 'minutes', 'MINUTES')) ?? 0;
+  const dateStart = toIso(getField(raw, 'dateStart', 'DATE_START', 'date_start'));
+  const dateStop = toIso(getField(raw, 'dateStop', 'DATE_STOP', 'date_stop'));
+  const createdDate = toIso(getField(raw, 'createdDate', 'CREATED_DATE', 'created_date'));
+  const isManualBackdated = !!(dateStart && dateStop && dateStart === dateStop && seconds > 0);
+
+  let localState = 'active';
+  let orphanReason: string | null = null;
+  let orphanDetail: string | null = null;
+  let taskId: number | null = hasLinkedTask ? rawTaskId : null;
+
+  if (deletedConfirmed) {
+    localState = 'deleted_confirmed';
+    orphanReason = 'deleted_confirmed';
+    orphanDetail = 'A hora pertence a uma tarefa excluida com confirmacao oficial via OnTaskDelete.';
+    taskId = null;
+  } else if (!taskSnapshot && rawTaskId) {
+    localState = 'not_found_or_no_access';
+    orphanReason = 'not_found_or_no_access';
+    orphanDetail = 'A tarefa da hora nao foi localizada na base local e nao possui exclusao confirmada. O caso pode ser falta de acesso ou filtro.';
+  } else if (taskSnapshot?.local_state === 'project_archived') {
+    localState = 'project_archived';
+    orphanReason = 'project_archived';
+    orphanDetail = 'A hora esta ligada a uma tarefa de projeto ou grupo arquivado.';
+  } else if (taskSnapshot?.local_state === 'deleted_confirmed') {
+    localState = 'deleted_confirmed';
+    orphanReason = 'deleted_confirmed';
+    orphanDetail = 'A hora esta ligada a uma tarefa excluida com confirmacao oficial.';
+    taskId = null;
+  } else if (!rawTaskId) {
+    localState = 'orphan_time_entry';
+    orphanReason = 'missing_task_reference';
+    orphanDetail = 'O lancamento chegou sem TASK_ID informado pelo Bitrix.';
+  } else if (!hasLinkedTask) {
+    localState = 'orphan_time_entry';
+    orphanReason = 'missing_task_in_local_snapshot';
+    orphanDetail = 'O lancamento chegou com TASK_ID, mas a tarefa ainda nao foi consolidada localmente.';
+  }
 
   return {
     id,
     bitrix_task_id_raw: rawTaskId,
-    task_id: hasLinkedTask ? rawTaskId : null,
-    orphan_reason: rawTaskId && !hasLinkedTask ? 'missing_task_in_local_snapshot' : null,
-    orphan_detected_at: rawTaskId && !hasLinkedTask ? detectedAt : null,
+    task_id: taskId,
+    orphan_reason: orphanReason,
+    orphan_detail: orphanDetail,
+    orphan_detected_at: orphanReason ? detectedAt : null,
     user_id: toInt(getField(raw, 'userId', 'USER_ID', 'user_id')),
     comment_text: String(getField(raw, 'commentText', 'COMMENT_TEXT', 'comment_text') ?? ''),
-    date_start: toIso(getField(raw, 'dateStart', 'DATE_START', 'date_start')),
-    date_stop: toIso(getField(raw, 'dateStop', 'DATE_STOP', 'date_stop')),
-    created_date: toIso(getField(raw, 'createdDate', 'CREATED_DATE', 'created_date')),
-    minutes: toInt(getField(raw, 'minutes', 'MINUTES')) ?? 0,
-    seconds: toInt(getField(raw, 'seconds', 'SECONDS')) ?? 0,
+    date_start: dateStart,
+    date_stop: dateStop,
+    created_date: createdDate,
+    minutes,
+    seconds,
     source: (() => {
       const value = getField(raw, 'source', 'SOURCE');
       return value !== null && value !== undefined ? String(value) : null;
     })(),
+    local_state: localState,
+    is_manual_backdated: isManualBackdated,
+    reference_date: createdDate ?? dateStart ?? dateStop ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 }
@@ -227,19 +277,55 @@ async function upsertElapsedTimes(supabase: any, records: any[]) {
   return { inserted, errors };
 }
 
-async function fetchAllDbTaskIds(supabase: any): Promise<Set<number>> {
-  const ids = new Set<number>();
+async function fetchAllDbTasks(supabase: any): Promise<Map<number, { local_state: string; project_closed: boolean }>> {
+  const tasks = new Map<number, { local_state: string; project_closed: boolean }>();
   let from = 0;
 
   while (true) {
     const to = from + DB_TASK_PAGE_SIZE - 1;
     const { data, error } = await supabase
       .from('tasks')
-      .select('task_id')
+      .select('task_id,local_state,project_closed')
       .range(from, to);
 
     if (error) {
       throw new Error(`Erro ao carregar tasks do banco: ${error.message}`);
+    }
+
+    const rows = (data ?? []) as Array<{ task_id?: number | string | null; local_state?: string | null; project_closed?: boolean | null }>;
+    for (const row of rows) {
+      const taskId = toInt(row.task_id);
+      if (taskId) {
+        tasks.set(taskId, {
+          local_state: String(row.local_state ?? 'active'),
+          project_closed: Boolean(row.project_closed ?? false),
+        });
+      }
+    }
+
+    if (rows.length < DB_TASK_PAGE_SIZE) {
+      break;
+    }
+
+    from += DB_TASK_PAGE_SIZE;
+  }
+
+  return tasks;
+}
+
+async function fetchDeleteTombstones(supabase: any): Promise<Set<number>> {
+  const ids = new Set<number>();
+  let from = 0;
+
+  while (true) {
+    const to = from + DB_TASK_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from('bitrix_task_delete_events')
+      .select('task_id')
+      .range(from, to);
+
+    if (error) {
+      throw new Error(`Erro ao carregar tombstones de tarefas: ${error.message}`);
     }
 
     const rows = (data ?? []) as Array<{ task_id?: number | string | null }>;
@@ -248,10 +334,7 @@ async function fetchAllDbTaskIds(supabase: any): Promise<Set<number>> {
       if (taskId) ids.add(taskId);
     }
 
-    if (rows.length < DB_TASK_PAGE_SIZE) {
-      break;
-    }
-
+    if (rows.length < DB_TASK_PAGE_SIZE) break;
     from += DB_TASK_PAGE_SIZE;
   }
 
@@ -502,10 +585,12 @@ Deno.serve(async (req) => {
 
     console.log('--- INICIANDO SINCRONIZAÇÃO GLOBAL DE ELAPSED TIMES ---');
 
-    console.log('>>> Carregando whitelist completa de tarefas do banco...');
-    const validTaskIds = await fetchAllDbTaskIds(supabase);
+    console.log('>>> Carregando snapshot local de tarefas e tombstones...');
+    const taskStateById = await fetchAllDbTasks(supabase);
+    const tombstones = await fetchDeleteTombstones(supabase);
 
-    console.log(`>>> Tarefas no banco: ${validTaskIds.size}`);
+    console.log(`>>> Tarefas no banco: ${taskStateById.size}`);
+    console.log(`>>> Tombstones de exclusao confirmada: ${tombstones.size}`);
 
     const rawElapsed = await fetchAllElapsedTimes(lastCursorId);
 
@@ -516,7 +601,7 @@ Deno.serve(async (req) => {
     }
 
     const records = Array.from(byId.values())
-      .map((item) => parseElapsed(item, validTaskIds, syncStartedAtIso))
+      .map((item) => parseElapsed(item, taskStateById, tombstones, syncStartedAtIso))
       .filter((item) => item !== null) as NonNullable<ReturnType<typeof parseElapsed>>[];
 
     const distinctTaskIds = new Set<number>();
@@ -532,6 +617,10 @@ Deno.serve(async (req) => {
     const { inserted, errors } = await upsertElapsedTimes(supabase, records);
     const relinkedCount = await relinkOrphanElapsedTimes(supabase);
     const orphanRowsDetected = records.filter((record) => record.orphan_reason !== null).length;
+    const deletedHoursDetected = records.filter((record) => record.local_state === 'deleted_confirmed').length;
+    const projectArchivedHoursDetected = records.filter((record) => record.local_state === 'project_archived').length;
+    const noAccessHoursDetected = records.filter((record) => record.local_state === 'not_found_or_no_access').length;
+    const manualBackdatedRows = records.filter((record) => record.is_manual_backdated).length;
     const debugMatches = debugTaskId
       ? rawElapsed.filter((item) => toInt(getField(item, 'taskId', 'TASK_ID', 'task_id')) === debugTaskId)
       : [];
@@ -552,12 +641,16 @@ Deno.serve(async (req) => {
       elapsed_unique_count: records.length,
       elapsed_upserted: inserted,
       distinct_task_ids_found: distinctTaskIds.size,
-      db_task_whitelist_count: validTaskIds.size,
-      orphan_task_ids_are_saved_as_null: true,
+      db_task_whitelist_count: taskStateById.size,
+      deleted_task_tombstones_count: tombstones.size,
       orphan_rows_detected: orphanRowsDetected,
+      deleted_task_hours_detected: deletedHoursDetected,
+      project_archived_hours_detected: projectArchivedHoursDetected,
+      not_found_or_no_access_hours_detected: noAccessHoursDetected,
+      manual_backdated_rows: manualBackdatedRows,
       relinked_orphan_rows: relinkedCount,
       debug_task_id: debugTaskId,
-      debug_task_exists_in_tasks_table: debugTaskId ? validTaskIds.has(debugTaskId) : null,
+      debug_task_exists_in_tasks_table: debugTaskId ? taskStateById.has(debugTaskId) : null,
       debug_task_raw_matches: debugMatches.length,
       debug_task_total_minutes: debugTaskId ? Number(debugMinutes.toFixed(2)) : null,
       errors_count: errors.length,

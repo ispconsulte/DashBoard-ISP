@@ -147,18 +147,27 @@ function summarizeTaskProblems(task: any) {
   const projectName = validateString(task.projects?.name ?? task.group_name ?? task.project_name, 200);
   const normalizedProjectName = normalizeText(projectName);
   const deadline = parseDate(task.deadline);
-  const missingFromBitrixSince = parseDate(task.missing_from_bitrix_since);
-  const archivedTask = isTaskArchived(task);
+  const localState = validateString(task.local_state, 60) ?? "active";
+  const archivedTask = localState === "project_archived" || isTaskArchived(task);
   const isInternalAlias = !projectId && INTERNAL_PROJECT_ALIASES.some((alias) =>
     normalizedProjectName === alias || normalizedProjectName === `${alias} consulte`
   );
 
-  if (missingFromBitrixSince) {
+  if (localState === "not_found_or_no_access") {
     problems.push({
-      code: "missing_from_source",
+      code: "not_found_or_no_access",
       label: "Nao encontrada ou sem acesso",
       meaning: "A tarefa nao apareceu na verificacao mais recente da origem e nao existe evento oficial de exclusao salvo. Revise permissao, filtro ou acesso antes de tratar como excluida.",
       severity: 95,
+    });
+  }
+
+  if (localState === "stale_not_seen") {
+    problems.push({
+      code: "stale_not_seen",
+      label: "Sem atualizacao recente",
+      meaning: "A tarefa continua salva localmente, mas ficou tempo demais sem ser vista novamente na sincronizacao. Revise se ela ainda deve permanecer no fluxo operacional.",
+      severity: 75,
     });
   }
 
@@ -213,6 +222,7 @@ function summarizeTaskProblems(task: any) {
     isProblematic: problems.length > 0,
     projectName,
     archivedTask,
+    localState,
   };
 }
 
@@ -221,8 +231,17 @@ function summarizeElapsedProblem(entry: any, taskLookup: Map<number, any>) {
   const linkedTaskId = validateBigintId(entry.task_id);
   const relatedTask = taskLookup.get(linkedTaskId ?? rawTaskId ?? -1) ?? null;
   const orphanReason = validateString(entry.orphan_reason, 300) ?? null;
+  const localState = validateString(entry.local_state, 60) ?? "active";
 
-  if (orphanReason === "missing_task_in_local_snapshot" && rawTaskId) {
+  if (localState === "project_archived") {
+    return {
+      label: "Hora em projeto arquivado",
+      meaning: "Esse lancamento pertence a uma tarefa de projeto ou grupo arquivado. Revise se a hora deve ficar apenas como historico.",
+      relatedTask,
+    };
+  }
+
+  if (localState === "not_found_or_no_access" || orphanReason === "not_found_or_no_access") {
     return {
       label: "Tarefa nao encontrada ou sem acesso",
       meaning: "A hora aponta para uma tarefa que nao apareceu na verificacao mais recente e nao tem exclusao oficial registrada. Revise acesso, filtro ou sincronizacao antes de descartar o lancamento.",
@@ -260,7 +279,7 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
     fetchAllRows(
       adminClient,
       "tasks",
-      "task_id,title,status,deadline,closed_date,group_name,responsible_name,project_id,updated_at,inserted_at,last_seen_in_bitrix_at,missing_from_bitrix_since,projects(name,cliente_id,active,closed,visible)",
+      "task_id,title,status,real_status,deadline,closed_date,group_id,group_name,responsible_id,responsible_name,project_id,updated_at,inserted_at,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,changed_date,projects(name,cliente_id,active,closed,visible)",
       "task_id",
     ),
     fetchAllRows(
@@ -272,9 +291,9 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
     fetchAllRows(
       adminClient,
       "elapsed_times",
-      "id,task_id,bitrix_task_id_raw,orphan_reason,orphan_detected_at,created_date,date_start,date_stop,minutes,seconds,comment_text,updated_at",
+      "id,task_id,bitrix_task_id_raw,orphan_reason,orphan_detail,orphan_detected_at,created_date,date_start,date_stop,minutes,seconds,comment_text,updated_at,local_state,is_manual_backdated,reference_date",
       "id",
-      (query) => query.not("orphan_reason", "is", null),
+      (query) => query.not("local_state", "eq", "active"),
     ),
     fetchAllRows(
       adminClient,
@@ -332,7 +351,7 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
       const nextTask = {
         task_id: Number(task.task_id),
         title: validateString(task.title, 400) ?? "Sem nome definido",
-        status: task.status ?? null,
+        status: task.real_status ?? task.status ?? null,
         responsible_name: validateString(task.responsible_name, 200),
         deadline: toIsoOrNull(task.deadline),
         closed_date: toIsoOrNull(task.closed_date),
@@ -340,6 +359,8 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
         project_name: summary.projectName,
         inserted_at: toIsoOrNull(task.inserted_at),
         updated_at: toIsoOrNull(task.updated_at),
+        changed_date: toIsoOrNull(task.changed_date),
+        local_state: validateString(task.local_state, 60),
         last_seen_in_bitrix_at: toIsoOrNull(task.last_seen_in_bitrix_at),
         missing_from_bitrix_since: toIsoOrNull(task.missing_from_bitrix_since),
         problems: summary.problems,
@@ -390,11 +411,15 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
         task_id: linkedTaskId,
         bitrix_task_id_raw: rawTaskId,
         orphan_reason: validateString(entry.orphan_reason, 300),
+        orphan_detail: validateString(entry.orphan_detail, 500),
         orphan_detected_at: toIsoOrNull(entry.orphan_detected_at),
         created_date: toIsoOrNull(entry.created_date),
         date_start: toIsoOrNull(entry.date_start),
         date_stop: toIsoOrNull(entry.date_stop),
         updated_at: toIsoOrNull(entry.updated_at),
+        local_state: validateString(entry.local_state, 60),
+        is_manual_backdated: Boolean(entry.is_manual_backdated),
+        reference_date: toIsoOrNull(entry.reference_date),
         minutes: Number(entry.minutes ?? 0),
         seconds: Number(entry.seconds ?? 0),
         comment_text: validateString(entry.comment_text, 500),
@@ -420,7 +445,9 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
       total_tasks: Math.max(0, tasks.length - deletedTaskIds.size),
       problematic_tasks: problematicTasks.length,
       projectless_tasks: problematicTasks.filter((task: any) => task.problems.some((problem: any) => problem.code === "missing_project")).length,
-      missing_from_source_tasks: 0,
+      missing_from_source_tasks: problematicTasks.filter((task: any) =>
+        task.problems.some((problem: any) => ["not_found_or_no_access", "stale_not_seen"].includes(problem.code))
+      ).length,
       incomplete_tasks: problematicTasks.filter((task: any) =>
         task.problems.some((problem: any) => ["missing_title", "missing_responsible", "missing_deadline"].includes(problem.code))
       ).length,

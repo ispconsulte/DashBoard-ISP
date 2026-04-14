@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const BITRIX_BASE_URL = Deno.env.get('BITRIX_BASE_URL'); 
+const BITRIX_BASE_URL = Deno.env.get('BITRIX_ADMIN_BASE_URL') ?? Deno.env.get('BITRIX_BASE_URL'); 
 const RETRIES = 4;
 const DELAY_MS = 250;
 const SYNC_JOB_NAME = 'Get-Projetcs-And-Tasks-Bitrix';
@@ -8,6 +8,7 @@ const SOURCE_CODE = 'bitrix_tasks';
 const SOURCE_NAME = 'Bitrix Tasks + Projects';
 const SOURCE_ENTITY = 'tasks';
 const RUN_STALE_AFTER_MS = 3 * 60 * 60 * 1000;
+const TASK_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const BONUS_CALCULATION_VERSION = 'edge-bonus-writer-v1';
 const CONSULTANT_MAX_BONUS: Record<string, number> = {
   junior: 1000,
@@ -219,6 +220,10 @@ function keepBest<T>(incoming: T | null | undefined, existing: T | null | undefi
   return incoming;
 }
 
+function toBool(value: any) {
+  return String(value ?? '').trim().toUpperCase() === 'Y';
+}
+
 async function fetchJsonWithRetry(url: string) {
   let lastError: Error | null = null;
 
@@ -250,6 +255,180 @@ async function fetchJsonWithRetry(url: string) {
   throw lastError ?? new Error('Falha ao buscar dados do Bitrix.');
 }
 
+async function bitrixPostWithRetry(path: string, body: unknown) {
+  if (!BITRIX_BASE_URL) {
+    throw new Error('A BITRIX_BASE_URL não foi configurada nos Secrets.');
+  }
+
+  const endpoint = new URL(path, BITRIX_BASE_URL).toString();
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < RETRIES; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (response.status === 429 || response.status >= 500) {
+        lastError = new Error(`HTTP ${response.status}`);
+        await new Promise((r) => setTimeout(r, DELAY_MS * (attempt + 1)));
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      if (data.error && !data.result) {
+        throw new Error(String(data.error_description || data.error));
+      }
+      return data;
+    } catch (error: any) {
+      lastError = error;
+      if (attempt === RETRIES - 1) break;
+      await new Promise((r) => setTimeout(r, DELAY_MS * (attempt + 1)));
+    }
+  }
+
+  throw lastError ?? new Error('Falha ao buscar dados do Bitrix.');
+}
+
+async function getLastTaskSyncCursor(supabase: any) {
+  const { data, error } = await supabase
+    .from('bonus_source_statuses')
+    .select('details,last_success_at')
+    .eq('source_code', SOURCE_CODE)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Falha ao ler cursor incremental de tarefas:', error.message);
+    return null;
+  }
+
+  const details = (data?.details ?? {}) as Record<string, unknown>;
+  const changedSince = toIso(details.last_incremental_changed_date ?? data?.last_success_at);
+  return changedSince;
+}
+
+async function fetchIncrementalTaskPages(sinceIso: string | null) {
+  if (!BITRIX_BASE_URL) {
+    throw new Error("A BITRIX_BASE_URL não foi configurada nos Secrets.");
+  }
+
+  if (!sinceIso) {
+    const allTasks: any[] = [];
+    let start = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const taskUrl = new URL('tasks.task.list.json', BITRIX_BASE_URL);
+      taskUrl.searchParams.append('start', String(start));
+      [
+        'ID',
+        'TITLE',
+        'DESCRIPTION',
+        'STATUS',
+        'DEADLINE',
+        'CLOSED_DATE',
+        'GROUP_ID',
+        'RESPONSIBLE_ID',
+        'CREATED_BY',
+        'CREATED_DATE',
+        'CHANGED_DATE',
+      ].forEach((field) => taskUrl.searchParams.append('select[]', field));
+
+      const data = await fetchJsonWithRetry(taskUrl.toString());
+      const tasks = normalizeList(data.result?.tasks || data.result || []);
+      allTasks.push(...tasks);
+
+      if (data.next) {
+        start = data.next;
+        await new Promise((r) => setTimeout(r, DELAY_MS));
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return { mode: 'full' as const, pages: allTasks };
+  }
+
+  const filters = [
+    { key: '>=CHANGED_DATE', value: sinceIso },
+    { key: '>=ACTIVITY_DATE', value: sinceIso },
+  ];
+
+  const byTaskId = new Map<number, any>();
+  for (const filter of filters) {
+    let start = 0;
+    let hasMore = true;
+    while (hasMore) {
+      const taskUrl = new URL('tasks.task.list.json', BITRIX_BASE_URL);
+      taskUrl.searchParams.append('start', String(start));
+      taskUrl.searchParams.append(`filter[${filter.key}]`, filter.value);
+      [
+        'ID',
+        'TITLE',
+        'DESCRIPTION',
+        'STATUS',
+        'DEADLINE',
+        'CLOSED_DATE',
+        'GROUP_ID',
+        'RESPONSIBLE_ID',
+        'CREATED_BY',
+        'CREATED_DATE',
+        'CHANGED_DATE',
+      ].forEach((field) => taskUrl.searchParams.append('select[]', field));
+
+      const data = await fetchJsonWithRetry(taskUrl.toString());
+      const tasks = normalizeList(data.result?.tasks || data.result || []);
+      for (const task of tasks) {
+        const taskId = toInt(getField(task, 'id', 'ID'));
+        if (taskId) byTaskId.set(taskId, task);
+      }
+
+      if (data.next) {
+        start = data.next;
+        await new Promise((r) => setTimeout(r, DELAY_MS));
+      } else {
+        hasMore = false;
+      }
+    }
+  }
+
+  return { mode: 'incremental' as const, pages: Array.from(byTaskId.values()) };
+}
+
+async function fetchBitrixTaskById(taskId: number) {
+  const data = await bitrixPostWithRetry('tasks.task.get.json', {
+    taskId,
+    select: [
+      'ID',
+      'TITLE',
+      'DESCRIPTION',
+      'STATUS',
+      'DEADLINE',
+      'CLOSED_DATE',
+      'GROUP_ID',
+      'RESPONSIBLE_ID',
+      'CREATED_DATE',
+      'CHANGED_DATE',
+    ],
+  });
+
+  const task = data?.result?.task ?? data?.result ?? null;
+  if (!task || (Array.isArray(task) && task.length === 0)) {
+    return null;
+  }
+  return task;
+}
+
 async function fetchExistingTasksMap(supabase: any, taskIds: number[]) {
   const existing = new Map<number, any>();
   if (!taskIds.length) return existing;
@@ -258,7 +437,7 @@ async function fetchExistingTasksMap(supabase: any, taskIds: number[]) {
     const slice = taskIds.slice(offset, offset + 500);
     const { data, error } = await supabase
       .from('tasks')
-      .select('task_id,title,description,status,deadline,closed_date,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_in_bitrix_at,missing_from_bitrix_since')
+      .select('task_id,title,description,status,real_status,deadline,closed_date,changed_date,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state')
       .in('task_id', slice);
 
     if (error) throw new Error(`Erro ao carregar tarefas existentes: ${error.message}`);
@@ -279,16 +458,22 @@ function mergeTaskRecord(incoming: any, existing?: any) {
     title: keepBest(incoming.title, existing.title) ?? `Tarefa ${incoming.task_id}`,
     description: keepBest(incoming.description, existing.description) ?? '',
     status: keepBest(incoming.status, existing.status),
+    real_status: keepBest(incoming.real_status, existing.real_status ?? existing.status),
     deadline: keepBest(incoming.deadline, existing.deadline),
     closed_date: keepBest(incoming.closed_date, existing.closed_date),
+    changed_date: keepBest(incoming.changed_date, existing.changed_date),
     group_id: keepBest(incoming.group_id, existing.group_id),
     group_name: keepBest(incoming.group_name, existing.group_name),
     responsible_id: keepBest(incoming.responsible_id, existing.responsible_id),
     responsible_name: keepBest(incoming.responsible_name, existing.responsible_name),
     updated_at: incoming.updated_at,
     project_id: keepBest(incoming.project_id, existing.project_id),
+    last_seen_at: keepBest(incoming.last_seen_at, existing.last_seen_at),
     last_seen_in_bitrix_at: keepBest(incoming.last_seen_in_bitrix_at, existing.last_seen_in_bitrix_at),
     missing_from_bitrix_since: keepBest(incoming.missing_from_bitrix_since, existing.missing_from_bitrix_since),
+    bitrix_visible: keepBest(incoming.bitrix_visible, existing.bitrix_visible ?? true),
+    project_closed: keepBest(incoming.project_closed, existing.project_closed ?? false),
+    local_state: keepBest(incoming.local_state, existing.local_state ?? 'active'),
   };
 }
 
@@ -337,6 +522,31 @@ async function markMissingTasks(supabase: any, seenTaskIds: Set<number>, syncSta
   }
 
   return missingTaskIds.length;
+}
+
+async function fetchDeleteTombstones(supabase: any) {
+  const tombstones = new Map<number, any>();
+  const rows = await fetchAllRows(
+    supabase,
+    'bitrix_task_delete_events',
+    'task_id,deleted_at,received_at,event_name',
+    'task_id',
+  );
+
+  for (const row of rows ?? []) {
+    const taskId = toInt((row as any).task_id);
+    if (taskId) tombstones.set(taskId, row);
+  }
+  return tombstones;
+}
+
+async function fetchTasksForReconciliation(supabase: any) {
+  return await fetchAllRows(
+    supabase,
+    'tasks',
+    'task_id,title,status,real_status,deadline,closed_date,changed_date,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state',
+    'task_id',
+  );
 }
 
 async function createSyncRun(supabase: any, details: Record<string, unknown>) {
@@ -1499,7 +1709,7 @@ Deno.serve(async (req) => {
     console.log(`>>> Total de Projetos sincronizados (Ativos + Arquivados): ${totalProjects}`);
     console.log(`>>> Cache de IDs válidos: ${validProjectIds.size}`);
 
-    const dbProjects = await fetchAllRows(supabase, 'projects', 'id,name', 'id');
+    const dbProjects = await fetchAllRows(supabase, 'projects', 'id,name,closed', 'id');
     const projectIdByNormalizedName = new Map<string, number>();
 
     for (const projectRow of dbProjects ?? []) {
@@ -1520,11 +1730,8 @@ Deno.serve(async (req) => {
     // ETAPA 2: TAREFAS
     // =================================================================
     console.log(">>> Etapa 2: Buscando Tarefas...");
-    let startTasks = 0;
-    let hasMoreTasks = true;
     const canonicalTasks = new Map<number, any>();
     const seenTaskIds = new Set<number>();
-    let hadTaskWriteErrors = false;
     const deadlineChanges: Array<{
       task_id: number;
       task_title: string | null;
@@ -1535,99 +1742,88 @@ Deno.serve(async (req) => {
       detected_at: string;
       sync_run_id: string | null;
     }> = [];
+    const existingRows = await fetchTasksForReconciliation(supabase);
+    const existingTasksMap = new Map(existingRows.map((row: any) => [Number(row.task_id), row]));
+    const tombstones = await fetchDeleteTombstones(supabase);
+    const incrementalSince = await getLastTaskSyncCursor(supabase);
+    const incrementalPayload = await fetchIncrementalTaskPages(incrementalSince);
+    const sourceTasks = incrementalPayload.mode === 'incremental' && incrementalPayload.pages.length > 0
+      ? incrementalPayload.pages
+      : [];
 
-    while (hasMoreTasks) {
-      const taskUrl = new URL('tasks.task.list.json', BITRIX_BASE_URL);
-      taskUrl.searchParams.append('start', startTasks.toString());
-      // Selecionando campos essenciais
-      ['ID', 'TITLE', 'DESCRIPTION', 'STATUS', 'DEADLINE', 'CLOSED_DATE', 'GROUP_ID', 'RESPONSIBLE_ID', 'CREATED_BY', 'CREATED_DATE'].forEach(f => taskUrl.searchParams.append('select[]', f));
+    console.log('>>> Estratégia de sync de tarefas:', {
+      mode: incrementalPayload.mode,
+      incremental_since: incrementalSince,
+      fetched_tasks: sourceTasks.length,
+    });
 
-      const data = await fetchJsonWithRetry(taskUrl.toString());
-      const rawTasks = data.result?.tasks || data.result || [];
-      const tasks = normalizeList(rawTasks);
+    const tasksToUpsert = sourceTasks
+      .map((t: any) => {
+        const rawId = getField(t, 'id', 'ID');
+        if (!rawId) return null;
+        const numericId = toInt(rawId);
+        if (!numericId) return null;
 
-      if (tasks.length === 0) {
-        hasMoreTasks = false;
-        break;
-      }
+        const rawTitle = getField(t, 'title', 'TITLE');
+        const rawDesc = getField(t, 'description', 'DESCRIPTION');
+        const rawStatus = getField(t, 'status', 'STATUS');
+        const rawDeadline = getField(t, 'deadline', 'DEADLINE');
+        const rawClosedDate = getField(t, 'closedDate', 'CLOSED_DATE');
+        const rawChangedDate = getField(t, 'changedDate', 'CHANGED_DATE');
+        const rawGroupId = getField(t, 'groupId', 'GROUP_ID');
+        const rawRespId = getField(t, 'responsibleId', 'RESPONSIBLE_ID');
 
-      const pageCanonical = new Map<number, any>();
-      const pageTaskIds: number[] = [];
+        const responsibleName = t.responsible?.name || t.RESPONSIBLE?.NAME || null;
+        const groupName = t.group?.name || t.GROUP?.NAME || null;
+        const normalizedGroupName = groupName ? normalizeName(String(groupName)) : '';
 
-      tasks
-        .map((t: any) => {
-          const rawId = getField(t, 'id', 'ID');
-          if (!rawId) return null;
-          const numericId = toInt(rawId);
-          if (!numericId) return null;
-
-          const rawTitle = getField(t, 'title', 'TITLE');
-          const rawDesc = getField(t, 'description', 'DESCRIPTION');
-          const rawStatus = getField(t, 'status', 'STATUS');
-          const rawDeadline = getField(t, 'deadline', 'DEADLINE');
-          const rawClosedDate = getField(t, 'closedDate', 'CLOSED_DATE');
-          const rawGroupId = getField(t, 'groupId', 'GROUP_ID');
-          const rawRespId = getField(t, 'responsibleId', 'RESPONSIBLE_ID');
-          
-          const responsibleName = t.responsible?.name || t.RESPONSIBLE?.NAME || null;
-          const groupName = t.group?.name || t.GROUP?.NAME || null;
-          const normalizedGroupName = groupName ? normalizeName(String(groupName)) : '';
-
-          const deadline = toIso(rawDeadline);
-          const closedDate = toIso(rawClosedDate);
-          
-          // --- SEGURANÇA MÁXIMA DE FK ---
-          const originalGroupId = toInt(rawGroupId);
-          let projectId = null;
-          if (originalGroupId && rawGroupId !== "0") {
-             const possibleId = originalGroupId;
-             // Verifica se o projeto existe na lista que acabamos de baixar (ativos + arquivados)
-             if (possibleId && validProjectIds.has(possibleId)) {
-                projectId = possibleId;
-             } else if (normalizedGroupName) {
-                projectId = projectIdByNormalizedName.get(normalizedGroupName) ?? null;
-             } else {
-                // Se cair aqui, é porque o projeto foi DELETADO PERMANENTEMENTE do Bitrix, 
-                // mas a tarefa continua lá (lixo no banco do Bitrix).
-                // Enviamos NULL para não quebrar a sincronização.
-                // console.warn(`Tarefa ${rawId} aponta para projeto inexistente ${possibleId}. Setando NULL.`);
-             }
+        const deadline = toIso(rawDeadline);
+        const closedDate = toIso(rawClosedDate);
+        const changedDate = toIso(rawChangedDate);
+        const originalGroupId = toInt(rawGroupId);
+        let projectId = null;
+        if (originalGroupId && rawGroupId !== "0") {
+          const possibleId = originalGroupId;
+          if (possibleId && validProjectIds.has(possibleId)) {
+            projectId = possibleId;
+          } else if (normalizedGroupName) {
+            projectId = projectIdByNormalizedName.get(normalizedGroupName) ?? null;
           }
+        }
 
-          return {
-            task_id: numericId,
-            title: nonEmptyString(rawTitle) || `Tarefa ${rawId}`,
-            description: nonEmptyString(rawDesc) || '',
-            status: toInt(rawStatus),
-            deadline: deadline,
-            closed_date: closedDate,
-            group_id: originalGroupId, // Mantemos o ID original do grupo para referência
-            group_name: nonEmptyString(groupName),
-            responsible_id: toInt(rawRespId),
-            responsible_name: nonEmptyString(responsibleName),
-            updated_at: new Date().toISOString(),
-            project_id: projectId, // NULL se não existir na tabela projects
-            last_seen_in_bitrix_at: syncStartedAtIso,
-            missing_from_bitrix_since: null,
-          };
-        })
-        .filter((t: any) => t !== null)
-        .forEach((task: any) => {
-          pageTaskIds.push(task.task_id);
-          seenTaskIds.add(task.task_id);
-          const existingInPage = pageCanonical.get(task.task_id);
-          pageCanonical.set(task.task_id, mergeTaskRecord(task, existingInPage));
-        });
+        const projectRow = projectId ? (dbProjects ?? []).find((row: any) => Number(row.id) === projectId) : null;
+        const projectClosed = Boolean((projectRow as any)?.closed ?? false);
 
-      const existingTasksMap = await fetchExistingTasksMap(supabase, pageTaskIds);
-      const tasksToUpsert = Array.from(pageCanonical.values()).map((task) => {
-        const existingInRun = canonicalTasks.get(task.task_id);
-        const existingInDb = existingTasksMap.get(task.task_id);
-        const previous = existingInDb ?? existingInRun;
+        seenTaskIds.add(numericId);
+        return {
+          task_id: numericId,
+          title: nonEmptyString(rawTitle) || `Tarefa ${rawId}`,
+          description: nonEmptyString(rawDesc) || '',
+          status: toInt(rawStatus),
+          real_status: toInt(rawStatus),
+          deadline,
+          closed_date: closedDate,
+          changed_date: changedDate,
+          group_id: originalGroupId,
+          group_name: nonEmptyString(groupName),
+          responsible_id: toInt(rawRespId),
+          responsible_name: nonEmptyString(responsibleName),
+          updated_at: new Date().toISOString(),
+          project_id: projectId,
+          project_closed: projectClosed,
+          local_state: projectClosed ? 'project_archived' : 'active',
+          last_seen_at: syncStartedAtIso,
+          last_seen_in_bitrix_at: syncStartedAtIso,
+          bitrix_visible: true,
+          missing_from_bitrix_since: null,
+        };
+      })
+      .filter((task: any) => task !== null)
+      .map((task: any) => {
+        const previous = existingTasksMap.get(task.task_id) ?? canonicalTasks.get(task.task_id);
         const merged = mergeTaskRecord(task, previous);
         canonicalTasks.set(task.task_id, merged);
 
-        // Detect deadline change
         if (previous) {
           const oldDeadline = previous.deadline ?? null;
           const newDeadline = merged.deadline ?? null;
@@ -1653,23 +1849,112 @@ Deno.serve(async (req) => {
         return merged;
       });
 
-      if (tasksToUpsert.length > 0) {
-          const { error: taskError } = await supabase
-            .from('tasks')
-            .upsert(tasksToUpsert, { onConflict: 'task_id' });
+    if (tasksToUpsert.length > 0) {
+      const { error: taskError } = await supabase
+        .from('tasks')
+        .upsert(tasksToUpsert, { onConflict: 'task_id' });
 
-          if (taskError) {
-             hadTaskWriteErrors = true;
-             console.error(`Erro Upsert Tasks (Lote ${startTasks}): ${taskError.message}`);
-          }
+      if (taskError) {
+        throw new Error(`Erro ao salvar snapshot incremental de tarefas: ${taskError.message}`);
+      }
+    }
+
+    const reconcileCandidates = existingRows.filter((row: any) => {
+      const taskId = Number(row.task_id);
+      if (!taskId || seenTaskIds.has(taskId)) return false;
+      if (tombstones.has(taskId)) return true;
+
+      const lastSeen = parseDateValue(row.last_seen_at ?? row.last_seen_in_bitrix_at);
+      const tooOld = !lastSeen || (Date.now() - lastSeen.getTime()) >= TASK_STALE_AFTER_MS;
+      const alreadyNeedsCheck = ['not_found_or_no_access', 'stale_not_seen'].includes(String(row.local_state ?? ''));
+      return tooOld || alreadyNeedsCheck;
+    });
+
+    const reconciledUpdates: any[] = [];
+    for (const row of reconcileCandidates) {
+      const taskId = Number(row.task_id);
+      if (!taskId) continue;
+
+      if (tombstones.has(taskId)) {
+        reconciledUpdates.push({
+          task_id: taskId,
+          bitrix_visible: false,
+          local_state: 'deleted_confirmed',
+          updated_at: new Date().toISOString(),
+          missing_from_bitrix_since: toIso((tombstones.get(taskId) as any)?.deleted_at) ?? syncStartedAtIso,
+        });
+        continue;
       }
 
-      if (data.next) {
-        startTasks = data.next;
-        // Delay para evitar Rate Limit (importante com muitas requisições)
-        await new Promise(r => setTimeout(r, DELAY_MS));
-      } else {
-        hasMoreTasks = false;
+      const liveTask = await fetchBitrixTaskById(taskId);
+      if (!liveTask) {
+        reconciledUpdates.push({
+          task_id: taskId,
+          bitrix_visible: false,
+          local_state: 'not_found_or_no_access',
+          updated_at: new Date().toISOString(),
+          missing_from_bitrix_since: row.missing_from_bitrix_since ?? syncStartedAtIso,
+        });
+        continue;
+      }
+
+      const liveGroupId = toInt(getField(liveTask, 'groupId', 'GROUP_ID'));
+      const liveGroupName = liveTask.group?.name || liveTask.GROUP?.NAME || null;
+      const normalizedGroupName = liveGroupName ? normalizeName(String(liveGroupName)) : '';
+      let liveProjectId = null;
+      if (liveGroupId) {
+        if (validProjectIds.has(liveGroupId)) liveProjectId = liveGroupId;
+        else if (normalizedGroupName) liveProjectId = projectIdByNormalizedName.get(normalizedGroupName) ?? null;
+      }
+      const projectRow = liveProjectId ? (dbProjects ?? []).find((item: any) => Number(item.id) === liveProjectId) : null;
+      const projectClosed = Boolean((projectRow as any)?.closed ?? false);
+
+      reconciledUpdates.push({
+        task_id: taskId,
+        title: nonEmptyString(getField(liveTask, 'title', 'TITLE')) ?? row.title ?? `Tarefa ${taskId}`,
+        description: nonEmptyString(getField(liveTask, 'description', 'DESCRIPTION')) ?? row.description ?? '',
+        status: toInt(getField(liveTask, 'status', 'STATUS')),
+        real_status: toInt(getField(liveTask, 'status', 'STATUS')),
+        deadline: toIso(getField(liveTask, 'deadline', 'DEADLINE')),
+        closed_date: toIso(getField(liveTask, 'closedDate', 'CLOSED_DATE')),
+        changed_date: toIso(getField(liveTask, 'changedDate', 'CHANGED_DATE')),
+        group_id: liveGroupId,
+        group_name: nonEmptyString(liveGroupName),
+        responsible_id: toInt(getField(liveTask, 'responsibleId', 'RESPONSIBLE_ID')),
+        responsible_name: nonEmptyString(liveTask.responsible?.name || liveTask.RESPONSIBLE?.NAME),
+        updated_at: new Date().toISOString(),
+        project_id: liveProjectId,
+        project_closed: projectClosed,
+        local_state: projectClosed ? 'project_archived' : 'active',
+        last_seen_at: syncStartedAtIso,
+        last_seen_in_bitrix_at: syncStartedAtIso,
+        bitrix_visible: true,
+        missing_from_bitrix_since: null,
+      });
+    }
+
+    const staleUpdates = existingRows
+      .filter((row: any) => {
+        const taskId = Number(row.task_id);
+        if (!taskId || seenTaskIds.has(taskId) || tombstones.has(taskId)) return false;
+        const lastSeen = parseDateValue(row.last_seen_at ?? row.last_seen_in_bitrix_at);
+        return Boolean(lastSeen && (Date.now() - lastSeen.getTime()) >= TASK_STALE_AFTER_MS && String(row.local_state ?? '') === 'active');
+      })
+      .map((row: any) => ({
+        task_id: Number(row.task_id),
+        local_state: 'stale_not_seen',
+        bitrix_visible: true,
+        updated_at: new Date().toISOString(),
+        missing_from_bitrix_since: row.missing_from_bitrix_since ?? syncStartedAtIso,
+      }));
+
+    const allStateUpdates = [...reconciledUpdates, ...staleUpdates];
+    if (allStateUpdates.length > 0) {
+      const { error: reconcileError } = await supabase
+        .from('tasks')
+        .upsert(allStateUpdates, { onConflict: 'task_id' });
+      if (reconcileError) {
+        throw new Error(`Erro ao reconciliar estados locais das tarefas: ${reconcileError.message}`);
       }
     }
 
@@ -1692,9 +1977,6 @@ Deno.serve(async (req) => {
       console.log(`>>> ${deadlineChangesWritten} alterações de prazo registradas.`);
     }
 
-    const missingTasksMarked = hadTaskWriteErrors
-      ? 0
-      : await markMissingTasks(supabase, seenTaskIds, syncStartedAtIso);
     const relinkedOrphans = await relinkOrphanElapsedTimes(supabase);
     const bonusPersistence = await persistBonusSnapshots(supabase, syncStartedAtIso);
 
@@ -1705,8 +1987,11 @@ Deno.serve(async (req) => {
       sampled_non_project_groups: sampledNonProjectGroups,
       tasks: canonicalTasks.size,
       deadline_changes_detected: deadlineChangesWritten,
-      missing_tasks_marked: missingTasksMarked,
-      missing_marking_skipped_due_to_errors: hadTaskWriteErrors,
+      incremental_mode: incrementalPayload.mode,
+      incremental_since: incrementalSince,
+      reconciled_tasks: reconciledUpdates.length,
+      stale_tasks_marked: staleUpdates.length,
+      deleted_tombstones_loaded: tombstones.size,
       relinked_orphan_rows: relinkedOrphans,
       bonus_persistence: bonusPersistence,
       duration_seconds: ((Date.now() - startedAt) / 1000).toFixed(1),
@@ -1715,6 +2000,7 @@ Deno.serve(async (req) => {
     await finishSyncRun(supabase, runId, 'success', startedAt, responseBody, null, canonicalTasks.size);
     await upsertSourceStatus(supabase, 'success', {
       ...responseBody,
+      last_incremental_changed_date: syncStartedAtIso,
       last_successful_sync_at: new Date().toISOString(),
     });
 
