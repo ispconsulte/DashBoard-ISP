@@ -27,7 +27,7 @@ export default function AppUpdateManager() {
 
   /* Re-check snooze timer */
   const [now, setNow] = useState(Date.now());
-  const isLoginPage = location.pathname === "/login" || location.pathname === "/";
+  const isLoginPage = location.pathname === "/login";
   const modalOpen = updateAvailable && now >= snoozedUntil && !isLoginPage;
   const isUrgent = snoozeCount >= 3 || versionChanges >= 2;
 
