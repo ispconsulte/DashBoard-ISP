@@ -21,6 +21,8 @@ type UseTasksParams = {
   period?: string;
   dateFrom?: string;
   dateTo?: string;
+  /** When true the hook returns empty defaults and skips all network requests. */
+  skip?: boolean;
 };
 
 const CACHE_KEY = "cache:tasks:v3";
@@ -100,7 +102,7 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
 };
 
 export function useTasks(params: UseTasksParams = {}): UseTasksResult {
-  const { period = "all", dateFrom, dateTo } = params;
+  const { period = "all", dateFrom, dateTo, skip = false } = params;
   const { endpoint, latestEndpoint, countEndpoint, key, error: envError } = useMemo(
     () => buildEndpoint(period, dateFrom, dateTo),
     [period, dateFrom, dateTo]
@@ -178,6 +180,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
 
   // Total count query
   useEffect(() => {
+    if (skip) return;
     if (envError) return;
     if (!countEndpoint || !key) return;
     const cached = countCacheRef.current;
@@ -214,10 +217,11 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [countEndpoint, key, envError, params.accessToken]);
+  }, [skip, countEndpoint, key, envError, params.accessToken]);
 
   // Main fetch effect
   useEffect(() => {
+    if (skip) return;
     if (envError) return;
     if (!endpoint || !latestEndpoint || !key) return;
 
@@ -427,7 +431,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
       clearTimeout(timeoutId);
       inFlightKeyRef.current = null;
     };
-  }, [endpoint, latestEndpoint, key, envError, refreshToken, params.accessToken, period, dateFrom, dateTo]);
+  }, [skip, endpoint, latestEndpoint, key, envError, refreshToken, params.accessToken, period, dateFrom, dateTo]);
 
   return { tasks, loading, error, reload, lastUpdated, reloadCooldownMsLeft, reloadsRemainingThisMinute, noChanges, totalCount };
 }
