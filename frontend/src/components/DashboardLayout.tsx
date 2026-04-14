@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, useMemo, useEffect, useRef, useDeferredValue } from "react";
+import { Component, type ErrorInfo, useMemo, useEffect, useDeferredValue } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { useAuth, type AccessArea } from "@/modules/auth/hooks/useAuth";
