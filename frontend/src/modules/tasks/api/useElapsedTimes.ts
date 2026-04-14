@@ -29,8 +29,15 @@ const PAGE_SIZE = 1000;
 const MAX_PAGES = 10;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — stale cache is ignored on hydration
 
+const ALL_CAP_DAYS = 365; // server-side cap for period="all"
+
 const buildDateFilter = (period?: string, dateFrom?: string, dateTo?: string): string => {
-  if (!period || period === "all") return "";
+  if (!period || period === "all") {
+    // Cap "all" to ALL_CAP_DAYS so the query stays bounded
+    const from = new Date(Date.now() - ALL_CAP_DAYS * 24 * 60 * 60 * 1000);
+    const iso = encodeURIComponent(from.toISOString());
+    return `or=(date_start.gte.${iso},created_date.gte.${iso},updated_at.gte.${iso})`;
+  }
   if (period !== "custom") {
     const days = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : 180;
     const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
