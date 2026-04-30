@@ -21,7 +21,7 @@ const syncSupabaseSession = async (accessToken: string, refreshToken?: string) =
 };
 
 export type UserRole = "admin" | "consultor" | "gerente" | "coordenador" | "cliente";
-export type AccessArea = "home" | "comodato" | "integracoes" | "tarefas" | "usuarios" | "analiticas" | "calendario" | "gamificacao" | "ferramentas" | "suporte" | "sprint" | "bonificacao" | "clientes" | "diagnostico";
+export type AccessArea = "home" | "comodato" | "integracoes" | "tarefas" | "usuarios" | "analiticas" | "calendario" | "ferramentas" | "suporte" | "bonificacao" | "clientes" | "diagnostico";
 
 export type AuthSession = {
   userId?: string | null;
@@ -59,11 +59,11 @@ type AuthResult = {
 };
 
 export const ACCESS_RULES: Record<UserRole, Record<AccessArea, boolean>> = {
-  admin: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, gamificacao: true, ferramentas: true, suporte: true, sprint: true, bonificacao: true, clientes: true, diagnostico: true },
-  gerente: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, gamificacao: true, ferramentas: true, suporte: true, sprint: true, bonificacao: true, clientes: true, diagnostico: true },
-  coordenador: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, gamificacao: true, ferramentas: true, suporte: true, sprint: true, bonificacao: true, clientes: true, diagnostico: true },
-  consultor: { home: true, comodato: false, integracoes: false, tarefas: true, usuarios: false, analiticas: false, calendario: true, gamificacao: true, ferramentas: true, suporte: true, sprint: false, bonificacao: false, clientes: false, diagnostico: false },
-  cliente: { home: true, comodato: false, integracoes: false, tarefas: true, usuarios: false, analiticas: false, calendario: false, gamificacao: false, ferramentas: false, suporte: true, sprint: false, bonificacao: false, clientes: true, diagnostico: false },
+  admin: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, ferramentas: true, suporte: true, bonificacao: true, clientes: true, diagnostico: true },
+  gerente: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, ferramentas: true, suporte: true, bonificacao: true, clientes: true, diagnostico: true },
+  coordenador: { home: true, comodato: true, integracoes: true, tarefas: true, usuarios: true, analiticas: true, calendario: true, ferramentas: true, suporte: true, bonificacao: true, clientes: true, diagnostico: true },
+  consultor: { home: true, comodato: false, integracoes: false, tarefas: true, usuarios: false, analiticas: false, calendario: true, ferramentas: true, suporte: true, bonificacao: false, clientes: false, diagnostico: false },
+  cliente: { home: true, comodato: false, integracoes: false, tarefas: true, usuarios: false, analiticas: false, calendario: false, ferramentas: false, suporte: true, bonificacao: false, clientes: true, diagnostico: false },
 };
 
 const SESSION_KEY = "auth_session";

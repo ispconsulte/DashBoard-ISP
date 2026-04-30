@@ -49,6 +49,8 @@ export default function AppUpdateManager() {
 
   /* Polling for version.json */
   useEffect(() => {
+    if (import.meta.env.DEV) return;
+
     let cancelled = false;
     let lastSeenBuildId: string | null = null;
 

@@ -368,9 +368,9 @@ export function TaskCharts({
             <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[hsl(var(--task-purple))]">Alocação por Projeto</p>
             <p className="mt-0.5 text-xs sm:text-sm text-[hsl(var(--task-text-muted))] truncate">Horas investidas por projeto</p>
           </div>
-          <div className="flex-1 min-h-[180px] max-h-[280px]">
+          <div className="h-[220px] min-w-0 overflow-hidden">
             {barByProject.length ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={220} minWidth={1} minHeight={1}>
                 <BarChart data={barByProject} layout="vertical" barCategoryGap="40%" margin={{ top: 5, right: 35, bottom: 5, left: 5 }}>
                   <defs>
                     {barByProject.map((_, idx) => (
@@ -431,9 +431,9 @@ export function TaskCharts({
               ))}
             </div>
           </div>
-          <div className="flex-1 min-h-[180px] max-h-[280px]">
+          <div className="h-[220px] min-w-0 overflow-hidden">
             {lineByDeadline.length ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={220} minWidth={1} minHeight={1}>
                 <LineChart data={lineByDeadline} margin={{ top: 20, right: 10, bottom: 10, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(228 20% 14%)" />
                   <XAxis dataKey="iso" tick={{ fill: "#94a3b8", fontSize: 10 }} tickFormatter={(v: string) => `${v.slice(8, 10)}/${v.slice(5, 7)}`} />
@@ -510,8 +510,9 @@ export function ProjectPerformanceGauge({
   return (
     <div className="relative flex flex-col items-center justify-center w-full">
       <div className="relative" style={{ width: 180, height: 180 }}>
-        <ResponsiveContainer width="100%" height="100%">
           <RadialBarChart
+            width={180}
+            height={180}
             data={data}
             innerRadius="74%"
             outerRadius="94%"
@@ -543,7 +544,6 @@ export function ProjectPerformanceGauge({
               style={{ filter: "url(#tcGlow)" }}
             />
           </RadialBarChart>
-        </ResponsiveContainer>
 
         {/* Centered percentage */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">

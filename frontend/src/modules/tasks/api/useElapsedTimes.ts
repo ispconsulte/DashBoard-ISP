@@ -96,13 +96,15 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
     "date_stop",
     "minutes",
     "seconds",
+    "local_state",
     "inserted_at",
     "updated_at",
   ].join(",");
   const dateFilter = buildDateFilter(period, dateFrom, dateTo);
   const filterSuffix = dateFilter ? `&${dateFilter}` : "";
-  const endpoint = `${base}/rest/v1/elapsed_times?select=${encodeURIComponent(select)}${filterSuffix}`;
-  const latestEndpoint = `${base}/rest/v1/elapsed_times?select=updated_at,inserted_at,created_date,date_start&order=updated_at.desc&limit=1${filterSuffix}`;
+  const activeFilter = "local_state=eq.active";
+  const endpoint = `${base}/rest/v1/operational_elapsed_times?select=${encodeURIComponent(select)}&${activeFilter}${filterSuffix}`;
+  const latestEndpoint = `${base}/rest/v1/operational_elapsed_times?select=updated_at,inserted_at,created_date,date_start&order=updated_at.desc&limit=1&${activeFilter}${filterSuffix}`;
   return { endpoint, latestEndpoint, key, error: null };
 };
 
@@ -234,9 +236,9 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
     if (inFlightKeyRef.current === requestKey) return;
     if (abortRef.current) {
       abortReasonRef.current = "new-request";
-      abortRef.current.abort();
     }
     const controller = new AbortController();
+    let active = true;
     abortRef.current = controller;
     inFlightKeyRef.current = requestKey;
     const timeoutId = window.setTimeout(() => {
@@ -285,9 +287,11 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
               Number.NaN
             );
             if (!Number.isNaN(latestMs) && latestMs === cachedLatestMs) {
-              setNoChanges(true);
-              setTimes(cachedForCheck?.data ?? []);
-              setLastUpdated(cachedForCheck?.timestamp ?? null);
+              if (active) {
+                setNoChanges(true);
+                setTimes(cachedForCheck?.data ?? []);
+                setLastUpdated(cachedForCheck?.timestamp ?? null);
+              }
               return;
             }
           }
@@ -345,7 +349,7 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
         }
 
         data = filterByEffectivePeriod(data, period, dateFrom, dateTo);
-        setTimes(data);
+        if (active) setTimes(data);
         const timestamp = Date.now();
         const latestUpdatedAtMs = data.reduce<number | null>((max, row) => {
           const rawUpdated = row?.updated_at ? String(row.updated_at) : null;
@@ -360,7 +364,7 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
           if (max === null) return parsed;
           return parsed > max ? parsed : max;
         }, null);
-        setLastUpdated(timestamp);
+        if (active) setLastUpdated(timestamp);
         storage.set(cacheKey, { data, timestamp, latestUpdatedAtMs });
       } catch (err) {
         const message = err instanceof Error ? err.message : "";
@@ -369,23 +373,23 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
           (err instanceof DOMException && err.name === "AbortError") ||
           message.toLowerCase().includes("aborted");
         if (abortLike) {
-          setLoading(false);
+          if (active) setLoading(false);
           return;
         }
         const messageSafe = message || "Nao foi possivel carregar os tempos.";
         console.error("[elapsed_times] fetch error", { endpoint, message });
-        setError(messageSafe);
+        if (active) setError(messageSafe);
 
         const cachedFallback = storage.get<{ data: ElapsedTimeRecord[]; timestamp: number; latestUpdatedAtMs?: number | null } | null>(
           cacheKey,
           null
         );
-        if (cachedFallback?.data?.length) {
+        if (active && cachedFallback?.data?.length) {
           setTimes(cachedFallback.data);
           setLastUpdated(cachedFallback.timestamp ?? null);
         }
       } finally {
-        if (!controller.signal.aborted) {
+        if (active && !controller.signal.aborted) {
           setLoading(false);
         }
         inFlightKeyRef.current = null;
@@ -396,8 +400,8 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
     fetchTimes();
 
     return () => {
+      active = false;
       abortReasonRef.current = "unmount";
-      controller.abort();
       if (abortRef.current === controller) {
         abortRef.current = null;
       }

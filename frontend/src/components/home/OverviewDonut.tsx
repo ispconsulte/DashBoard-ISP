@@ -19,7 +19,7 @@ export default function OverviewDonut() {
 
       <div className="mt-2 flex items-center justify-center">
         <div className="relative h-[180px] w-[180px]">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
             <PieChart>
               <Pie
                 data={data}

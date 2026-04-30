@@ -142,7 +142,7 @@ function AnalyticsPerformanceChartInner({ times }: Props) {
           transition={{ duration: 0.4 }}
           className="h-[350px] w-full"
         >
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
             <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="perfGradFill" x1="0" y1="0" x2="0" y2="1">

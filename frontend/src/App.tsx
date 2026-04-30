@@ -60,17 +60,9 @@ const SuportePage = lazyWithRecovery(() => import("./pages/Suporte"), "suporte")
 const NotFound = lazyWithRecovery(() => import("./pages/NotFound"), "not-found");
 
 const CalendarioPage = lazyWithRecovery(() => import("./pages/Calendario"), "calendario");
-const GamificacaoPage = lazyWithRecovery(() => import("./pages/Gamificacao"), "gamificacao");
 const AdminDiagnosticoPage = lazyWithRecovery(() => import("./pages/AdminDiagnostico"), "admin-diagnostico");
 const FerramentasPage = lazyWithRecovery(() => import("./pages/Ferramentas"), "ferramentas");
-const AreaTestesPage = lazyWithRecovery(() => import("./pages/sprint6/AreaTestesOverview"), "area-testes");
-const TesteRoiPage = lazyWithRecovery(() => import("./pages/sprint6/TesteRoiPage"), "teste-roi");
-const TesteCapacidadePage = lazyWithRecovery(() => import("./pages/sprint6/TesteCapacidadePage"), "teste-capacidade");
-const TesteSaudeClientePage = lazyWithRecovery(() => import("./pages/sprint6/TesteSaudeClientePage"), "teste-saude");
 const Sprint6BonificacaoPage = lazyWithRecovery(() => import("./pages/sprint6/Sprint6BonificacaoPage"), "sprint6-bonificacao");
-const TesteCadastrosPage = lazyWithRecovery(() => import("./pages/sprint6/TesteCadastrosPage"), "teste-cadastros");
-const TesteIntegracoesPage = lazyWithRecovery(() => import("./pages/sprint6/TesteIntegracoesPage"), "teste-integracoes");
-const Sprint6GovernancaDadosPage = lazyWithRecovery(() => import("./pages/sprint6/Sprint6GovernancaDadosPage"), "sprint6-governanca");
 const ClientesPage = lazyWithRecovery(() => import("./pages/clientes/ClientesPage"), "clientes");
 
 const queryClient = new QueryClient({
@@ -105,16 +97,8 @@ const AppRoutes = () => (
         <Route path="/suporte" element={<LazyPage><SuportePage /></LazyPage>} />
         <Route path="/ferramentas" element={<LazyPage><FerramentasPage /></LazyPage>} />
         <Route path="/calendario" element={<LazyPage><CalendarioPage /></LazyPage>} />
-        <Route path="/gamificacao" element={<LazyPage><GamificacaoPage /></LazyPage>} />
         <Route path="/admin/diagnostico" element={<LazyPage><AdminDiagnosticoPage /></LazyPage>} />
-        <Route path="/admin/testes" element={<LazyPage><AreaTestesPage /></LazyPage>} />
-        <Route path="/admin/testes/roi" element={<LazyPage><TesteRoiPage /></LazyPage>} />
-        <Route path="/admin/testes/capacidade" element={<LazyPage><TesteCapacidadePage /></LazyPage>} />
-        <Route path="/admin/testes/saude-cliente" element={<LazyPage><TesteSaudeClientePage /></LazyPage>} />
         <Route path="/admin/testes/bonificacao" element={<LazyPage><Sprint6BonificacaoPage /></LazyPage>} />
-        <Route path="/admin/testes/governanca-dados" element={<LazyPage><Sprint6GovernancaDadosPage /></LazyPage>} />
-        <Route path="/admin/testes/cadastros" element={<LazyPage><TesteCadastrosPage /></LazyPage>} />
-        <Route path="/admin/testes/integracoes" element={<LazyPage><TesteIntegracoesPage /></LazyPage>} />
         <Route path="/admin/testes/clientes" element={<LazyPage><ClientesPage /></LazyPage>} />
       </Route>
       <Route path="*" element={<LazyPage><NotFound /></LazyPage>} />

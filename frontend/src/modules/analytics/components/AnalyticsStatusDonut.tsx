@@ -40,7 +40,7 @@ function AnalyticsStatusDonutInner({ done, pending, overdue }: Props) {
       <p className="text-[10px] text-white/30 mb-4 self-start">Proporção entre concluídas, em andamento e atrasadas — identifique gargalos rapidamente</p>
 
       <div className="relative h-[180px] w-[180px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <PieChart>
             <Pie
               data={data}

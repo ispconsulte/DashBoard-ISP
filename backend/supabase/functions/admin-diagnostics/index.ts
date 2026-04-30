@@ -1,10 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import postgres from "https://deno.land/x/postgresjs@v3.4.5/mod.js";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Max-Age": "86400",
 };
 
 const EXT_URL = "https://stubkeeuttixteqckshd.supabase.co";
@@ -19,6 +22,8 @@ const VALID_ACTIONS = [
   "upsert_elapsed_control",
   "delete_task",
   "delete_elapsed",
+  "cleanup_integrity_center",
+  "trigger_sync",
 ] as const;
 
 type Action = (typeof VALID_ACTIONS)[number];
@@ -81,6 +86,59 @@ function isTaskArchived(task: any) {
   return Boolean(task.projects?.closed === true);
 }
 
+const TASK_PROBLEM_DEFINITIONS: Record<string, { label: string; meaning: string; severity: number }> = {
+  not_found_or_no_access: {
+    label: "Nao encontrada ou sem acesso",
+    meaning: "A tarefa nao apareceu na verificacao mais recente da origem e nao existe evento oficial de exclusao salvo. Revise permissao, filtro ou acesso antes de tratar como excluida.",
+    severity: 95,
+  },
+  deleted_confirmed: {
+    label: "Exclusao confirmada",
+    meaning: "A tarefa possui evento oficial de exclusao do Bitrix24 e deve ficar fora da operacao.",
+    severity: 100,
+  },
+  stale_not_seen: {
+    label: "Sem atualizacao recente",
+    meaning: "A tarefa continua salva localmente, mas ficou tempo demais sem ser vista novamente na sincronizacao. Revise se ela ainda deve permanecer no fluxo operacional.",
+    severity: 75,
+  },
+  project_archived: {
+    label: "Projeto arquivado",
+    meaning: "A tarefa ainda existe, mas o projeto ou grupo vinculado esta arquivado. Revise se ela deve continuar isolada na central ou ser tratada como historico.",
+    severity: 85,
+  },
+  missing_project: {
+    label: "Sem projeto vinculado",
+    meaning: "A tarefa esta sem projeto operacional valido ou aponta para um vinculo interno. Por isso, ela fica sem contexto confiavel para operacao e relatorios.",
+    severity: 90,
+  },
+  invalid_project: {
+    label: "Projeto invalido",
+    meaning: "A tarefa aponta para um projeto que nao existe na base local consolidada.",
+    severity: 90,
+  },
+  internal_project: {
+    label: "Projeto interno",
+    meaning: "A tarefa aponta para um vinculo interno que nao deve alimentar as telas operacionais.",
+    severity: 80,
+  },
+  missing_title: {
+    label: "Sem nome",
+    meaning: "A atividade chegou sem titulo claro, o que dificulta revisao, acompanhamento e auditoria.",
+    severity: 80,
+  },
+  missing_responsible: {
+    label: "Responsavel nao encontrado",
+    meaning: "A tarefa chegou sem um responsavel identificado na base local. Antes de voltar para operacao, e preciso revisar quem responde por ela.",
+    severity: 70,
+  },
+  missing_deadline: {
+    label: "Sem prazo definido",
+    meaning: "A tarefa nao tem data de entrega informada. Isso impede uma leitura confiavel de atraso, prioridade e planejamento.",
+    severity: 60,
+  },
+};
+
 function dedupeProblems(items: Array<{ code: string; label: string; meaning: string; severity: number }>) {
   const unique = new Map<string, { code: string; label: string; meaning: string; severity: number }>();
   for (const item of items) {
@@ -141,6 +199,7 @@ async function fetchAllRows(
 
 function summarizeTaskProblems(task: any) {
   const problems: Array<{ code: string; label: string; meaning: string; severity: number }> = [];
+  const persistedCodes = Array.isArray(task.diagnostic_codes) ? task.diagnostic_codes.filter(Boolean) : [];
   const title = validateString(task.title, 400);
   const responsible = validateString(task.responsible_name, 200);
   const projectId = validateBigintId(task.project_id);
@@ -153,67 +212,23 @@ function summarizeTaskProblems(task: any) {
     normalizedProjectName === alias || normalizedProjectName === `${alias} consulte`
   );
 
-  if (localState === "not_found_or_no_access") {
-    problems.push({
-      code: "not_found_or_no_access",
-      label: "Nao encontrada ou sem acesso",
-      meaning: "A tarefa nao apareceu na verificacao mais recente da origem e nao existe evento oficial de exclusao salvo. Revise permissao, filtro ou acesso antes de tratar como excluida.",
-      severity: 95,
-    });
-  }
+  const fallbackCodes = [
+    localState === "not_found_or_no_access" ? "not_found_or_no_access" : null,
+    localState === "deleted_confirmed" ? "deleted_confirmed" : null,
+    localState === "stale_not_seen" ? "stale_not_seen" : null,
+    archivedTask ? "project_archived" : null,
+    !projectId ? "missing_project" : null,
+    isInternalAlias ? "internal_project" : null,
+    !title ? "missing_title" : null,
+    !responsible ? "missing_responsible" : null,
+    !deadline ? "missing_deadline" : null,
+  ].filter(Boolean) as string[];
 
-  if (localState === "stale_not_seen") {
-    problems.push({
-      code: "stale_not_seen",
-      label: "Sem atualizacao recente",
-      meaning: "A tarefa continua salva localmente, mas ficou tempo demais sem ser vista novamente na sincronizacao. Revise se ela ainda deve permanecer no fluxo operacional.",
-      severity: 75,
-    });
-  }
-
-  if (archivedTask) {
-    problems.push({
-      code: "archived_task",
-      label: "Projeto arquivado",
-      meaning: "A tarefa ainda existe, mas o projeto ou grupo vinculado esta arquivado. Revise se ela deve continuar isolada na central ou ser tratada como historico.",
-      severity: 85,
-    });
-  }
-
-  if (!projectId || isInternalAlias) {
-    problems.push({
-      code: "missing_project",
-      label: "Sem projeto vinculado",
-      meaning: "A tarefa esta sem projeto operacional valido ou aponta para um vinculo interno. Por isso, ela fica sem contexto confiavel para operacao e relatorios.",
-      severity: 90,
-    });
-  }
-
-  if (!title) {
-    problems.push({
-      code: "missing_title",
-      label: "Sem nome",
-      meaning: "A atividade chegou sem título claro, o que dificulta revisão, acompanhamento e auditoria.",
-      severity: 80,
-    });
-  }
-
-  if (!responsible) {
-    problems.push({
-      code: "missing_responsible",
-      label: "Responsavel nao encontrado",
-      meaning: "A tarefa chegou sem um responsavel identificado na base local. Antes de voltar para operacao, e preciso revisar quem responde por ela.",
-      severity: 70,
-    });
-  }
-
-  if (!deadline) {
-    problems.push({
-      code: "missing_deadline",
-      label: "Sem prazo definido",
-      meaning: "A tarefa nao tem data de entrega informada. Isso impede uma leitura confiavel de atraso, prioridade e planejamento.",
-      severity: 60,
-    });
+  const codes = persistedCodes.length ? persistedCodes : fallbackCodes;
+  for (const code of codes) {
+    const definition = TASK_PROBLEM_DEFINITIONS[code];
+    if (!definition) continue;
+    problems.push({ code, ...definition });
   }
 
   return {
@@ -241,10 +256,26 @@ function summarizeElapsedProblem(entry: any, taskLookup: Map<number, any>) {
     };
   }
 
+  if (localState === "deleted_confirmed" || orphanReason === "deleted_confirmed") {
+    return {
+      label: "Hora de tarefa excluida",
+      meaning: "Esse lancamento pertence a uma tarefa com exclusao confirmada no Bitrix24 e deve ficar fora dos indicadores operacionais.",
+      relatedTask,
+    };
+  }
+
   if (localState === "not_found_or_no_access" || orphanReason === "not_found_or_no_access") {
     return {
       label: "Tarefa nao encontrada ou sem acesso",
       meaning: "A hora aponta para uma tarefa que nao apareceu na verificacao mais recente e nao tem exclusao oficial registrada. Revise acesso, filtro ou sincronizacao antes de descartar o lancamento.",
+      relatedTask,
+    };
+  }
+
+  if (localState === "task_integrity_blocked" || orphanReason === "task_integrity_blocked") {
+    return {
+      label: "Hora bloqueada pela integridade da tarefa",
+      meaning: "Esse lancamento esta ligado a uma tarefa que possui diagnosticos pendentes e nao deve alimentar a operacao ate a tarefa voltar a ficar valida.",
       relatedTask,
     };
   }
@@ -279,7 +310,7 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
     fetchAllRows(
       adminClient,
       "tasks",
-      "task_id,title,status,real_status,deadline,closed_date,group_id,group_name,responsible_id,responsible_name,project_id,updated_at,inserted_at,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,changed_date,projects(name,cliente_id,active,closed,visible)",
+      "task_id,title,status,real_status,deadline,closed_date,group_id,group_name,responsible_id,responsible_name,project_id,updated_at,inserted_at,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,diagnostic_codes,changed_date,projects(name,cliente_id,active,closed,visible)",
       "task_id",
     ),
     fetchAllRows(
@@ -326,7 +357,7 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
   const activeTaskLookup = new Map<number, any>();
   const deletedTaskIds = new Set((deleteEvents ?? []).map((row: any) => Number(row.task_id)).filter(Boolean));
 
-  console.log("[admin-diagnostics] Carregando central com exclusoes confirmadas do Bitrix.", {
+  console.log("[admin-diagnostics] Carregando central com diagnosticos persistidos.", {
     totalTasks: tasks.length,
     totalElapsed: elapsedTimes.length,
     confirmedDeletedTasks: deletedTaskIds.size,
@@ -335,16 +366,11 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
   for (const task of tasks ?? []) {
     const taskId = Number(task.task_id);
     if (!taskId) continue;
-    if (deletedTaskIds.has(taskId)) {
-      console.log("[admin-diagnostics] Tarefa ocultada por exclusao confirmada via OnTaskDelete.", { taskId });
-      continue;
-    }
     activeTaskLookup.set(taskId, task);
   }
 
   const problematicTaskMap = new Map<number, any>();
   for (const task of tasks ?? []) {
-      if (deletedTaskIds.has(Number(task.task_id))) continue;
       const summary = summarizeTaskProblems(task);
       if (!summary.isProblematic) continue;
       const control = taskControlMap.get(Number(task.task_id)) ?? null;
@@ -394,14 +420,6 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
     .map((entry: any) => {
       const rawTaskId = validateBigintId(entry.bitrix_task_id_raw);
       const linkedTaskId = validateBigintId(entry.task_id);
-      if ((rawTaskId && deletedTaskIds.has(rawTaskId)) || (linkedTaskId && deletedTaskIds.has(linkedTaskId))) {
-        console.log("[admin-diagnostics] Lancamento ocultado por tarefa excluida confirmada.", {
-          elapsedId: Number(entry.id),
-          rawTaskId,
-          linkedTaskId,
-        });
-        return null;
-      }
       const control = elapsedControlMap.get(Number(entry.id)) ?? null;
       const summary = summarizeElapsedProblem(entry, activeTaskLookup);
       if (!summary) return null;
@@ -442,7 +460,7 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
 
   return {
     overview: {
-      total_tasks: Math.max(0, tasks.length - deletedTaskIds.size),
+      total_tasks: tasks.length,
       problematic_tasks: problematicTasks.length,
       projectless_tasks: problematicTasks.filter((task: any) => task.problems.some((problem: any) => problem.code === "missing_project")).length,
       missing_from_source_tasks: problematicTasks.filter((task: any) =>
@@ -463,6 +481,255 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
     problematic_tasks: problematicTasks,
     orphan_elapsed: orphanElapsed,
   };
+}
+
+function uniqueNumbers(values: Array<number | null | undefined>) {
+  return Array.from(new Set(values.filter((value): value is number => Number.isInteger(value) && value > 0)));
+}
+
+function getIntegrityCleanupCandidates(payload: Awaited<ReturnType<typeof loadDiagnostics>>) {
+  const taskIds = uniqueNumbers(
+    payload.problematic_tasks
+      .filter((task: any) => task.visibility_mode !== "show_in_operations")
+      .map((task: any) => validateBigintId(task.task_id)),
+  );
+  const taskIdSet = new Set(taskIds);
+
+  const elapsedIds = uniqueNumbers(
+    payload.orphan_elapsed
+      .filter((entry: any) => entry.visibility_mode !== "show_in_operations")
+      .filter((entry: any) => {
+        const linkedTaskId = validateBigintId(entry.task_id);
+        const rawTaskId = validateBigintId(entry.bitrix_task_id_raw);
+        return (
+          validateString(entry.local_state, 60) !== "active" ||
+          (linkedTaskId !== null && taskIdSet.has(linkedTaskId)) ||
+          (rawTaskId !== null && taskIdSet.has(rawTaskId))
+        );
+      })
+      .map((entry: any) => validateBigintId(entry.id)),
+  );
+
+  return { taskIds, elapsedIds };
+}
+
+function databaseUrlFromEnv() {
+  return Deno.env.get("SUPABASE_DB_URL") ??
+    Deno.env.get("DATABASE_URL") ??
+    Deno.env.get("POSTGRES_URL") ??
+    Deno.env.get("POSTGRES_PRISMA_URL") ??
+    null;
+}
+
+async function cleanupIntegrityCenter(adminClient: SupabaseClient) {
+  const before = await loadDiagnostics(adminClient);
+  const candidates = getIntegrityCleanupCandidates(before);
+
+  const countsBefore = {
+    tasks: candidates.taskIds.length,
+    elapsed_times: candidates.elapsedIds.length,
+    task_diagnostic_controls: candidates.taskIds.length,
+    elapsed_diagnostic_controls: candidates.elapsedIds.length,
+  };
+
+  if (countsBefore.tasks === 0 && countsBefore.elapsed_times === 0) {
+    return {
+      candidates: countsBefore,
+      deleted: {
+        tasks: 0,
+        elapsed_times: 0,
+        task_diagnostic_controls: 0,
+        elapsed_diagnostic_controls: 0,
+      },
+      verification: {
+        problematic_tasks: before.problematic_tasks.length,
+        orphan_elapsed: before.orphan_elapsed.length,
+      },
+    };
+  }
+
+  const dbUrl = databaseUrlFromEnv();
+  if (!dbUrl) {
+    throw new Error("DATABASE_URL, SUPABASE_DB_URL ou POSTGRES_URL e obrigatorio para limpeza transacional.");
+  }
+
+  const sql = postgres(dbUrl, { max: 1, ssl: "require" });
+  let deleted = {
+    tasks: 0,
+    elapsed_times: 0,
+    task_diagnostic_controls: 0,
+    elapsed_diagnostic_controls: 0,
+  };
+
+  try {
+    await sql.begin(async (tx) => {
+      const elapsedControlRows = candidates.elapsedIds.length
+        ? await tx`
+            DELETE FROM public.elapsed_diagnostic_controls
+            WHERE elapsed_id = ANY(${candidates.elapsedIds}::bigint[])
+            RETURNING elapsed_id
+          `
+        : [];
+
+      const taskLinkedElapsedControlRows = candidates.taskIds.length
+        ? await tx`
+            DELETE FROM public.elapsed_diagnostic_controls
+            WHERE elapsed_id IN (
+              SELECT id
+              FROM public.elapsed_times
+              WHERE task_id = ANY(${candidates.taskIds}::bigint[])
+                 OR bitrix_task_id_raw = ANY(${candidates.taskIds}::bigint[])
+            )
+            RETURNING elapsed_id
+          `
+        : [];
+
+      const elapsedRows = candidates.elapsedIds.length
+        ? await tx`
+            DELETE FROM public.elapsed_times
+            WHERE id = ANY(${candidates.elapsedIds}::bigint[])
+            RETURNING id
+          `
+        : [];
+
+      const taskLinkedElapsedRows = candidates.taskIds.length
+        ? await tx`
+            DELETE FROM public.elapsed_times
+            WHERE task_id = ANY(${candidates.taskIds}::bigint[])
+               OR bitrix_task_id_raw = ANY(${candidates.taskIds}::bigint[])
+            RETURNING id
+          `
+        : [];
+
+      const taskControlRows = candidates.taskIds.length
+        ? await tx`
+            DELETE FROM public.task_diagnostic_controls
+            WHERE task_id = ANY(${candidates.taskIds}::bigint[])
+            RETURNING task_id
+          `
+        : [];
+
+      const taskRows = candidates.taskIds.length
+        ? await tx`
+            DELETE FROM public.tasks
+            WHERE task_id = ANY(${candidates.taskIds}::bigint[])
+            RETURNING task_id
+          `
+        : [];
+
+      deleted = {
+        tasks: taskRows.length,
+        elapsed_times: elapsedRows.length + taskLinkedElapsedRows.length,
+        task_diagnostic_controls: taskControlRows.length,
+        elapsed_diagnostic_controls: elapsedControlRows.length + taskLinkedElapsedControlRows.length,
+      };
+    });
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+
+  const after = await loadDiagnostics(adminClient);
+
+  return {
+    candidates: countsBefore,
+    deleted,
+    verification: {
+      problematic_tasks: after.problematic_tasks.length,
+      orphan_elapsed: after.orphan_elapsed.length,
+    },
+  };
+}
+
+function requestedSyncJobs(value: unknown) {
+  const requested = Array.isArray(value) ? value.map((item) => String(item)) : ["all"];
+  const wantsAll = requested.includes("all");
+  return [
+    wantsAll || requested.includes("tasks") ? "Get-Projetcs-And-Tasks-Bitrix" : null,
+    wantsAll || requested.includes("times") ? "sync-bitrix-times" : null,
+  ].filter(Boolean) as string[];
+}
+
+async function recordTriggeredSyncRun(
+  adminClient: SupabaseClient,
+  input: {
+    jobName: string;
+    startedAt: number;
+    statusCode: number | null;
+    ok: boolean;
+    data: Record<string, unknown> | null;
+    error: string | null;
+  },
+) {
+  const status = input.data?.skipped
+    ? "skipped"
+    : input.ok && input.data?.success !== false
+      ? "success"
+      : "error";
+  const recordsProcessed = input.jobName === "Get-Projetcs-And-Tasks-Bitrix"
+    ? Number(input.data?.tasks ?? 0)
+    : Number(input.data?.elapsed_upserted ?? 0);
+
+  const { error } = await adminClient.from("sync_job_runs").insert({
+    job_name: input.jobName,
+    status,
+    triggered_by: "manual_admin",
+    source: input.jobName,
+    started_at: new Date(input.startedAt).toISOString(),
+    finished_at: new Date().toISOString(),
+    duration_ms: Date.now() - input.startedAt,
+    records_processed: Number.isFinite(recordsProcessed) ? recordsProcessed : 0,
+    error_message: input.error,
+    details: {
+      status_code: input.statusCode,
+      orchestrated_by: "admin-diagnostics",
+      response: input.data,
+    },
+  });
+
+  if (error) {
+    console.error("[admin-diagnostics] Falha ao registrar execução manual.", {
+      jobName: input.jobName,
+      error: error.message,
+    });
+  }
+}
+
+async function triggerSyncJobs(adminClient: SupabaseClient, body: Record<string, unknown>) {
+  const jobs = requestedSyncJobs(body.jobs);
+  const results = [];
+
+  for (const jobName of jobs) {
+    const startedAt = Date.now();
+    const response = await fetch(`${EXT_URL}/functions/v1/${jobName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${EXT_ANON}`,
+        apikey: EXT_ANON,
+      },
+      body: "{}",
+    });
+
+    const data = await response.json().catch(() => null);
+    const result = {
+      job_name: jobName,
+      status: response.status,
+      ok: response.ok,
+      data,
+      error: response.ok ? null : data?.error ?? `HTTP ${response.status}`,
+    };
+    await recordTriggeredSyncRun(adminClient, {
+      jobName,
+      startedAt,
+      statusCode: response.status,
+      ok: response.ok,
+      data,
+      error: result.error,
+    });
+    results.push(result);
+  }
+
+  return results;
 }
 
 serve(async (req: Request) => {
@@ -570,6 +837,13 @@ serve(async (req: Request) => {
       const taskId = validateBigintId(body.task_id);
       if (!taskId) return errRes("task_id e obrigatorio.");
 
+      const diagnostics = await loadDiagnostics(adminClient);
+      const candidate = diagnostics.problematic_tasks.find((task: any) => Number(task.task_id) === taskId);
+      if (!candidate) return errRes("Tarefa nao pertence a Central de Integridade atual.", 409);
+      if (candidate.visibility_mode === "show_in_operations") {
+        return errRes("Tarefa liberada para operacao nao pode ser excluida pela Central.", 409);
+      }
+
       const { error: elapsedError } = await adminClient
         .from("elapsed_times")
         .delete()
@@ -596,6 +870,13 @@ serve(async (req: Request) => {
       const elapsedId = validateBigintId(body.elapsed_id);
       if (!elapsedId) return errRes("elapsed_id e obrigatorio.");
 
+      const diagnostics = await loadDiagnostics(adminClient);
+      const candidate = diagnostics.orphan_elapsed.find((entry: any) => Number(entry.id) === elapsedId);
+      if (!candidate) return errRes("Lancamento nao pertence a Central de Integridade atual.", 409);
+      if (candidate.visibility_mode === "show_in_operations") {
+        return errRes("Lancamento liberado para operacao nao pode ser excluido pela Central.", 409);
+      }
+
       const { error: controlError } = await adminClient
         .from("elapsed_diagnostic_controls")
         .delete()
@@ -610,6 +891,17 @@ serve(async (req: Request) => {
 
       const data = await loadDiagnostics(adminClient);
       return jsonRes({ ok: true, data });
+    }
+
+    if (action === "cleanup_integrity_center") {
+      const data = await cleanupIntegrityCenter(adminClient);
+      return jsonRes({ ok: true, data });
+    }
+
+    if (action === "trigger_sync") {
+      const jobs = await triggerSyncJobs(adminClient, body);
+      const dashboard = await loadDiagnostics(adminClient);
+      return jsonRes({ ok: true, data: { jobs, dashboard } });
     }
 
     return errRes("Acao nao tratada.", 400);

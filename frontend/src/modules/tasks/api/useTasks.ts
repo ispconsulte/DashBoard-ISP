@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { storage } from "@/modules/shared/storage";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
-import { shouldShowTaskInOperations } from "../diagnostics";
 import type { TaskRecord } from "../types";
 
 type UseTasksResult = {
@@ -33,36 +32,6 @@ const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "2500
 const PAGE_SIZE = 1000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — stale cache is ignored on hydration
 const MAX_PAGES = 10;
-
-async function fetchTaskDiagnosticControls(
-  baseUrl: string,
-  key: string,
-  bearer: string,
-  signal: AbortSignal,
-) {
-  const response = await fetch(
-    `${baseUrl}/rest/v1/task_diagnostic_controls?select=task_id,visibility_mode`,
-    {
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${bearer}`,
-      },
-      signal,
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    return new Map<number, string>();
-  }
-
-  const rows = (await response.json()) as Array<{ task_id?: number | string; visibility_mode?: string | null }>;
-  return new Map(
-    rows
-      .map((row) => [Number(row.task_id), row.visibility_mode ?? null] as const)
-      .filter(([taskId]) => Number.isFinite(taskId) && taskId > 0),
-  );
-}
 
 const buildDateFilter = (period?: string, dateFrom?: string, dateTo?: string) => {
   const now = new Date();
@@ -121,13 +90,16 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
     "responsible_id",
     "responsible_name",
     "project_id",
+    "local_state",
+    "project_closed",
+    "diagnostic_codes",
     "missing_from_bitrix_since",
     "inserted_at",
     "updated_at",
-    "projects(name,cliente_id)",
+    "projects(name,cliente_id,closed)",
   ].join(",");
   const filterSuffix = dateFilter ? `&${dateFilter}` : "";
-  const activeFilter = "missing_from_bitrix_since=is.null";
+  const activeFilter = "local_state=eq.active&diagnostic_codes=eq.%7B%7D";
   const endpoint = `${base}/rest/v1/tasks?select=${encodeURIComponent(select)}&order=deadline.nullslast&${activeFilter}${filterSuffix}`;
   const latestEndpoint = `${base}/rest/v1/tasks?select=updated_at,inserted_at&order=updated_at.desc.nullslast&limit=1&${activeFilter}${filterSuffix}`;
   const countEndpoint = `${base}/rest/v1/tasks?select=task_id&limit=1&${activeFilter}`;
@@ -223,6 +195,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
       setTotalCount(cached.value);
       return;
     }
+    let active = true;
     const controller = new AbortController();
     const bearer = params.accessToken || key;
     fetch(countEndpoint, {
@@ -240,18 +213,24 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
           const totalRaw = range.split("/")[1];
           const total = Number(totalRaw);
           if (Number.isFinite(total)) {
-            setTotalCount(total);
-            countCacheRef.current = { timestamp: Date.now(), value: total };
+            if (active) {
+              setTotalCount(total);
+              countCacheRef.current = { timestamp: Date.now(), value: total };
+            }
             return;
           }
         }
         const data = (await res.json()) as TaskRecord[];
         const total = Array.isArray(data) ? data.length : 0;
-        setTotalCount(total);
-        countCacheRef.current = { timestamp: Date.now(), value: total };
+        if (active) {
+          setTotalCount(total);
+          countCacheRef.current = { timestamp: Date.now(), value: total };
+        }
       })
       .catch(() => {});
-    return () => controller.abort();
+    return () => {
+      active = false;
+    };
   }, [skip, countEndpoint, key, envError, params.accessToken]);
 
   // Main fetch effect
@@ -276,9 +255,9 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
     if (inFlightKeyRef.current === requestKey) return;
     if (abortRef.current) {
       abortReasonRef.current = "new-request";
-      abortRef.current.abort();
     }
     const controller = new AbortController();
+    let active = true;
     abortRef.current = controller;
     inFlightKeyRef.current = requestKey;
     const timeoutId = window.setTimeout(() => {
@@ -295,7 +274,6 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
       setNoChanges(false);
       try {
         const bearer = params.accessToken || key;
-        const baseUrl = SUPABASE_URL.replace(/\/$/, "");
 
         // Read fresh cache state (might have been cleared by reload())
         const cachedForCheck = storage.get<{ data: TaskRecord[]; timestamp: number; latestUpdatedAtMs?: number | null } | null>(
@@ -327,9 +305,11 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
               Number.NaN
             );
             if (!Number.isNaN(latestMs) && latestMs === cachedLatestMs) {
-              setNoChanges(true);
-              setTasks(cachedForCheck?.data ?? []);
-              setLastUpdated(cachedForCheck?.timestamp ?? null);
+              if (active) {
+                setNoChanges(true);
+                setTasks(cachedForCheck?.data ?? []);
+                setLastUpdated(cachedForCheck?.timestamp ?? null);
+              }
               return;
             }
           }
@@ -395,10 +375,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
           }
         }
 
-        const controls = await fetchTaskDiagnosticControls(baseUrl, key, bearer, controller.signal);
-        const filteredData = data.filter((task) =>
-          shouldShowTaskInOperations(task, controls.get(Number(task.task_id ?? task.id ?? 0))),
-        );
+        const filteredData = data;
 
         const timestamp = Date.now();
         const latestUpdatedAtMs = filteredData.reduce<number | null>((max, row) => {
@@ -417,13 +394,17 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
 
         if (!filteredData.length && cached?.data?.length) {
           console.warn("[tasks] vazio da API, usando cache como fallback");
-          setTasks(cached.data);
-          setLastUpdated(cached.timestamp ?? timestamp);
-          setTotalCount(cached.data.length);
+          if (active) {
+            setTasks(cached.data);
+            setLastUpdated(cached.timestamp ?? timestamp);
+            setTotalCount(cached.data.length);
+          }
         } else {
-          setTasks(filteredData);
-          setLastUpdated(timestamp);
-          setTotalCount(filteredData.length);
+          if (active) {
+            setTasks(filteredData);
+            setLastUpdated(timestamp);
+            setTotalCount(filteredData.length);
+          }
           storage.set(cacheKey, { data: filteredData, timestamp, latestUpdatedAtMs });
         }
       } catch (err) {
@@ -433,29 +414,29 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
           (err instanceof DOMException && err.name === "AbortError") ||
           message.toLowerCase().includes("aborted");
         if (abortLike) {
-          setLoading(false);
+          if (active) setLoading(false);
           return;
         }
         // JWT expired: show friendly message
         if (message === "__JWT_EXPIRED__") {
           console.warn("[tasks] JWT expired — session needs refresh");
-          setError("Sua sessão expirou. Por favor, faça login novamente para continuar.");
+          if (active) setError("Sua sessão expirou. Por favor, faça login novamente para continuar.");
         } else {
           const messageSafe = message || "Não foi possível carregar as tarefas.";
           console.error("[tasks] fetch error", { endpoint, message });
-          setError(messageSafe);
+          if (active) setError(messageSafe);
         }
 
         const cachedFallback = storage.get<{ data: TaskRecord[]; timestamp: number; latestUpdatedAtMs?: number | null } | null>(
           cacheKey,
           null
         );
-        if (cachedFallback?.data?.length) {
+        if (active && cachedFallback?.data?.length) {
           setTasks(cachedFallback.data);
           setLastUpdated(cachedFallback.timestamp ?? null);
         }
       } finally {
-        if (!controller.signal.aborted) {
+        if (active && !controller.signal.aborted) {
           setLoading(false);
         }
         inFlightKeyRef.current = null;
@@ -466,8 +447,8 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
     fetchTasks();
 
     return () => {
+      active = false;
       abortReasonRef.current = "unmount";
-      controller.abort();
       if (abortRef.current === controller) {
         abortRef.current = null;
       }

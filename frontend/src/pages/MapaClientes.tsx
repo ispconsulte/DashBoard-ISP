@@ -89,23 +89,20 @@ function MapDot({ client, index, selected, onSelect }: {
       style={{ cursor: "pointer" }}
       onClick={onSelect}
     >
-      <motion.circle
+      <circle
         cx={x} cy={y} r={selected ? 18 : 12}
         fill="none"
         stroke={config.color}
         strokeWidth={1}
         opacity={0.3}
-        animate={{ r: selected ? [18, 28, 18] : [12, 18, 12], opacity: [0.3, 0.05, 0.3] }}
-        transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
       />
       <circle cx={x} cy={y} r={selected ? 12 : 8} fill={config.color} fillOpacity={0.1} />
-      <motion.circle
+      <circle
         cx={x} cy={y}
         r={selected ? 5.5 : 4}
         fill={config.color}
         stroke="hsl(222 47% 5%)"
         strokeWidth={1.5}
-        whileHover={{ r: 7 }}
         filter="url(#mapGlow)"
       />
       {selected && (

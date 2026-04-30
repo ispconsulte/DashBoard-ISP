@@ -10,16 +10,10 @@ import {
   PanelLeft,
   Shield,
   CalendarDays,
-  Trophy,
   Wrench,
   Bug,
   Video,
-  FlaskConical,
   Plug,
-  TrendingUp,
-  Users2,
-  HeartPulse,
-  DatabaseZap,
   Contact,
   BadgeDollarSign,
 } from "lucide-react";
@@ -158,7 +152,7 @@ function ToggleButton() {
   );
 }
 
-type SectionKey = "management" | "tools" | "administration" | "sprint";
+type SectionKey = "management" | "tools" | "administration";
 
 export function AppSidebar({
 }: {
@@ -195,9 +189,8 @@ export function AppSidebar({
   // Determine which section is active based on route
   const getActiveSection = (): SectionKey | null => {
     const p = location.pathname;
-    if (["/tarefas", "/analiticas", "/gamificacao", "/calendario", "/admin/testes/clientes", "/admin/testes/bonificacao"].some((r) => p.startsWith(r))) return "management";
+    if (["/tarefas", "/analiticas", "/calendario", "/admin/testes/clientes", "/admin/testes/bonificacao"].some((r) => p.startsWith(r))) return "management";
     if (["/ferramentas", "/comodato"].some((r) => p.startsWith(r))) return "tools";
-    if (p.startsWith("/admin/testes")) return "sprint";
     if (["/usuarios", "/integracoes", "/admin"].some((r) => p.startsWith(r))) return "administration";
     return null;
   };
@@ -221,19 +214,16 @@ export function AppSidebar({
   const isManagementActive = activeSection === "management";
   const isToolsActive = activeSection === "tools";
   const isAdministrationActive = activeSection === "administration";
-  const isSprintActive = activeSection === "sprint";
   const canAccessBonus = canAccess("bonificacao");
   const canAccessClientes = canAccess("clientes");
   const canAccessUsuarios = canAccess("usuarios");
   const canAccessIntegracoes = canAccess("integracoes");
   const canAccessDiagnostico = canAccess("diagnostico");
-  const canAccessSprint = canAccess("sprint");
   const showManagementSection =
     canAccess("analiticas") ||
     canAccessBonus ||
     canAccess("calendario") ||
     canAccessClientes ||
-    canAccess("gamificacao") ||
     canAccess("tarefas");
   const showToolsSection = canAccess("ferramentas") || canAccess("comodato");
   const showAdministrationSection = canAccessUsuarios || canAccessIntegracoes || canAccessDiagnostico;
@@ -301,7 +291,6 @@ export function AppSidebar({
                   {canAccessClientes && <SidebarNavItem to="/admin/testes/clientes" icon={Contact} label="Página do Cliente" iconColor="hsl(200 75% 50%)" />}
                   {canAccess("calendario") && <SidebarNavItem to="/calendario" icon={CalendarDays} label="Calendário" iconColor="hsl(160 84% 39%)" />}
                   {canAccessBonus && <SidebarNavItem to="/admin/testes/bonificacao" icon={BadgeDollarSign} label="Bonificação" iconColor="hsl(45 90% 55%)" />}
-                  {canAccess("gamificacao") && <SidebarNavItem to="/gamificacao" icon={Trophy} label="Ranking" iconColor="hsl(45 90% 55%)" />}
                 </>
               ) : (
                 <>
@@ -346,11 +335,6 @@ export function AppSidebar({
                       {canAccessBonus && (
                         <NavLink to="/admin/testes/bonificacao" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
                           <BadgeDollarSign className="h-4 w-4" style={{ color: "hsl(45 90% 55%)" }} /><span>Bonificação</span>
-                        </NavLink>
-                      )}
-                      {canAccess("gamificacao") && (
-                        <NavLink to="/gamificacao" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
-                          <Trophy className="h-4 w-4" style={{ color: "hsl(45 90% 55%)" }} /><span>Ranking</span>
                         </NavLink>
                       )}
                     </div>
@@ -402,63 +386,6 @@ export function AppSidebar({
                           <Video className="h-4 w-4" style={{ color: "hsl(24 92% 58%)" }} /><span>Comodato</span>
                         </NavLink>
                       )}
-                    </div>
-                  )}
-                </>
-              )}
-            </nav>
-          </div>
-        )}
-
-        {/* SPRINT 6.0 */}
-        {canAccessSprint && (
-          <div className="mb-5">
-            {!collapsed && (
-              <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.15em] text-white/25">
-                Sprint 6.0
-              </p>
-            )}
-            <nav className="flex flex-col gap-0.5">
-              {collapsed ? (
-                <>
-                  <SidebarNavItem to="/admin/testes" icon={FlaskConical} label="Central Gerencial" iconColor="hsl(160 84% 39%)" end />
-                  <SidebarNavItem to="/admin/testes/roi" icon={TrendingUp} label="Performance e ROI" iconColor="hsl(38 92% 50%)" />
-                  <SidebarNavItem to="/admin/testes/capacidade" icon={Users2} label="Operação e Capacidade" iconColor="hsl(200 75% 50%)" />
-                  <SidebarNavItem to="/admin/testes/saude-cliente" icon={HeartPulse} label="Saúde do Cliente" iconColor="hsl(0 72% 51%)" />
-                  <SidebarNavItem to="/admin/testes/governanca-dados" icon={DatabaseZap} label="Governança de Dados" iconColor="hsl(160 84% 39%)" />
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => toggleSection("sprint")}
-                    type="button"
-                    className={`${SIDEBAR_SECTION_TRIGGER} ${
-                      isSprintActive
-                        ? "bg-white/[0.15] text-white shadow-lg shadow-[hsl(234_89%_50%/0.2)]"
-                        : "text-white/60 hover:bg-white/[0.08] hover:text-white"
-                    }`}
-                  >
-                    <FlaskConical className="h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110" style={{ color: "hsl(160 84% 39%)" }} />
-                    <span className="flex-1 text-left truncate">Sprint 6.0</span>
-                    <ChevronDown className={`h-3.5 w-3.5 opacity-60 transition-transform duration-200 ${openSection === "sprint" ? "rotate-0" : "-rotate-90"}`} />
-                  </button>
-                  {(openSection === "sprint" || isSprintActive) && (
-                    <div className="ml-[18px] mt-0.5 flex flex-col gap-0.5 border-l-2 border-white/10 pl-3">
-                      <NavLink to="/admin/testes" end className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
-                        <FlaskConical className="h-4 w-4" style={{ color: "hsl(160 84% 39%)" }} /><span>Central Gerencial</span>
-                      </NavLink>
-                      <NavLink to="/admin/testes/roi" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
-                        <TrendingUp className="h-4 w-4" style={{ color: "hsl(38 92% 50%)" }} /><span>Performance e ROI</span>
-                      </NavLink>
-                      <NavLink to="/admin/testes/capacidade" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
-                        <Users2 className="h-4 w-4" style={{ color: "hsl(200 75% 50%)" }} /><span>Operação e Capacidade</span>
-                      </NavLink>
-                      <NavLink to="/admin/testes/saude-cliente" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
-                        <HeartPulse className="h-4 w-4" style={{ color: "hsl(0 72% 51%)" }} /><span>Saúde do Cliente</span>
-                      </NavLink>
-                      <NavLink to="/admin/testes/governanca-dados" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
-                        <DatabaseZap className="h-4 w-4" style={{ color: "hsl(160 84% 39%)" }} /><span>Governança de Dados</span>
-                      </NavLink>
                     </div>
                   )}
                 </>

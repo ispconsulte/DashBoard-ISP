@@ -1,4 +1,4 @@
-import { SUPABASE_URL } from "@/lib/supabase";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase";
 
 const EDGE_FN_URL = `${SUPABASE_URL}/functions/v1/admin-diagnostics`;
 
@@ -103,6 +103,17 @@ export type IntegrityPayload = {
   orphan_elapsed: IntegrityElapsedItem[];
 };
 
+export type TriggerSyncPayload = {
+  jobs: Array<{
+    job_name: string;
+    status: number | null;
+    ok: boolean;
+    data: Record<string, unknown> | null;
+    error: string | null;
+  }>;
+  dashboard: IntegrityPayload;
+};
+
 async function request<T>(token: string, body?: Record<string, unknown>, timeoutMs = 40000): Promise<T> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -113,6 +124,7 @@ async function request<T>(token: string, body?: Record<string, unknown>, timeout
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
       },
       body: JSON.stringify(body ?? { action: "list" }),
       signal: controller.signal,
@@ -174,4 +186,15 @@ export function deleteIntegrityElapsed(token: string, elapsedId: number) {
     action: "delete_elapsed",
     elapsed_id: elapsedId,
   });
+}
+
+export function triggerIntegritySync(token: string, jobs: Array<"tasks" | "times" | "all"> = ["all"]) {
+  return request<TriggerSyncPayload>(
+    token,
+    {
+      action: "trigger_sync",
+      jobs,
+    },
+    180000,
+  );
 }

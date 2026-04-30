@@ -103,7 +103,7 @@ export default function AnalyticsProjectHoursChart({ projects, times = [] }: Pro
         <div className="mb-5">
           <p className="text-[10px] uppercase tracking-wider text-white/25 mb-2">Esta semana</p>
           <div className="h-[80px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
               <BarChart data={weeklyData} margin={{ top: 4, right: 0, left: -20, bottom: 0 }}>
                 <XAxis
                   dataKey="name"
@@ -131,7 +131,7 @@ export default function AnalyticsProjectHoursChart({ projects, times = [] }: Pro
       {/* Project hours horizontal bars */}
       {data.length > 0 && (
         <div style={{ height: Math.max(200, data.length * 42) }} className="w-full">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
             <BarChart data={data} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
               <XAxis
                 type="number"

@@ -28,19 +28,11 @@ const ROUTE_TO_AREA: Record<string, AccessArea> = {
   "/integracoes": "integracoes",
   "/usuarios": "usuarios",
   "/calendario": "calendario",
-  "/gamificacao": "gamificacao",
   "/ferramentas": "ferramentas",
   "/suporte": "suporte",
-  "/admin/testes": "usuarios",
-  "/admin/testes/roi": "usuarios",
-  "/admin/testes/capacidade": "usuarios",
-  "/admin/testes/saude-cliente": "usuarios",
   "/admin/testes/bonificacao": "bonificacao",
   "/admin/diagnostico": "diagnostico",
   "/admin/testes/clientes": "clientes",
-  "/admin/testes/governanca-dados": "usuarios",
-  "/admin/testes/cadastros": "usuarios",
-  "/admin/testes/integracoes": "integracoes",
 };
 
 /** Lightweight task normalization for notification purposes only */
@@ -199,7 +191,6 @@ function DashboardInner() {
       import("@/pages/Tarefas").catch(() => {});
       import("@/pages/Analiticas").catch(() => {});
       import("@/pages/Calendario").catch(() => {});
-      import("@/pages/Gamificacao").catch(() => {});
     };
     // Use requestIdleCallback when available, otherwise a 3s delay
     if ("requestIdleCallback" in window) {

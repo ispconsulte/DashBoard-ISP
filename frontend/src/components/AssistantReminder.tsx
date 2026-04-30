@@ -26,7 +26,6 @@ const STAFF_MESSAGES: MessageItem[] = [
   { text: "Lembre-se de revisar suas tarefas e, se precisar de ajuda, acione nossa equipe! Juntos, somos mais fortes! 💪", cta: "Ver Tarefas", link: "/tarefas", requiredArea: "tarefas" },
   { text: "Que tal dar uma olhada nas suas analíticas? Acompanhar os números ajuda a tomar decisões mais inteligentes! 📊", cta: "Ver Analíticas", link: "/analiticas", requiredArea: "analiticas" },
   { text: "Você sabia que pode exportar relatórios em PDF? Mantenha sua equipe informada com dados atualizados! 📄", cta: "Ver Ferramentas", link: "/ferramentas", requiredArea: "ferramentas" },
-  { text: "Confira o ranking de produtividade! Veja quem está se destacando e motive a equipe! 🏆", cta: "Ver Ranking", link: "/gamificacao", requiredArea: "gamificacao" },
   { text: "Mantenha suas tarefas em dia! Tarefas organizadas = menos estresse e mais resultados. 🎯", cta: "Ver Tarefas", link: "/tarefas", requiredArea: "tarefas" },
   { text: "Verifique os prazos das tarefas da sua equipe. Antecipar atrasos é a chave para entregas de qualidade! ⏰", cta: "Ver Tarefas", link: "/tarefas", requiredArea: "tarefas" },
   { text: "Já verificou as integrações hoje? Manter tudo conectado garante que nada fique para trás! 🔗", cta: "Ver Integrações", link: "/integracoes", requiredArea: "integracoes" },

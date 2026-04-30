@@ -10,6 +10,12 @@ const SOURCE_ENTITY = 'tasks';
 const RUN_STALE_AFTER_MS = 3 * 60 * 60 * 1000;
 const TASK_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const BONUS_CALCULATION_VERSION = 'edge-bonus-writer-v1';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Max-Age': '86400',
+};
 const CONSULTANT_MAX_BONUS: Record<string, number> = {
   junior: 1000,
   pleno: 2000,
@@ -218,6 +224,33 @@ function keepBest<T>(incoming: T | null | undefined, existing: T | null | undefi
   if (incoming === undefined || incoming === null) return existing ?? null;
   if (typeof incoming === 'string' && incoming.trim() === '') return existing ?? incoming;
   return incoming;
+}
+
+function uniqueCodes(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort();
+}
+
+function computeTaskDiagnostics(input: {
+  title?: string | null;
+  projectId?: number | null;
+  projectExists?: boolean;
+  projectClosed?: boolean;
+  responsibleId?: number | null;
+  responsibleName?: string | null;
+  deadline?: string | null;
+  localState?: string | null;
+}) {
+  return uniqueCodes([
+    !input.projectId ? 'missing_project' : null,
+    input.projectId && input.projectExists === false ? 'invalid_project' : null,
+    input.projectClosed ? 'project_archived' : null,
+    input.localState === 'deleted_confirmed' ? 'deleted_confirmed' : null,
+    input.localState === 'not_found_or_no_access' ? 'not_found_or_no_access' : null,
+    input.localState === 'stale_not_seen' ? 'stale_not_seen' : null,
+    !nonEmptyString(input.title) ? 'missing_title' : null,
+    !input.responsibleId && !nonEmptyString(input.responsibleName) ? 'missing_responsible' : null,
+    !input.deadline ? 'missing_deadline' : null,
+  ]);
 }
 
 function toBool(value: any) {
@@ -437,7 +470,7 @@ async function fetchExistingTasksMap(supabase: any, taskIds: number[]) {
     const slice = taskIds.slice(offset, offset + 500);
     const { data, error } = await supabase
       .from('tasks')
-      .select('task_id,title,description,status,real_status,deadline,closed_date,changed_date,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state')
+      .select('task_id,title,description,status,real_status,deadline,closed_date,changed_date,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,diagnostic_codes')
       .in('task_id', slice);
 
     if (error) throw new Error(`Erro ao carregar tarefas existentes: ${error.message}`);
@@ -472,8 +505,9 @@ function mergeTaskRecord(incoming: any, existing?: any) {
     last_seen_in_bitrix_at: keepBest(incoming.last_seen_in_bitrix_at, existing.last_seen_in_bitrix_at),
     missing_from_bitrix_since: keepBest(incoming.missing_from_bitrix_since, existing.missing_from_bitrix_since),
     bitrix_visible: keepBest(incoming.bitrix_visible, existing.bitrix_visible ?? true),
-    project_closed: keepBest(incoming.project_closed, existing.project_closed ?? false),
-    local_state: keepBest(incoming.local_state, existing.local_state ?? 'active'),
+    project_closed: Boolean(incoming.project_closed),
+    local_state: incoming.project_closed ? 'project_archived' : keepBest(incoming.local_state, existing.local_state ?? 'active'),
+    diagnostic_codes: incoming.diagnostic_codes ?? [],
   };
 }
 
@@ -544,7 +578,7 @@ async function fetchTasksForReconciliation(supabase: any) {
   return await fetchAllRows(
     supabase,
     'tasks',
-    'task_id,title,status,real_status,deadline,closed_date,changed_date,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state',
+    'task_id,title,status,real_status,deadline,closed_date,changed_date,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,diagnostic_codes',
     'task_id',
   );
 }
@@ -715,6 +749,19 @@ async function relinkOrphanElapsedTimes(supabase: any) {
   }
 
   return Number(data ?? 0);
+}
+
+async function reclassifyTaskIntegrity(supabase: any) {
+  const { data, error } = await supabase.rpc('reclassify_task_integrity');
+  if (error) {
+    if (error.message?.includes('Could not find the function')) {
+      console.warn('RPC reclassify_task_integrity ainda não disponível no banco. Seguindo com classificação feita no sync.');
+      return null;
+    }
+    throw new Error(`Erro ao reclassificar integridade das tarefas: ${error.message}`);
+  }
+
+  return data ?? null;
 }
 
 async function persistBonusSnapshots(supabase: any, syncStartedAtIso: string) {
@@ -1521,6 +1568,10 @@ function classifyWorkgroupType(rawProject: any, rawType: any, rawCollab?: any) {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   const startedAt = Date.now();
   let supabase: any = null;
   let runId: string | null = null;
@@ -1554,7 +1605,7 @@ Deno.serve(async (req) => {
           skipped: true,
           reason: runState.skipReason ?? 'Skipped due to overlap.',
         }),
-        { status: 202, headers: { "Content-Type": "application/json" } },
+        { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -1747,9 +1798,7 @@ Deno.serve(async (req) => {
     const tombstones = await fetchDeleteTombstones(supabase);
     const incrementalSince = await getLastTaskSyncCursor(supabase);
     const incrementalPayload = await fetchIncrementalTaskPages(incrementalSince);
-    const sourceTasks = incrementalPayload.mode === 'incremental' && incrementalPayload.pages.length > 0
-      ? incrementalPayload.pages
-      : [];
+    const sourceTasks = incrementalPayload.pages;
 
     console.log('>>> Estratégia de sync de tarefas:', {
       mode: incrementalPayload.mode,
@@ -1793,6 +1842,17 @@ Deno.serve(async (req) => {
 
         const projectRow = projectId ? (dbProjects ?? []).find((row: any) => Number(row.id) === projectId) : null;
         const projectClosed = Boolean((projectRow as any)?.closed ?? false);
+        const localState = projectClosed ? 'project_archived' : 'active';
+        const diagnosticCodes = computeTaskDiagnostics({
+          title: nonEmptyString(rawTitle) || `Tarefa ${rawId}`,
+          projectId,
+          projectExists: projectId ? Boolean(projectRow) : true,
+          projectClosed,
+          responsibleId: toInt(rawRespId),
+          responsibleName: nonEmptyString(responsibleName),
+          deadline,
+          localState,
+        });
 
         seenTaskIds.add(numericId);
         return {
@@ -1811,7 +1871,8 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString(),
           project_id: projectId,
           project_closed: projectClosed,
-          local_state: projectClosed ? 'project_archived' : 'active',
+          local_state: localState,
+          diagnostic_codes: diagnosticCodes,
           last_seen_at: syncStartedAtIso,
           last_seen_in_bitrix_at: syncStartedAtIso,
           bitrix_visible: true,
@@ -1880,6 +1941,7 @@ Deno.serve(async (req) => {
           task_id: taskId,
           bitrix_visible: false,
           local_state: 'deleted_confirmed',
+          diagnostic_codes: uniqueCodes([...(row.diagnostic_codes ?? []), 'deleted_confirmed']),
           updated_at: new Date().toISOString(),
           missing_from_bitrix_since: toIso((tombstones.get(taskId) as any)?.deleted_at) ?? syncStartedAtIso,
         });
@@ -1892,6 +1954,7 @@ Deno.serve(async (req) => {
           task_id: taskId,
           bitrix_visible: false,
           local_state: 'not_found_or_no_access',
+          diagnostic_codes: uniqueCodes([...(row.diagnostic_codes ?? []), 'not_found_or_no_access']),
           updated_at: new Date().toISOString(),
           missing_from_bitrix_since: row.missing_from_bitrix_since ?? syncStartedAtIso,
         });
@@ -1908,24 +1971,39 @@ Deno.serve(async (req) => {
       }
       const projectRow = liveProjectId ? (dbProjects ?? []).find((item: any) => Number(item.id) === liveProjectId) : null;
       const projectClosed = Boolean((projectRow as any)?.closed ?? false);
+      const liveLocalState = projectClosed ? 'project_archived' : 'active';
+      const liveTitle = nonEmptyString(getField(liveTask, 'title', 'TITLE')) ?? row.title ?? `Tarefa ${taskId}`;
+      const liveDeadline = toIso(getField(liveTask, 'deadline', 'DEADLINE'));
+      const liveResponsibleId = toInt(getField(liveTask, 'responsibleId', 'RESPONSIBLE_ID'));
+      const liveResponsibleName = nonEmptyString(liveTask.responsible?.name || liveTask.RESPONSIBLE?.NAME);
 
       reconciledUpdates.push({
         task_id: taskId,
-        title: nonEmptyString(getField(liveTask, 'title', 'TITLE')) ?? row.title ?? `Tarefa ${taskId}`,
+        title: liveTitle,
         description: nonEmptyString(getField(liveTask, 'description', 'DESCRIPTION')) ?? row.description ?? '',
         status: toInt(getField(liveTask, 'status', 'STATUS')),
         real_status: toInt(getField(liveTask, 'status', 'STATUS')),
-        deadline: toIso(getField(liveTask, 'deadline', 'DEADLINE')),
+        deadline: liveDeadline,
         closed_date: toIso(getField(liveTask, 'closedDate', 'CLOSED_DATE')),
         changed_date: toIso(getField(liveTask, 'changedDate', 'CHANGED_DATE')),
         group_id: liveGroupId,
         group_name: nonEmptyString(liveGroupName),
-        responsible_id: toInt(getField(liveTask, 'responsibleId', 'RESPONSIBLE_ID')),
-        responsible_name: nonEmptyString(liveTask.responsible?.name || liveTask.RESPONSIBLE?.NAME),
+        responsible_id: liveResponsibleId,
+        responsible_name: liveResponsibleName,
         updated_at: new Date().toISOString(),
         project_id: liveProjectId,
         project_closed: projectClosed,
-        local_state: projectClosed ? 'project_archived' : 'active',
+        local_state: liveLocalState,
+        diagnostic_codes: computeTaskDiagnostics({
+          title: liveTitle,
+          projectId: liveProjectId,
+          projectExists: liveProjectId ? Boolean(projectRow) : true,
+          projectClosed,
+          responsibleId: liveResponsibleId,
+          responsibleName: liveResponsibleName,
+          deadline: liveDeadline,
+          localState: liveLocalState,
+        }),
         last_seen_at: syncStartedAtIso,
         last_seen_in_bitrix_at: syncStartedAtIso,
         bitrix_visible: true,
@@ -1943,6 +2021,7 @@ Deno.serve(async (req) => {
       .map((row: any) => ({
         task_id: Number(row.task_id),
         local_state: 'stale_not_seen',
+        diagnostic_codes: uniqueCodes([...(row.diagnostic_codes ?? []), 'stale_not_seen']),
         bitrix_visible: true,
         updated_at: new Date().toISOString(),
         missing_from_bitrix_since: row.missing_from_bitrix_since ?? syncStartedAtIso,
@@ -1957,6 +2036,8 @@ Deno.serve(async (req) => {
         throw new Error(`Erro ao reconciliar estados locais das tarefas: ${reconcileError.message}`);
       }
     }
+
+    const taskIntegrityBackfill = await reclassifyTaskIntegrity(supabase);
 
     // Persist deadline changes (deduplicated via unique index)
     let deadlineChangesWritten = 0;
@@ -1991,6 +2072,7 @@ Deno.serve(async (req) => {
       incremental_since: incrementalSince,
       reconciled_tasks: reconciledUpdates.length,
       stale_tasks_marked: staleUpdates.length,
+      task_integrity_backfill: taskIntegrityBackfill,
       deleted_tombstones_loaded: tombstones.size,
       relinked_orphan_rows: relinkedOrphans,
       bonus_persistence: bonusPersistence,
@@ -2006,7 +2088,7 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify(responseBody),
-      { headers: { "Content-Type": "application/json" } },
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
 
   } catch (error) {
@@ -2032,7 +2114,7 @@ Deno.serve(async (req) => {
     }
     return new Response(
       JSON.stringify(responseBody),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });

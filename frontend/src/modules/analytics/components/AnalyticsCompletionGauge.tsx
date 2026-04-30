@@ -63,7 +63,7 @@ export default function AnalyticsCompletionGauge({ done, total, activeProjects, 
             transform={`rotate(${rotation} ${size / 2} ${size / 2})`}
           />
           {/* Foreground arc */}
-          <motion.circle
+          <circle
             cx={size / 2}
             cy={size / 2}
             r={radius}
@@ -71,11 +71,9 @@ export default function AnalyticsCompletionGauge({ done, total, activeProjects, 
             stroke="url(#gaugeGradient)"
             strokeWidth={strokeWidth}
             strokeDasharray={`${arc} ${circumference}`}
+            strokeDashoffset={offset}
             strokeLinecap="round"
             transform={`rotate(${rotation} ${size / 2} ${size / 2})`}
-            initial={{ strokeDashoffset: arc }}
-            animate={{ strokeDashoffset: offset }}
-            transition={{ duration: 1.5, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
           />
           <defs>
             <linearGradient id="gaugeGradient" x1="0" y1="0" x2="1" y2="1">

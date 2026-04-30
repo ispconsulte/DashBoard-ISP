@@ -11,6 +11,9 @@ export type TaskRecord = {
   projeto?: string;
   project_name?: string;
   group_name?: string;
+  local_state?: string | null;
+  project_closed?: boolean | null;
+  diagnostic_codes?: string[] | null;
   responsible_name?: string;
   consultant?: string;
   owner?: string;
@@ -24,7 +27,7 @@ export type TaskRecord = {
   dueDate?: string | Date | null;
   deadline?: string | Date | null;
   data?: string | Date | null;
-  projects?: { name?: string; cliente_id?: number | string | null } | null;
+  projects?: { name?: string; cliente_id?: number | string | null; closed?: boolean | null } | null;
   duration_minutes?: number;
   duration?: number;
   tempo_total?: number;

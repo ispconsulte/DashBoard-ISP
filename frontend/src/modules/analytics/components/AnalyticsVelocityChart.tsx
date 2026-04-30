@@ -154,10 +154,10 @@ export default function AnalyticsVelocityChart({ tasks, classifyTask }: Props) {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="absolute inset-0 z-20 flex flex-col rounded-2xl overflow-y-auto styled-scrollbar"
+            className="absolute inset-0 z-20 flex flex-col overflow-hidden rounded-2xl"
             style={{ background: "hsl(260 30% 10% / 0.97)", backdropFilter: "blur(8px)" }}
           >
-            <div className="p-5 flex-1">
+            <div className="flex-1 overflow-y-auto p-5 styled-scrollbar">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-bold text-white/90">Sobre este gráfico</h4>
                 <button onClick={() => setShowInfo(false)} className="flex h-7 w-7 items-center justify-center rounded-lg text-white/50 hover:text-white/90 hover:bg-white/10 transition">

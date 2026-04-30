@@ -141,7 +141,7 @@ export default function AnalyticsClientRadar({ projects }: Props) {
           {clientData.map((d, i) => {
             const p = getPoint(i, d.hours);
             return (
-              <motion.circle
+              <circle
                 key={i}
                 cx={p.x}
                 cy={p.y}
@@ -149,9 +149,6 @@ export default function AnalyticsClientRadar({ projects }: Props) {
                 fill="hsl(262 83% 58%)"
                 stroke="hsl(270 50% 12%)"
                 strokeWidth={2}
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.7 + i * 0.08 }}
               />
             );
           })}

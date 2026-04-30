@@ -375,7 +375,7 @@ function AnalyticsTab({
           <h3 className="mb-4 text-sm font-semibold text-foreground">Horas por Mês</h3>
           {monthlyData.length > 0 ? (
             <div className="h-[240px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <AreaChart data={monthlyData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradHours" x1="0" y1="0" x2="0" y2="1">
@@ -412,7 +412,7 @@ function AnalyticsTab({
           {statusData.length > 0 ? (
             <div className="flex items-center gap-6">
               <div className="h-[200px] w-[200px] shrink-0">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                   <PieChart>
                     <Pie
                       data={statusData}

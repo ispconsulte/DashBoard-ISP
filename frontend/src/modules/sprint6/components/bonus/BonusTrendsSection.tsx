@@ -172,7 +172,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTr
               </div>
             </div>
             <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <AreaChart data={trendData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
@@ -227,7 +227,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTr
               </div>
             </div>
             <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <AreaChart data={trendData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
                   <defs>
                     <linearGradient id="payoutGradient" x1="0" y1="0" x2="0" y2="1">

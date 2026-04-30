@@ -107,12 +107,6 @@ export default function Sprint6BonificacaoPage() {
     }
   }, [bonus.loading, hasLoadedOnce]);
 
-  // Defensive: log crash-prone values on mount to help diagnose ErrorBoundary triggers
-  useEffect(() => {
-    if (bonus.error) {
-      console.warn("[Bonificação] Hook error:", bonus.error);
-    }
-  }, [bonus.error]);
   const permissionRole = session?.bonusRole ?? "consultor";
 
   const isTaliaFullAccess = isPaymentManager(session?.name);
@@ -122,23 +116,6 @@ export default function Sprint6BonificacaoPage() {
   const canSeeAllEvaluations = isTaliaFullAccess;
   const hideMonetary = !isTaliaFullAccess;
   const showPdfReminder = shouldShowPdfReminder(session?.name);
-
-  useEffect(() => {
-    if (session && !loadingSession) {
-      console.info("[Bonificação] Permissões:", {
-        bonusRole: session.bonusRole,
-        permissionRole,
-        userName: session.name,
-        canSeeRanking,
-        canManageTeam,
-        canSeeAllEvaluations,
-        hideMonetary,
-        userId: session.userId,
-        coordinatorOf: session.coordinatorOf,
-        totalConsultants: bonus.consultants.length,
-      });
-    }
-  }, [session, loadingSession, permissionRole, canSeeRanking, canManageTeam, canSeeAllEvaluations, hideMonetary, bonus.consultants.length]);
 
   const visibleConsultants = useMemo(() => {
     if (isTaliaFullAccess) return bonus.consultants;

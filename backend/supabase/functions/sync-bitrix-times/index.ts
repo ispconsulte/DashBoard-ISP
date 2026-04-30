@@ -13,6 +13,12 @@ const SOURCE_CODE = 'bitrix_elapsed_times';
 const SOURCE_NAME = 'Bitrix Elapsed Times';
 const SOURCE_ENTITY = 'elapsed_times';
 const RUN_STALE_AFTER_MS = 3 * 60 * 60 * 1000;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Max-Age': '86400',
+};
 
 function normalizeList(data: unknown): any[] {
   if (!data) return [];
@@ -168,7 +174,7 @@ async function fetchAllElapsedTimes(startAfterId = 0): Promise<any[]> {
 
 function parseElapsed(
   raw: Record<string, any>,
-  taskStateById: Map<number, { local_state: string; project_closed: boolean }>,
+  taskStateById: Map<number, { local_state: string; project_closed: boolean; diagnostic_codes: string[] }>,
   tombstones: Set<number>,
   detectedAt: string,
 ) {
@@ -217,6 +223,10 @@ function parseElapsed(
     localState = 'orphan_time_entry';
     orphanReason = 'missing_task_in_local_snapshot';
     orphanDetail = 'O lancamento chegou com TASK_ID, mas a tarefa ainda nao foi consolidada localmente.';
+  } else if ((taskSnapshot?.diagnostic_codes?.length ?? 0) > 0) {
+    localState = 'task_integrity_blocked';
+    orphanReason = 'task_integrity_blocked';
+    orphanDetail = `A hora esta ligada a uma tarefa bloqueada na Central de Integridade: ${taskSnapshot?.diagnostic_codes?.join(', ')}.`;
   }
 
   return {
@@ -277,28 +287,29 @@ async function upsertElapsedTimes(supabase: any, records: any[]) {
   return { inserted, errors };
 }
 
-async function fetchAllDbTasks(supabase: any): Promise<Map<number, { local_state: string; project_closed: boolean }>> {
-  const tasks = new Map<number, { local_state: string; project_closed: boolean }>();
+async function fetchAllDbTasks(supabase: any): Promise<Map<number, { local_state: string; project_closed: boolean; diagnostic_codes: string[] }>> {
+  const tasks = new Map<number, { local_state: string; project_closed: boolean; diagnostic_codes: string[] }>();
   let from = 0;
 
   while (true) {
     const to = from + DB_TASK_PAGE_SIZE - 1;
     const { data, error } = await supabase
       .from('tasks')
-      .select('task_id,local_state,project_closed')
+      .select('task_id,local_state,project_closed,diagnostic_codes')
       .range(from, to);
 
     if (error) {
       throw new Error(`Erro ao carregar tasks do banco: ${error.message}`);
     }
 
-    const rows = (data ?? []) as Array<{ task_id?: number | string | null; local_state?: string | null; project_closed?: boolean | null }>;
+    const rows = (data ?? []) as Array<{ task_id?: number | string | null; local_state?: string | null; project_closed?: boolean | null; diagnostic_codes?: string[] | null }>;
     for (const row of rows) {
       const taskId = toInt(row.task_id);
       if (taskId) {
         tasks.set(taskId, {
           local_state: String(row.local_state ?? 'active'),
           project_closed: Boolean(row.project_closed ?? false),
+          diagnostic_codes: Array.isArray(row.diagnostic_codes) ? row.diagnostic_codes : [],
         });
       }
     }
@@ -528,11 +539,15 @@ async function relinkOrphanElapsedTimes(supabase: any) {
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   const startedAt = Date.now();
   const syncStartedAtIso = new Date().toISOString();
   let supabase: any = null;

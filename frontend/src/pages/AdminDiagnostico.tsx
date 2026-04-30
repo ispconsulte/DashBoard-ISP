@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -39,6 +39,7 @@ import {
   deleteIntegrityElapsed,
   deleteIntegrityTask,
   fetchIntegrityDashboard,
+  triggerIntegritySync,
   type IntegrityElapsedItem,
   type IntegrityPayload,
   type IntegrityRun,
@@ -52,6 +53,11 @@ type VisibilityMode = "diagnostic_only" | "show_in_operations";
 type DialogState =
   | { type: "task"; item: IntegrityTaskItem }
   | { type: "elapsed"; item: IntegrityElapsedItem }
+  | null;
+type DeleteDialogState =
+  | { mode: "single"; item: NonNullable<DialogState> }
+  | { mode: "batch"; type: "task"; items: IntegrityTaskItem[] }
+  | { mode: "batch"; type: "elapsed"; items: IntegrityElapsedItem[] }
   | null;
 
 const visibilityOptions: Array<{ value: VisibilityMode; label: string; helper: string }> = [
@@ -107,6 +113,23 @@ function formatMinutes(minutes?: number, seconds?: number) {
   const hours = Math.floor(totalMinutes / 60);
   const mins = totalMinutes % 60;
   return `${hours}h ${mins}min`;
+}
+
+const ORPHAN_DETAIL_LABELS: Record<string, string> = {
+  missing_task_in_local_snapshot: "A tarefa referenciada não foi encontrada na base local no momento da sincronização. O lançamento ficou sem vínculo válido.",
+  not_found_or_no_access: "A tarefa não apareceu na última verificação e não há registro oficial de exclusão. Verifique acesso ou filtros antes de descartar.",
+  project_archived: "O projeto ou grupo vinculado está arquivado na origem. Revise se este lançamento deve permanecer como histórico.",
+  task_deleted: "A tarefa foi excluída na origem. O lançamento perdeu o vínculo.",
+  stale_not_seen: "A tarefa ficou tempo demais sem aparecer novamente na sincronização.",
+  missing_project: "Sem projeto operacional válido associado.",
+  missing_responsible: "Sem responsável identificado.",
+  missing_deadline: "Sem prazo de entrega informado.",
+  archived_task: "Tarefa vinculada a projeto ou grupo arquivado.",
+};
+
+function humanizeOrphanDetail(raw?: string | null): string | null {
+  if (!raw) return null;
+  return ORPHAN_DETAIL_LABELS[raw.trim()] ?? raw;
 }
 
 function summarizeCron(cron: string) {
@@ -184,7 +207,7 @@ function getReasonSummary(item: IntegrityTaskItem): string {
   if (codes.includes("missing_responsible")) parts.push("sem responsável definido");
   if (codes.includes("missing_deadline")) parts.push("sem prazo de entrega");
   if (codes.includes("missing_title")) parts.push("sem título");
-  if (codes.includes("archived_task")) parts.push("ligada a projeto ou grupo arquivado");
+  if (codes.includes("project_archived")) parts.push("ligada a projeto ou grupo arquivado");
   if (!parts.length) return item.problems.map((p) => p.meaning).join(". ");
   return parts.length === 1
     ? `Tarefa ${parts[0]}.`
@@ -204,7 +227,7 @@ function getTaskProblemCodes(item: IntegrityTaskItem) {
   return item.problems.map((p) => p.code);
 }
 
-type TaskFilterCategory = "not_found_or_no_access" | "missing_project" | "missing_responsible" | "missing_deadline" | "archived_task" | "stale_not_seen" | "";
+type TaskFilterCategory = "not_found_or_no_access" | "missing_project" | "missing_responsible" | "missing_deadline" | "project_archived" | "stale_not_seen" | "";
 type PeriodFilter = "" | "7d" | "30d" | "90d";
 
 const TASK_CATEGORY_OPTIONS: Array<{ value: TaskFilterCategory; label: string }> = [
@@ -213,7 +236,7 @@ const TASK_CATEGORY_OPTIONS: Array<{ value: TaskFilterCategory; label: string }>
   { value: "missing_project", label: "Sem projeto válido" },
   { value: "missing_responsible", label: "Sem responsável" },
   { value: "missing_deadline", label: "Sem prazo" },
-  { value: "archived_task", label: "Projeto arquivado" },
+  { value: "project_archived", label: "Projeto arquivado" },
   { value: "stale_not_seen", label: "Sem atualização recente" },
 ];
 
@@ -236,21 +259,40 @@ function periodCutoff(period: PeriodFilter): Date | null {
 
 const CARD = "rounded-2xl border border-white/[0.08] bg-[hsl(228_25%_10%/0.9)] shadow-[0_2px_24px_hsl(222_45%_4%/0.25)]";
 const INNER = "rounded-xl border border-white/[0.06] bg-white/[0.025]";
-const SELECT_CLS = "rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none";
+const SEL = "w-full h-10 rounded-lg border border-white/[0.08] bg-[hsl(230_28%_12%)] px-3 pr-8 text-sm text-white outline-none appearance-none cursor-pointer transition-colors hover:border-white/20 focus:border-white/20 [color-scheme:dark]";
+
+function NativeSelect({ value, onChange, children, className = "" }: { value: string; onChange: (v: string) => void; children: React.ReactNode; className?: string }) {
+  return (
+    <div className="relative w-full">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${SEL} ${className}`}
+      >
+        {children}
+      </select>
+      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-white/40">
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </span>
+    </div>
+  );
+}
 
 function StatCard({ label, value, helper, icon: Icon }: { label: string; value: string | number; helper: string; icon: typeof ShieldAlert }) {
   return (
-    <div className={`${CARD} p-4 sm:p-5`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40 truncate">{label}</p>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">{value}</p>
-        </div>
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.04] p-2 text-amber-300/80 shrink-0">
+    <div className={`${CARD} flex flex-col gap-4 p-5`}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40 leading-snug">{label}</p>
+        <div className="rounded-xl border border-amber-400/[0.15] bg-amber-400/[0.08] p-2.5 text-amber-300/80 shrink-0">
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <p className="mt-2.5 text-[12px] leading-[1.55] text-white/45 line-clamp-2">{helper}</p>
+      <div>
+        <p className="text-[2rem] font-bold tracking-tight text-white leading-none">{value}</p>
+        <p className="mt-2 text-[12px] leading-[1.6] text-white/45">{helper}</p>
+      </div>
     </div>
   );
 }
@@ -341,17 +383,23 @@ export default function AdminDiagnostico() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<IntegrityPayload | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [dialogState, setDialogState] = useState<DialogState>(null);
+  const [deleteDialogState, setDeleteDialogState] = useState<DeleteDialogState>(null);
   const [visibilityMode, setVisibilityMode] = useState<VisibilityMode>("diagnostic_only");
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("pending");
   const [adminNote, setAdminNote] = useState("");
+  const [batchTaskCount, setBatchTaskCount] = useState(10);
+  const [batchElapsedCount, setBatchElapsedCount] = useState(10);
+  const [deleteProgress, setDeleteProgress] = useState("");
   const [taskSearch, setTaskSearch] = useState("");
   const [elapsedSearch, setElapsedSearch] = useState("");
   const [taskPage, setTaskPage] = useState(1);
   const [elapsedPage, setElapsedPage] = useState(1);
+  const deletingRef = useRef(false);
 
   /* Task filters */
   const [taskCategory, setTaskCategory] = useState<TaskFilterCategory>("");
@@ -394,7 +442,7 @@ export default function AdminDiagnostico() {
     withoutProject: allTasks.filter((i) => i.problems.some((p) => p.code === "missing_project")).length,
     withoutOwner: allTasks.filter((i) => i.problems.some((p) => p.code === "missing_responsible")).length,
     withoutDeadline: allTasks.filter((i) => i.problems.some((p) => p.code === "missing_deadline")).length,
-    archived: allTasks.filter((i) => i.problems.some((p) => p.code === "archived_task")).length,
+    archived: allTasks.filter((i) => i.problems.some((p) => p.code === "project_archived")).length,
   }), [allTasks]);
 
   /* Unique filter option lists */
@@ -438,6 +486,11 @@ export default function AdminDiagnostico() {
     });
   }, [allTasks, taskSearch, taskCategory, taskPeriod, taskResponsible, taskProject]);
 
+  const deletableTasks = useMemo(
+    () => filteredTasks.filter((task) => task.visibility_mode !== "show_in_operations"),
+    [filteredTasks],
+  );
+
   const filteredElapsed = useMemo(() => {
     const cutoff = periodCutoff(elapsedPeriod);
     return (payload?.orphan_elapsed ?? []).filter((i) => {
@@ -455,6 +508,11 @@ export default function AdminDiagnostico() {
       return true;
     });
   }, [payload, elapsedSearch, elapsedPeriod, elapsedResponsible, elapsedProject, elapsedCategory]);
+
+  const deletableElapsed = useMemo(
+    () => filteredElapsed.filter((entry) => entry.visibility_mode !== "show_in_operations"),
+    [filteredElapsed],
+  );
 
   const PAGE_SIZE = 12;
   const taskTotalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
@@ -490,6 +548,25 @@ export default function AdminDiagnostico() {
     }
   };
 
+  const runSyncNow = async () => {
+    if (!session?.accessToken) return;
+    setSyncing(true);
+    setError(null);
+    try {
+      const result = await triggerIntegritySync(session.accessToken, ["all"]);
+      setPayload(result.dashboard);
+      setActiveTab("sync");
+      const failed = result.jobs.filter((job) => !job.ok);
+      if (failed.length) {
+        setError(`Sincronização concluída com falha em: ${failed.map((job) => job.job_name).join(", ")}.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao disparar sincronização.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!dialogState || !session?.accessToken) return;
     setSaving(true);
@@ -507,6 +584,53 @@ export default function AdminDiagnostico() {
     }
   };
 
+  const confirmDeleteDialog = async () => {
+    if (!deleteDialogState || !session?.accessToken) return;
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    setSaving(true);
+    setError(null);
+    setDeleteProgress("");
+    try {
+      if (deleteDialogState.mode === "single") {
+        const nextPayload = deleteDialogState.item.type === "task"
+          ? await deleteIntegrityTask(session.accessToken, deleteDialogState.item.item.task_id)
+          : await deleteIntegrityElapsed(session.accessToken, deleteDialogState.item.item.id);
+        setPayload(nextPayload);
+      } else {
+        const total = deleteDialogState.items.length;
+        for (let index = 0; index < total; index += 1) {
+          setDeleteProgress(`Excluindo ${index + 1} de ${total}`);
+          const item = deleteDialogState.items[index];
+          const nextPayload = deleteDialogState.type === "task"
+            ? await deleteIntegrityTask(session.accessToken, (item as IntegrityTaskItem).task_id)
+            : await deleteIntegrityElapsed(session.accessToken, (item as IntegrityElapsedItem).id);
+          setPayload(nextPayload);
+        }
+      }
+      setDeleteDialogState(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao excluir o registro.");
+    } finally {
+      setDeleteProgress("");
+      setSaving(false);
+      deletingRef.current = false;
+    }
+  };
+
+  const openBatchDelete = (type: "task" | "elapsed") => {
+    const count = type === "task" ? batchTaskCount : batchElapsedCount;
+    const source = type === "task" ? deletableTasks : deletableElapsed;
+    const safeCount = Math.max(1, Math.min(count, source.length));
+    const items = source.slice(0, safeCount);
+    if (!items.length) return;
+    setDeleteDialogState(
+      type === "task"
+        ? { mode: "batch", type, items: items as IntegrityTaskItem[] }
+        : { mode: "batch", type, items: items as IntegrityElapsedItem[] },
+    );
+  };
+
   if (loadingSession) return null;
   if (!isManager) return <Navigate to="/" replace />;
 
@@ -518,10 +642,16 @@ export default function AdminDiagnostico() {
           title="Central de Integridade"
           subtitle="Painel administrativo para monitorar sincronizações, revisar tarefas problemáticas e decidir o que volta ou não para a operação."
           actions={
-            <Button type="button" variant="outline" onClick={() => void loadDashboard()} disabled={loading} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              {loading ? "Atualizando…" : "Atualizar painel"}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={() => void loadDashboard()} disabled={loading || syncing} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                {loading ? "Atualizando..." : "Atualizar painel"}
+              </Button>
+              <Button type="button" onClick={() => void runSyncNow()} disabled={loading || syncing} className="gap-2">
+                <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Sincronizando..." : "Sincronizar agora"}
+              </Button>
+            </div>
           }
         />
 
@@ -530,24 +660,38 @@ export default function AdminDiagnostico() {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="h-auto w-full flex-wrap justify-start gap-1.5 rounded-xl border border-white/[0.08] bg-[hsl(230_25%_10%/0.85)] p-1.5">
-            <TabsTrigger value="overview" className="rounded-lg px-4 py-2 text-[13px] data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-sm">
-              Visão geral
-            </TabsTrigger>
-            <TabsTrigger value="tasks" className="rounded-lg px-4 py-2 text-[13px] data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-sm">
-              Tarefas para revisão
-            </TabsTrigger>
-            <TabsTrigger value="elapsed" className="rounded-lg px-4 py-2 text-[13px] data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-sm">
-              Horas sem vínculo
-            </TabsTrigger>
-            <TabsTrigger value="sync" className="rounded-lg px-4 py-2 text-[13px] data-[state=active]:bg-white data-[state=active]:text-slate-950 data-[state=active]:shadow-sm">
-              Monitoramento
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto">
+            <TabsList className="inline-flex h-auto min-w-full flex-nowrap gap-1 rounded-xl border border-white/[0.08] bg-[hsl(230_28%_9%/0.95)] p-1.5 sm:w-full sm:flex-wrap">
+              <TabsTrigger
+                value="overview"
+                className="flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-[13px] font-medium text-white/50 transition-all hover:text-white/80 data-[state=active]:bg-white/[0.1] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-white/[0.12]"
+              >
+                Visão geral
+              </TabsTrigger>
+              <TabsTrigger
+                value="tasks"
+                className="flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-[13px] font-medium text-white/50 transition-all hover:text-white/80 data-[state=active]:bg-white/[0.1] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-white/[0.12]"
+              >
+                Tarefas para revisão
+              </TabsTrigger>
+              <TabsTrigger
+                value="elapsed"
+                className="flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-[13px] font-medium text-white/50 transition-all hover:text-white/80 data-[state=active]:bg-white/[0.1] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-white/[0.12]"
+              >
+                Horas sem vínculo
+              </TabsTrigger>
+              <TabsTrigger
+                value="sync"
+                className="flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-[13px] font-medium text-white/50 transition-all hover:text-white/80 data-[state=active]:bg-white/[0.1] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-white/[0.12]"
+              >
+                Monitoramento
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* ═══════ VISÃO GERAL ═══════ */}
           <TabsContent value="overview" className="space-y-5">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard
                 label="Última sincronização"
                 value={formatDateTime(payload?.sync.latest_tasks_run?.started_at)}
@@ -574,38 +718,41 @@ export default function AdminDiagnostico() {
               />
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-              <div className={`${CARD} p-5`}>
-                <SectionHeader icon={Bug} title="O que a central está acompanhando" />
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+              <div className={`${CARD} p-6`}>
+                <SectionHeader icon={Bug} title="O que a central está acompanhando" subtitle="Tarefas agrupadas por tipo de problema detectado" />
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   {[
-                    { title: "Sem projeto válido", count: taskInsights.withoutProject, desc: "Sem vínculo a um projeto. Não impactam painéis de produção." },
-                    { title: "Sem responsável", count: taskInsights.withoutOwner, desc: "Chegaram sem responsável definido. Precisam de revisão." },
-                    { title: "Sem prazo", count: taskInsights.withoutDeadline, desc: "Sem data de entrega. Compromete leitura de atraso e agenda." },
-                    { title: "Arquivadas", count: taskInsights.archived, desc: "Arquivadas na origem. Precisam de revisão manual." },
+                    { title: "Sem projeto válido", count: taskInsights.withoutProject, desc: "Sem vínculo a um projeto. Não impactam painéis de produção.", color: "text-orange-300/70" },
+                    { title: "Sem responsável", count: taskInsights.withoutOwner, desc: "Chegaram sem responsável definido. Precisam de revisão.", color: "text-rose-300/70" },
+                    { title: "Sem prazo", count: taskInsights.withoutDeadline, desc: "Sem data de entrega. Compromete leitura de atraso e agenda.", color: "text-amber-300/70" },
+                    { title: "Arquivadas", count: taskInsights.archived, desc: "Arquivadas na origem. Precisam de revisão manual.", color: "text-purple-300/70" },
                   ].map((item) => (
-                    <div key={item.title} className={`${INNER} p-4`}>
-                      <div className="flex items-baseline justify-between gap-2">
-                        <p className="text-sm font-semibold text-white">{item.title}</p>
-                        <p className="text-xl font-bold tracking-tight text-white">{item.count}</p>
+                    <div key={item.title} className={`${INNER} flex flex-col gap-2 p-4`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[13px] font-semibold text-white/90">{item.title}</p>
+                        <p className={`text-2xl font-bold tracking-tight ${item.color}`}>{item.count}</p>
                       </div>
-                      <p className="mt-1.5 text-[12px] leading-[1.5] text-white/45">{item.desc}</p>
+                      <p className="text-[12px] leading-[1.55] text-white/40">{item.desc}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className={`${CARD} p-5`}>
-                <SectionHeader icon={Wrench} title="Guia rápido de decisão" />
-                <div className="mt-4 space-y-2.5">
+              <div className={`${CARD} p-6`}>
+                <SectionHeader icon={Wrench} title="Guia rápido de decisão" subtitle="Como tratar cada caso encontrado" />
+                <div className="mt-5 flex flex-col gap-3">
                   {[
-                    { title: "Manter na central", desc: "Quando ainda precisa de correção ou o histórico deve ser preservado." },
-                    { title: "Liberar para operação", desc: "Caso revisado que faz sentido reaparecer nas telas normais." },
-                    { title: "Excluir da base local", desc: "Para registros que não fazem mais sentido. Remove apenas desta base." },
+                    { title: "Manter na central", desc: "Quando ainda precisa de correção ou o histórico deve ser preservado.", dot: "bg-sky-400/60" },
+                    { title: "Liberar para operação", desc: "Caso revisado que faz sentido reaparecer nas telas normais.", dot: "bg-emerald-400/60" },
+                    { title: "Excluir da base local", desc: "Para registros que não fazem mais sentido. Remove apenas desta base.", dot: "bg-red-400/60" },
                   ].map((item) => (
-                    <div key={item.title} className={`${INNER} p-3.5`}>
-                      <p className="text-sm font-semibold text-white">{item.title}</p>
-                      <p className="mt-1 text-[12px] leading-[1.5] text-white/45">{item.desc}</p>
+                    <div key={item.title} className={`${INNER} flex items-start gap-3 p-4`}>
+                      <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${item.dot}`} />
+                      <div>
+                        <p className="text-[13px] font-semibold text-white/90">{item.title}</p>
+                        <p className="mt-1 text-[12px] leading-[1.55] text-white/40">{item.desc}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -617,27 +764,42 @@ export default function AdminDiagnostico() {
           <TabsContent value="tasks" className="space-y-4">
             {/* Header + search + filters */}
             <div className={`${CARD} p-5 space-y-4`}>
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <p className="text-[15px] font-semibold text-white">Tarefas para revisão</p>
                   <p className="mt-0.5 text-[13px] text-white/50">
-                    {filteredTasks.length} tarefa(s) encontrada(s)
+                    {filteredTasks.length} tarefa(s) encontrada(s) · {deletableTasks.length} excluível(is)
                   </p>
                 </div>
-                <div className="flex items-center gap-2 w-full lg:w-auto">
-                  <input
-                    type="search"
-                    value={taskSearch}
-                    onChange={(e) => setTaskSearch(e.target.value)}
-                    placeholder="Buscar por nome, responsável ou ID…"
-                    className="flex-1 lg:min-w-[300px] rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                  />
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-3 py-2">
+                    <span className="whitespace-nowrap text-[11px] font-medium text-red-100/80">Excluir lote</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={Math.max(1, deletableTasks.length)}
+                      value={batchTaskCount}
+                      onChange={(e) => setBatchTaskCount(Math.min(Math.max(1, Number(e.target.value) || 1), Math.max(1, deletableTasks.length)))}
+                      className="h-8 w-14 rounded-md border border-white/10 bg-black/20 px-2 text-center text-xs text-white outline-none"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      disabled={saving || deletableTasks.length === 0}
+                      onClick={() => openBatchDelete("task")}
+                      className="h-8 gap-1.5 text-[12px]"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Excluir
+                    </Button>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => setShowTaskFilters((v) => !v)}
-                    className={`gap-1.5 border-white/10 text-white hover:bg-white/10 shrink-0 ${showTaskFilters ? "bg-white/10" : "bg-white/5"}`}
+                    className={`h-8 gap-1.5 border-white/10 text-white hover:bg-white/10 shrink-0 ${showTaskFilters ? "bg-white/10" : "bg-white/5"}`}
                   >
                     <Filter className="h-3.5 w-3.5" />
                     Filtros
@@ -648,39 +810,49 @@ export default function AdminDiagnostico() {
                 </div>
               </div>
 
+              <input
+                type="search"
+                value={taskSearch}
+                onChange={(e) => setTaskSearch(e.target.value)}
+                placeholder="Buscar por nome, responsável ou ID…"
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
+              />
+
               {/* Filter panel */}
               {showTaskFilters && (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 pt-1 border-t border-white/[0.06]">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Categoria</label>
-                    <select value={taskCategory} onChange={(e) => setTaskCategory(e.target.value as TaskFilterCategory)} className={SELECT_CLS}>
-                      {TASK_CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value} className="bg-slate-900 text-white">{o.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Período</label>
-                    <select value={taskPeriod} onChange={(e) => setTaskPeriod(e.target.value as PeriodFilter)} className={SELECT_CLS}>
-                      {PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value} className="bg-slate-900 text-white">{o.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Responsável</label>
-                    <select value={taskResponsible} onChange={(e) => setTaskResponsible(e.target.value)} className={SELECT_CLS}>
-                      <option value="" className="bg-slate-900 text-white">Todos</option>
-                      {taskResponsibleOptions.map((n) => <option key={n} value={n} className="bg-slate-900 text-white">{n}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Projeto</label>
-                    <select value={taskProject} onChange={(e) => setTaskProject(e.target.value)} className={SELECT_CLS}>
-                      <option value="" className="bg-slate-900 text-white">Todos</option>
-                      {taskProjectOptions.map((n) => <option key={n} value={n} className="bg-slate-900 text-white">{n}</option>)}
-                    </select>
+                <div className="border-t border-white/[0.06] pt-4 space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Categoria</label>
+                      <NativeSelect value={taskCategory} onChange={(v) => setTaskCategory(v as TaskFilterCategory)}>
+                        {TASK_CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </NativeSelect>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Período</label>
+                      <NativeSelect value={taskPeriod} onChange={(v) => setTaskPeriod(v as PeriodFilter)}>
+                        {PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </NativeSelect>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Responsável</label>
+                      <NativeSelect value={taskResponsible} onChange={setTaskResponsible}>
+                        <option value="">Todos</option>
+                        {taskResponsibleOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </NativeSelect>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Projeto</label>
+                      <NativeSelect value={taskProject} onChange={setTaskProject}>
+                        <option value="">Todos</option>
+                        {taskProjectOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </NativeSelect>
+                    </div>
                   </div>
                   {taskActiveFilterCount > 0 && (
-                    <div className="sm:col-span-2 xl:col-span-4 flex justify-end">
-                      <Button type="button" variant="ghost" size="sm" onClick={clearTaskFilters} className="text-white/50 hover:text-white">
-                        <X className="h-3.5 w-3.5 mr-1" /> Limpar filtros
+                    <div className="flex justify-end">
+                      <Button type="button" variant="ghost" size="sm" onClick={clearTaskFilters} className="h-8 gap-1.5 text-white/50 hover:text-white">
+                        <X className="h-3.5 w-3.5" /> Limpar filtros
                       </Button>
                     </div>
                   )}
@@ -741,6 +913,17 @@ export default function AdminDiagnostico() {
                               <ArrowUpRight className="h-3 w-3 text-sky-300/80" />
                               {task.visibility_mode === "show_in_operations" ? "Resguardar" : "Liberar"}
                             </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              className="h-7 gap-1 text-[11px]"
+                              disabled={saving || task.visibility_mode === "show_in_operations"}
+                              onClick={() => setDeleteDialogState({ mode: "single", item: { type: "task", item: task } })}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              {task.visibility_mode === "show_in_operations" ? "Liberada" : "Excluir"}
+                            </Button>
                           </div>
                         </div>
 
@@ -784,27 +967,42 @@ export default function AdminDiagnostico() {
           {/* ═══════ HORAS SEM VÍNCULO ═══════ */}
           <TabsContent value="elapsed" className="space-y-4">
             <div className={`${CARD} p-5 space-y-4`}>
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <p className="text-[15px] font-semibold text-white">Horas sem vínculo</p>
                   <p className="mt-0.5 text-[13px] text-white/50">
-                    {filteredElapsed.length} lançamento(s) encontrado(s)
+                    {filteredElapsed.length} lançamento(s) encontrado(s) · {deletableElapsed.length} excluível(is)
                   </p>
                 </div>
-                <div className="flex items-center gap-2 w-full lg:w-auto">
-                  <input
-                    type="search"
-                    value={elapsedSearch}
-                    onChange={(e) => setElapsedSearch(e.target.value)}
-                    placeholder="Buscar por tarefa, responsável ou ID…"
-                    className="flex-1 lg:min-w-[300px] rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                  />
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-3 py-2">
+                    <span className="whitespace-nowrap text-[11px] font-medium text-red-100/80">Excluir lote</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={Math.max(1, deletableElapsed.length)}
+                      value={batchElapsedCount}
+                      onChange={(e) => setBatchElapsedCount(Math.min(Math.max(1, Number(e.target.value) || 1), Math.max(1, deletableElapsed.length)))}
+                      className="h-8 w-14 rounded-md border border-white/10 bg-black/20 px-2 text-center text-xs text-white outline-none"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      disabled={saving || deletableElapsed.length === 0}
+                      onClick={() => openBatchDelete("elapsed")}
+                      className="h-8 gap-1.5 text-[12px]"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Excluir
+                    </Button>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => setShowElapsedFilters((v) => !v)}
-                    className={`gap-1.5 border-white/10 text-white hover:bg-white/10 shrink-0 ${showElapsedFilters ? "bg-white/10" : "bg-white/5"}`}
+                    className={`h-8 gap-1.5 border-white/10 text-white hover:bg-white/10 shrink-0 ${showElapsedFilters ? "bg-white/10" : "bg-white/5"}`}
                   >
                     <Filter className="h-3.5 w-3.5" />
                     Filtros
@@ -815,32 +1013,42 @@ export default function AdminDiagnostico() {
                 </div>
               </div>
 
+              <input
+                type="search"
+                value={elapsedSearch}
+                onChange={(e) => setElapsedSearch(e.target.value)}
+                placeholder="Buscar por tarefa, responsável ou ID…"
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
+              />
+
               {showElapsedFilters && (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 pt-1 border-t border-white/[0.06]">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Período</label>
-                    <select value={elapsedPeriod} onChange={(e) => setElapsedPeriod(e.target.value as PeriodFilter)} className={SELECT_CLS}>
-                      {PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value} className="bg-slate-900 text-white">{o.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Responsável</label>
-                    <select value={elapsedResponsible} onChange={(e) => setElapsedResponsible(e.target.value)} className={SELECT_CLS}>
-                      <option value="" className="bg-slate-900 text-white">Todos</option>
-                      {elapsedResponsibleOptions.map((n) => <option key={n} value={n} className="bg-slate-900 text-white">{n}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Projeto</label>
-                    <select value={elapsedProject} onChange={(e) => setElapsedProject(e.target.value)} className={SELECT_CLS}>
-                      <option value="" className="bg-slate-900 text-white">Todos</option>
-                      {elapsedProjectOptions.map((n) => <option key={n} value={n} className="bg-slate-900 text-white">{n}</option>)}
-                    </select>
+                <div className="border-t border-white/[0.06] pt-4 space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Período</label>
+                      <NativeSelect value={elapsedPeriod} onChange={(v) => setElapsedPeriod(v as PeriodFilter)}>
+                        {PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </NativeSelect>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Responsável</label>
+                      <NativeSelect value={elapsedResponsible} onChange={setElapsedResponsible}>
+                        <option value="">Todos</option>
+                        {elapsedResponsibleOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </NativeSelect>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Projeto / Tarefa</label>
+                      <NativeSelect value={elapsedProject} onChange={setElapsedProject}>
+                        <option value="">Todos</option>
+                        {elapsedProjectOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </NativeSelect>
+                    </div>
                   </div>
                   {elapsedActiveFilterCount > 0 && (
-                    <div className="flex items-end">
-                      <Button type="button" variant="ghost" size="sm" onClick={clearElapsedFilters} className="text-white/50 hover:text-white">
-                        <X className="h-3.5 w-3.5 mr-1" /> Limpar filtros
+                    <div className="flex justify-end">
+                      <Button type="button" variant="ghost" size="sm" onClick={clearElapsedFilters} className="h-8 gap-1.5 text-white/50 hover:text-white">
+                        <X className="h-3.5 w-3.5" /> Limpar filtros
                       </Button>
                     </div>
                   )}
@@ -853,7 +1061,7 @@ export default function AdminDiagnostico() {
               <div className={`${CARD} flex items-start gap-3 px-5 py-3.5`}>
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/60" />
                 <p className="text-[12px] leading-[1.6] text-white/50">
-                  A duração exibida usa os campos oficiais `SECONDS` e `MINUTES` do Bitrix. Quando o lançamento foi feito manualmente e `DATE_START` = `DATE_STOP`, a central usa a data de criação como referência para não sugerir um intervalo falso.
+                  A duração exibida é calculada a partir dos minutos e segundos informados pelo Bitrix. Em lançamentos manuais sem intervalo de tempo definido, a central usa a data de criação como referência de período para evitar valores incorretos.
                 </p>
               </div>
             )}
@@ -871,16 +1079,29 @@ export default function AdminDiagnostico() {
                       <div className="flex flex-col gap-3">
                         <div className="flex items-start justify-between gap-3">
                           <h3 className="text-[14px] font-semibold leading-snug text-white line-clamp-2 min-w-0">{entry.label}</h3>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-7 gap-1 border-white/10 bg-white/[0.06] text-[11px] text-white hover:bg-white/[0.12] shrink-0"
-                            onClick={() => setDialogState({ type: "elapsed", item: entry })}
-                          >
-                            <ShieldAlert className="h-3 w-3 text-amber-300/80" />
-                            Revisar
-                          </Button>
+                          <div className="flex shrink-0 gap-1.5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 border-white/10 bg-white/[0.06] text-[11px] text-white hover:bg-white/[0.12]"
+                              onClick={() => setDialogState({ type: "elapsed", item: entry })}
+                            >
+                              <ShieldAlert className="h-3 w-3 text-amber-300/80" />
+                              Revisar
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              className="h-7 gap-1 text-[11px]"
+                              disabled={saving || entry.visibility_mode === "show_in_operations"}
+                              onClick={() => setDeleteDialogState({ mode: "single", item: { type: "elapsed", item: entry } })}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              {entry.visibility_mode === "show_in_operations" ? "Liberado" : "Excluir"}
+                            </Button>
+                          </div>
                         </div>
 
                         <div className="grid gap-x-5 gap-y-2 grid-cols-2 lg:grid-cols-3">
@@ -899,7 +1120,7 @@ export default function AdminDiagnostico() {
                         </div>
 
                         <p className="text-[12px] leading-[1.55] text-amber-200/55">
-                          {entry.orphan_detail ?? entry.meaning}
+                          {humanizeOrphanDetail(entry.orphan_detail) ?? entry.meaning}
                         </p>
 
                         {entry.comment_text && (
@@ -997,6 +1218,59 @@ export default function AdminDiagnostico() {
         </Tabs>
       </div>
 
+      <Dialog open={Boolean(deleteDialogState)} onOpenChange={(open) => !open && !saving && setDeleteDialogState(null)}>
+        <DialogContent className="border-red-500/20 bg-[hsl(230_28%_11%)] text-white sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-400/20 bg-red-500/10 text-red-200">
+                <Trash2 className="h-4 w-4" />
+              </span>
+              Confirmar exclusão
+            </DialogTitle>
+            <DialogDescription className="text-white/50">
+              Esta ação remove registros da base local e atualiza a Central de Integridade ao concluir.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
+              <p className="text-sm font-semibold text-white">
+                {deleteDialogState?.mode === "single" && deleteDialogState.item.type === "task"
+                  ? `Tarefa #${deleteDialogState.item.item.task_id}`
+                  : deleteDialogState?.mode === "single" && deleteDialogState.item.type === "elapsed"
+                    ? `Lançamento #${deleteDialogState.item.item.id}`
+                    : deleteDialogState?.mode === "batch" && deleteDialogState.type === "task"
+                      ? `${deleteDialogState.items.length} tarefa(s) da lista filtrada`
+                      : deleteDialogState?.mode === "batch"
+                        ? `${deleteDialogState.items.length} lançamento(s) da lista filtrada`
+                        : "Registro selecionado"}
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-white/50">
+                {deleteDialogState?.mode === "batch"
+                  ? "O lote usa a ordem atual da lista filtrada e exclui um registro por vez. Se algum item falhar, o processo para e mostra o erro."
+                  : "Use esta exclusão para testar poucos casos antes de remover volumes maiores."}
+              </p>
+            </div>
+
+            {deleteProgress && (
+              <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.08] px-3 py-2 text-sm text-sky-100">
+                {deleteProgress}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={() => setDeleteDialogState(null)} disabled={saving} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
+              Cancelar
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void confirmDeleteDialog()} disabled={saving}>
+              <Trash2 className="h-4 w-4" />
+              {saving ? "Excluindo..." : "Excluir agora"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ═══════ DIALOG DE REVISÃO ═══════ */}
       <Dialog open={Boolean(dialogState)} onOpenChange={(open) => !open && setDialogState(null)}>
         <DialogContent className="border-white/10 bg-[hsl(230_28%_11%)] text-white sm:max-w-xl">
@@ -1019,37 +1293,23 @@ export default function AdminDiagnostico() {
               <p className="mt-2 text-[13px] leading-[1.6] text-white/50">
                 {dialogState?.type === "task"
                   ? getReasonSummary(dialogState.item)
-                  : dialogState?.item.meaning || "Lançamento referencia uma tarefa não encontrada na última verificação."}
+                  : (dialogState?.type === "elapsed" && humanizeOrphanDetail(dialogState.item.orphan_detail)) || dialogState?.item.meaning || "Lançamento referencia uma tarefa não encontrada na última verificação."}
               </p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white" htmlFor="visibility-mode">Destino do caso</label>
-              <select
-                id="visibility-mode"
-                value={visibilityMode}
-                onChange={(e) => setVisibilityMode(e.target.value as VisibilityMode)}
-                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none"
-              >
-                {visibilityOptions.map((o) => (
-                  <option key={o.value} value={o.value} className="bg-slate-900 text-white">{o.label}</option>
-                ))}
-              </select>
+              <label className="text-sm font-medium text-white">Destino do caso</label>
+              <NativeSelect value={visibilityMode} onChange={(v) => setVisibilityMode(v as VisibilityMode)}>
+                {visibilityOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </NativeSelect>
               <p className="text-[12px] leading-5 text-white/40">{visibilityOptions.find((o) => o.value === visibilityMode)?.helper}</p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white" htmlFor="review-status">Etapa da revisão</label>
-              <select
-                id="review-status"
-                value={reviewStatus}
-                onChange={(e) => setReviewStatus(e.target.value as ReviewStatus)}
-                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none"
-              >
-                {reviewOptions.map((o) => (
-                  <option key={o.value} value={o.value} className="bg-slate-900 text-white">{o.label}</option>
-                ))}
-              </select>
+              <label className="text-sm font-medium text-white">Etapa da revisão</label>
+              <NativeSelect value={reviewStatus} onChange={(v) => setReviewStatus(v as ReviewStatus)}>
+                {reviewOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </NativeSelect>
             </div>
 
             <div className="space-y-2">
