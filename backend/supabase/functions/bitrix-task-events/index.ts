@@ -255,7 +255,7 @@ async function upsertTaskSnapshot(adminClient: ReturnType<typeof createClient>, 
     last_seen_in_bitrix_at: new Date().toISOString(),
     bitrix_visible: true,
     project_closed: projectClosed,
-    local_state: projectClosed ? "project_archived" : "active",
+    local_state: "active",
     missing_from_bitrix_since: null,
   };
 

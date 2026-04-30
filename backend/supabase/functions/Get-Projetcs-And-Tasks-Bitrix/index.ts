@@ -243,7 +243,6 @@ function computeTaskDiagnostics(input: {
   return uniqueCodes([
     !input.projectId ? 'missing_project' : null,
     input.projectId && input.projectExists === false ? 'invalid_project' : null,
-    input.projectClosed ? 'project_archived' : null,
     input.localState === 'deleted_confirmed' ? 'deleted_confirmed' : null,
     input.localState === 'not_found_or_no_access' ? 'not_found_or_no_access' : null,
     input.localState === 'stale_not_seen' ? 'stale_not_seen' : null,
@@ -506,7 +505,7 @@ function mergeTaskRecord(incoming: any, existing?: any) {
     missing_from_bitrix_since: keepBest(incoming.missing_from_bitrix_since, existing.missing_from_bitrix_since),
     bitrix_visible: keepBest(incoming.bitrix_visible, existing.bitrix_visible ?? true),
     project_closed: Boolean(incoming.project_closed),
-    local_state: incoming.project_closed ? 'project_archived' : keepBest(incoming.local_state, existing.local_state ?? 'active'),
+    local_state: keepBest(incoming.local_state, existing.local_state ?? 'active'),
     diagnostic_codes: incoming.diagnostic_codes ?? [],
   };
 }
@@ -1842,7 +1841,7 @@ Deno.serve(async (req) => {
 
         const projectRow = projectId ? (dbProjects ?? []).find((row: any) => Number(row.id) === projectId) : null;
         const projectClosed = Boolean((projectRow as any)?.closed ?? false);
-        const localState = projectClosed ? 'project_archived' : 'active';
+        const localState = 'active';
         const diagnosticCodes = computeTaskDiagnostics({
           title: nonEmptyString(rawTitle) || `Tarefa ${rawId}`,
           projectId,
@@ -1971,7 +1970,7 @@ Deno.serve(async (req) => {
       }
       const projectRow = liveProjectId ? (dbProjects ?? []).find((item: any) => Number(item.id) === liveProjectId) : null;
       const projectClosed = Boolean((projectRow as any)?.closed ?? false);
-      const liveLocalState = projectClosed ? 'project_archived' : 'active';
+      const liveLocalState = 'active';
       const liveTitle = nonEmptyString(getField(liveTask, 'title', 'TITLE')) ?? row.title ?? `Tarefa ${taskId}`;
       const liveDeadline = toIso(getField(liveTask, 'deadline', 'DEADLINE'));
       const liveResponsibleId = toInt(getField(liveTask, 'responsibleId', 'RESPONSIBLE_ID'));

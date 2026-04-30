@@ -206,10 +206,6 @@ function parseElapsed(
     localState = 'not_found_or_no_access';
     orphanReason = 'not_found_or_no_access';
     orphanDetail = 'A tarefa da hora nao foi localizada na base local e nao possui exclusao confirmada. O caso pode ser falta de acesso ou filtro.';
-  } else if (taskSnapshot?.local_state === 'project_archived') {
-    localState = 'project_archived';
-    orphanReason = 'project_archived';
-    orphanDetail = 'A hora esta ligada a uma tarefa de projeto ou grupo arquivado.';
   } else if (taskSnapshot?.local_state === 'deleted_confirmed') {
     localState = 'deleted_confirmed';
     orphanReason = 'deleted_confirmed';

@@ -20,7 +20,6 @@ export type TaskOperationalIssueCode =
   | "missing_title"
   | "missing_responsible"
   | "missing_deadline"
-  | "project_archived"
   | "deleted_confirmed"
   | "not_found_or_no_access"
   | "stale_not_seen"
@@ -50,7 +49,6 @@ export function getTaskOperationalIssues(task: TaskRecord): TaskOperationalIssue
       (alias) => normalizedProjectName === alias || normalizedProjectName === `${alias} consulte`,
     );
 
-  if (task.local_state === "project_archived" || task.project_closed === true || task.projects?.closed === true) issues.push("project_archived");
   if (task.local_state === "deleted_confirmed") issues.push("deleted_confirmed");
   if (task.local_state === "not_found_or_no_access") issues.push("not_found_or_no_access");
   if (task.local_state === "stale_not_seen") issues.push("stale_not_seen");

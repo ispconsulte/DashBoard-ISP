@@ -82,10 +82,6 @@ function normalizeStatusValue(value: unknown) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function isTaskArchived(task: any) {
-  return Boolean(task.projects?.closed === true);
-}
-
 const TASK_PROBLEM_DEFINITIONS: Record<string, { label: string; meaning: string; severity: number }> = {
   not_found_or_no_access: {
     label: "Nao encontrada ou sem acesso",
@@ -101,11 +97,6 @@ const TASK_PROBLEM_DEFINITIONS: Record<string, { label: string; meaning: string;
     label: "Sem atualizacao recente",
     meaning: "A tarefa continua salva localmente, mas ficou tempo demais sem ser vista novamente na sincronizacao. Revise se ela ainda deve permanecer no fluxo operacional.",
     severity: 75,
-  },
-  project_archived: {
-    label: "Projeto arquivado",
-    meaning: "A tarefa ainda existe, mas o projeto ou grupo vinculado esta arquivado. Revise se ela deve continuar isolada na central ou ser tratada como historico.",
-    severity: 85,
   },
   missing_project: {
     label: "Sem projeto vinculado",
@@ -207,7 +198,6 @@ function summarizeTaskProblems(task: any) {
   const normalizedProjectName = normalizeText(projectName);
   const deadline = parseDate(task.deadline);
   const localState = validateString(task.local_state, 60) ?? "active";
-  const archivedTask = localState === "project_archived" || isTaskArchived(task);
   const isInternalAlias = !projectId && INTERNAL_PROJECT_ALIASES.some((alias) =>
     normalizedProjectName === alias || normalizedProjectName === `${alias} consulte`
   );
@@ -216,7 +206,6 @@ function summarizeTaskProblems(task: any) {
     localState === "not_found_or_no_access" ? "not_found_or_no_access" : null,
     localState === "deleted_confirmed" ? "deleted_confirmed" : null,
     localState === "stale_not_seen" ? "stale_not_seen" : null,
-    archivedTask ? "project_archived" : null,
     !projectId ? "missing_project" : null,
     isInternalAlias ? "internal_project" : null,
     !title ? "missing_title" : null,
@@ -236,7 +225,6 @@ function summarizeTaskProblems(task: any) {
     severity: problems.reduce((max, item) => Math.max(max, item.severity), 0),
     isProblematic: problems.length > 0,
     projectName,
-    archivedTask,
     localState,
   };
 }
@@ -247,14 +235,6 @@ function summarizeElapsedProblem(entry: any, taskLookup: Map<number, any>) {
   const relatedTask = taskLookup.get(linkedTaskId ?? rawTaskId ?? -1) ?? null;
   const orphanReason = validateString(entry.orphan_reason, 300) ?? null;
   const localState = validateString(entry.local_state, 60) ?? "active";
-
-  if (localState === "project_archived") {
-    return {
-      label: "Hora em projeto arquivado",
-      meaning: "Esse lancamento pertence a uma tarefa de projeto ou grupo arquivado. Revise se a hora deve ficar apenas como historico.",
-      relatedTask,
-    };
-  }
 
   if (localState === "deleted_confirmed" || orphanReason === "deleted_confirmed") {
     return {
