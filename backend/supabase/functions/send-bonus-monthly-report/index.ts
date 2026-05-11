@@ -39,15 +39,22 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Sessão inválida." }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { consultantId, month, year, coordinatorMessage, recipientEmail, hideMonetary } = await req.json();
+    const { consultantId, month, year, coordinatorMessage, recipientEmail } = await req.json();
     const periodKey = `${year}-${String(month).padStart(2, "0")}`;
 
-    const [{ data: consultant }, { data: sender }, { data: snapshotRows }, { data: evaluationRows }] = await Promise.all([
+    const [{ data: consultant }, { data: sender }, { data: snapshotRows }, { data: evaluationRows }, { data: pmSetting }] = await Promise.all([
       supabase.from("users").select("id,name,email,role,seniority").eq("id", consultantId).single(),
-      supabase.from("users").select("id,name").eq("auth_user_id", senderAuthUserId).single(),
+      supabase.from("users").select("id,name,role").eq("auth_user_id", senderAuthUserId).single(),
       supabase.from("bonus_score_snapshots").select("*").eq("snapshot_kind", "consultant_monthly").eq("period_key", periodKey).eq("user_id", consultantId).limit(1),
       supabase.from("bonus_internal_evaluations").select("*").eq("evaluation_scope", "consultant").eq("user_id", consultantId).eq("period_month", month).eq("period_year", year).order("category").order("subtopic"),
+      supabase.from("bonus_settings").select("value").eq("key", "payment_manager_user_id").limit(1),
     ]);
+
+    // Enforce monetary visibility server-side: only payment_manager or admin sees payout values
+    const pmUserId = pmSetting?.[0]?.value ?? null;
+    const senderIsPaymentManager = pmUserId !== null && String(sender?.id) === String(pmUserId);
+    const senderIsAdmin = sender?.role === "admin";
+    const hideMonetary = !senderIsPaymentManager && !senderIsAdmin;
 
     const snapshot = snapshotRows?.[0] ?? null;
     const evaluationBlocks = (evaluationRows ?? []).map((row: Record<string, unknown>) => `

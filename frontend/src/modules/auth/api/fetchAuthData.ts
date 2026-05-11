@@ -27,6 +27,7 @@ export type BonusUserContext = {
   coordinatorOf: string[];
   myCoordinator: string | null;
   bitrixUserId: string | null;
+  isPaymentManager: boolean;
 };
 
 /** Fetch role: user_roles → users.user_profile → JWT metadata fallback */
@@ -174,6 +175,7 @@ export const fetchBonusUserContext = async (
     coordinatorOf: [],
     myCoordinator: null,
     bitrixUserId: null,
+    isPaymentManager: false,
   };
 
   try {
@@ -220,7 +222,7 @@ export const fetchBonusUserContext = async (
       };
     }
 
-    const [coordinatorRes, myCoordinatorRes] = await Promise.all([
+    const [coordinatorRes, myCoordinatorRes, paymentManagerRes] = await Promise.all([
       fetch(
         `${base()}/rest/v1/user_coordinator_links?coordinator_user_id=eq.${userId}&select=subordinate_user_id`,
         { headers: headers(accessToken) },
@@ -229,10 +231,23 @@ export const fetchBonusUserContext = async (
         `${base()}/rest/v1/user_coordinator_links?subordinate_user_id=eq.${userId}&select=coordinator_user_id&limit=1`,
         { headers: headers(accessToken) },
       ),
+      fetch(
+        `${base()}/rest/v1/bonus_settings?key=eq.payment_manager_user_id&select=value&limit=1`,
+        { headers: headers(accessToken) },
+      ),
     ]);
 
     const coordinatorRows = coordinatorRes.ok ? await coordinatorRes.json() : [];
     const myCoordinatorRows = myCoordinatorRes.ok ? await myCoordinatorRes.json() : [];
+
+    let isPaymentManager = false;
+    if (paymentManagerRes.ok) {
+      const pmRows = await paymentManagerRes.json();
+      const pmUserId = pmRows?.[0]?.value;
+      if (pmUserId && String(pmUserId) === String(userId)) {
+        isPaymentManager = true;
+      }
+    }
 
     return {
       userId,
@@ -240,12 +255,17 @@ export const fetchBonusUserContext = async (
       bonusRole: normalizeBonusRole(typeof bonusRoleValue === "string" ? bonusRoleValue : undefined),
       seniority: normalizeBonusSeniority(typeof seniorityValue === "string" ? seniorityValue : undefined),
       coordinatorOf: Array.isArray(coordinatorRows)
-        ? coordinatorRows.map((row: { subordinate_user_id?: string }) => row.subordinate_user_id).filter((value: unknown): value is string => typeof value === "string")
+        ? coordinatorRows
+            .map((row: { subordinate_user_id?: string | number }) =>
+              row.subordinate_user_id != null ? String(row.subordinate_user_id) : null,
+            )
+            .filter((value): value is string => value !== null)
         : [],
-      myCoordinator: Array.isArray(myCoordinatorRows) && typeof myCoordinatorRows[0]?.coordinator_user_id === "string"
-        ? myCoordinatorRows[0].coordinator_user_id
+      myCoordinator: Array.isArray(myCoordinatorRows) && myCoordinatorRows[0]?.coordinator_user_id != null
+        ? String(myCoordinatorRows[0].coordinator_user_id)
         : null,
       bitrixUserId,
+      isPaymentManager,
     };
   } catch {
     return fallback;

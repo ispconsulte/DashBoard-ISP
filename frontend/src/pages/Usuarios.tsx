@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { supabaseRest, safeJson } from "@/modules/users/api/supabaseRest";
 import PageHeaderCard from "@/components/PageHeaderCard";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
@@ -272,6 +273,43 @@ export default function UsuariosPage() {
   const [profileFilter, setProfileFilter] = useState<string>("all");
   const [feedback, setFeedback] = useState<{ type: "ok" | "error"; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"users">("users");
+
+  // Payment manager config
+  const [paymentManagerUserId, setPaymentManagerUserId] = useState<string | null>(null);
+  const [paymentManagerDraft, setPaymentManagerDraft] = useState<string>("none");
+  const [savingPaymentManager, setSavingPaymentManager] = useState(false);
+  const [showPaymentManagerPanel, setShowPaymentManagerPanel] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    supabaseRest("bonus_settings?key=eq.payment_manager_user_id&select=value&limit=1", token)
+      .then(safeJson)
+      .then((rows: { value?: string | null }[]) => {
+        const val = rows?.[0]?.value ?? null;
+        setPaymentManagerUserId(val);
+        setPaymentManagerDraft(val ?? "none");
+      })
+      .catch(() => {});
+  }, [token]);
+
+  const handleSavePaymentManager = async () => {
+    if (!token) return;
+    setSavingPaymentManager(true);
+    try {
+      const newVal = paymentManagerDraft === "none" ? null : paymentManagerDraft;
+      await supabaseRest("bonus_settings?key=eq.payment_manager_user_id", token, {
+        method: "PATCH",
+        body: JSON.stringify({ value: newVal, updated_at: new Date().toISOString() }),
+      });
+      setPaymentManagerUserId(newVal);
+      showFeedback("ok", "Responsável pela bonificação atualizado.");
+      setShowPaymentManagerPanel(false);
+    } catch (err) {
+      showFeedback("error", err instanceof Error ? err.message : "Falha ao salvar.");
+    } finally {
+      setSavingPaymentManager(false);
+    }
+  };
 
   // Edit state
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
@@ -733,6 +771,79 @@ export default function UsuariosPage() {
           )}
         </AnimatePresence>
 
+
+        {/* ═══ PAYMENT MANAGER PANEL ═══ */}
+        {session?.role === "admin" && (
+          <div className="task-card p-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--task-yellow)/0.12)]">
+                  <Shield className="h-4 w-4 text-[hsl(var(--task-yellow))]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-[hsl(var(--task-text))]">Responsável pela Bonificação</p>
+                  <p className="text-[11px] text-[hsl(var(--task-text-muted))] truncate">
+                    {paymentManagerUserId
+                      ? (api.users.find(u => u.id === paymentManagerUserId)?.name ?? `ID ${paymentManagerUserId}`)
+                      : "Nenhum responsável definido"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowPaymentManagerPanel(v => !v); setPaymentManagerDraft(paymentManagerUserId ?? "none"); }}
+                className="flex items-center gap-1.5 rounded-lg border border-[hsl(var(--task-border))] bg-[hsl(var(--task-surface))] px-3 py-1.5 text-xs font-medium text-[hsl(var(--task-text-muted))] hover:border-[hsl(var(--task-yellow)/0.4)] hover:text-[hsl(var(--task-yellow))] transition shrink-0"
+              >
+                <Pencil className="h-3 w-3" /> Alterar
+              </button>
+            </div>
+
+            <AnimatePresence>
+              {showPaymentManagerPanel && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-4 pt-4 border-t border-[hsl(var(--task-border))] space-y-3">
+                    <p className="text-[11px] text-[hsl(var(--task-text-muted))]">
+                      O responsável selecionado terá acesso total aos valores de pagamento/bonificação de todos os consultores.
+                    </p>
+                    <Select value={paymentManagerDraft} onValueChange={setPaymentManagerDraft}>
+                      <SelectTrigger className={taskSelectTriggerClass}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className={taskSelectContentClass}>
+                        <SelectItem value="none" className={taskSelectItemClass}>Nenhum responsável</SelectItem>
+                        {api.users
+                          .filter(u => u.active !== false)
+                          .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+                          .map(u => (
+                            <SelectItem key={u.id} value={u.id} className={taskSelectItemClass}>
+                              {u.name} — {u.email}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setShowPaymentManagerPanel(false)}
+                        className="rounded-lg border border-[hsl(var(--task-border))] px-3 py-1.5 text-xs text-[hsl(var(--task-text-muted))] hover:text-[hsl(var(--task-text))] transition"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleSavePaymentManager}
+                        disabled={savingPaymentManager || paymentManagerDraft === (paymentManagerUserId ?? "none")}
+                        className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 px-4 py-1.5 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/30 transition disabled:opacity-50"
+                      >
+                        {savingPaymentManager ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Salvar
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
 
         {/* Users content */}
             {/* ═══ CREATE FORM ═══ */}
@@ -1303,12 +1414,14 @@ export default function UsuariosPage() {
                       <div className="space-y-1.5">
                         <label className="text-[10px] uppercase tracking-wider text-[hsl(var(--task-text-muted))] font-semibold">Nome</label>
                         <input value={editForm.name ?? ""} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
-                          className="h-9 w-full rounded-lg border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg))] px-3 text-xs text-[hsl(var(--task-text))] outline-none focus:border-[hsl(var(--task-purple)/0.5)]" />
+                          autoComplete="off"
+                          className="h-9 w-full rounded-lg border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg))] px-3 text-xs text-[hsl(var(--task-text))] outline-none focus:border-[hsl(var(--task-purple)/0.5)] [&:-webkit-autofill]:![background-color:hsl(var(--task-bg))] [&:-webkit-autofill]:![-webkit-text-fill-color:hsl(var(--task-text))]" />
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[10px] uppercase tracking-wider text-[hsl(var(--task-text-muted))] font-semibold">E-mail</label>
                         <input value={editForm.email ?? ""} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))}
-                          className="h-9 w-full rounded-lg border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg))] px-3 text-xs text-[hsl(var(--task-text))] outline-none focus:border-[hsl(var(--task-purple)/0.5)]" />
+                          autoComplete="off"
+                          className="h-9 w-full rounded-lg border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg))] px-3 text-xs text-[hsl(var(--task-text))] outline-none focus:border-[hsl(var(--task-purple)/0.5)] [&:-webkit-autofill]:![background-color:hsl(var(--task-bg))] [&:-webkit-autofill]:![-webkit-text-fill-color:hsl(var(--task-text))]" />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
@@ -1388,6 +1501,7 @@ export default function UsuariosPage() {
                           <input
                             value={(editForm.bitrix_user_id as string) ?? ""}
                             onChange={e => setEditForm(p => ({ ...p, bitrix_user_id: e.target.value }))}
+                            autoComplete="off"
                             className="h-9 w-full rounded-lg border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg))] px-3 text-xs text-[hsl(var(--task-text))] outline-none focus:border-[hsl(var(--task-purple)/0.5)]"
                           />
                         </div>
@@ -1496,7 +1610,8 @@ export default function UsuariosPage() {
                             value={editNewPassword}
                             onChange={e => setEditNewPassword(e.target.value)}
                             placeholder="Nova senha (min. 6 caracteres)"
-                            className="h-9 w-full rounded-lg border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg))] pl-3 pr-8 text-xs text-[hsl(var(--task-text))] outline-none focus:border-[hsl(var(--task-purple)/0.5)] placeholder:text-[hsl(var(--task-text-muted)/0.4)]"
+                            autoComplete="new-password"
+                            className="h-9 w-full rounded-lg border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg))] pl-3 pr-8 text-xs text-[hsl(var(--task-text))] outline-none focus:border-[hsl(var(--task-purple)/0.5)] placeholder:text-[hsl(var(--task-text-muted)/0.4)] [&:-webkit-autofill]:![background-color:hsl(var(--task-bg))] [&:-webkit-autofill]:![-webkit-text-fill-color:hsl(var(--task-text))]"
                           />
                           <button type="button" onClick={() => setShowEditPassword(!showEditPassword)}
                             className="absolute right-2 top-1/2 -translate-y-1/2 text-[hsl(var(--task-text-muted))] hover:text-[hsl(var(--task-text))]">
@@ -1527,7 +1642,7 @@ export default function UsuariosPage() {
                     </div>
 
                     {/* Fixed footer */}
-                    <div className="flex justify-end gap-2 p-5 pt-3 border-t border-[hsl(var(--task-border))] shrink-0">
+                    <div className="flex justify-center gap-2 p-5 pt-3 border-t border-[hsl(var(--task-border))] shrink-0">
                       <button onClick={cancelEdit}
                         className="rounded-lg border border-[hsl(var(--task-border))] px-3 py-1.5 text-xs text-[hsl(var(--task-text-muted))] hover:text-[hsl(var(--task-text))] transition">
                         Cancelar

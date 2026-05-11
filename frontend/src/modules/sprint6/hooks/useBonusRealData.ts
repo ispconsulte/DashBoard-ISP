@@ -20,7 +20,6 @@ import {
   BONUS_MANUAL_WEIGHTS,
   getBonusCategoryPayoutFromScore,
   getBonusCeiling,
-  isBonusEligibleConsultant,
   normalizeBonusRole,
   normalizeBonusSeniority,
 } from "@/modules/sprint6/bonusEvaluation";
@@ -368,6 +367,8 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
     }[]
   >([]);
   const [coordinatorBySubordinateId, setCoordinatorBySubordinateId] = useState<Map<string, string>>(new Map());
+  // Set of user IDs that are eligible for the bonus ranking (from bonus_eligible_users table)
+  const [eligibleUserIds, setEligibleUserIds] = useState<Set<string> | null>(null);
 
   const normalizeName = (value: string) =>
     value
@@ -386,11 +387,12 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
         return;
       }
       try {
-        const [clientesRes, usersRes, legacyUsersRes, coordinatorLinksRes] = await Promise.all([
+        const [clientesRes, usersRes, legacyUsersRes, coordinatorLinksRes, eligibleRes] = await Promise.all([
           supabase.from("clientes").select("cliente_id, nome") as any,
           supabase.from("users").select("id, name, department, seniority, role, email, bitrix_user_id").eq("active", true) as any,
           supabase.from("users").select("id, name, department, seniority_level, user_profile, email, bitrix_user_id").eq("active", true) as any,
           supabase.from("user_coordinator_links").select("coordinator_user_id, subordinate_user_id") as any,
+          supabase.from("bonus_eligible_users").select("user_id, is_eligible") as any,
         ]);
         if (cancelled) return;
 
@@ -438,11 +440,23 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           });
           setCoordinatorBySubordinateId(next);
         }
+
+        if (!eligibleRes.error && Array.isArray(eligibleRes.data) && eligibleRes.data.length > 0) {
+          const ids = new Set<string>();
+          (eligibleRes.data as { user_id: string | number; is_eligible: boolean }[]).forEach((row) => {
+            if (row.is_eligible) ids.add(String(row.user_id));
+          });
+          setEligibleUserIds(ids);
+        } else {
+          // Table is empty or errored: treat all users as eligible (backward-compat)
+          setEligibleUserIds(null);
+        }
       } catch {
         if (!cancelled) {
           setClientNameById(new Map());
           setActiveUsers([]);
           setCoordinatorBySubordinateId(new Map());
+          setEligibleUserIds(null);
         }
       }
     };
@@ -620,7 +634,8 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           null;
 
         if (!matchedUser) return null;
-        if (!isBonusEligibleConsultant(matchedUser.name)) return null;
+        // Filter by bonus_eligible_users table when available; fall back to allowing all
+        if (eligibleUserIds !== null && !eligibleUserIds.has(matchedUser.id)) return null;
 
         const linkedHealth = Array.from(acc.clientNames)
           .map((clientName) => healthByName.get(clientName.trim().toLowerCase()))
@@ -693,7 +708,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       })
       .filter((value): value is NonNullable<typeof value> => value != null)
       .sort((a, b) => b.payout - a.payout || b.hoursTracked - a.hoursTracked);
-  }, [tasks.tasks, elapsed.times, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, coordinatorBySubordinateId]);
+  }, [tasks.tasks, elapsed.times, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, coordinatorBySubordinateId, eligibleUserIds]);
 
   const projectSpotlights = useMemo<BonusProjectSpotlight[]>(() => {
     const roiProjects = new Map<number, { hoursUsed: number; roi: number | null; name: string }>();

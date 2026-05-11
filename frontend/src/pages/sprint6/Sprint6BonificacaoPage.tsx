@@ -45,33 +45,7 @@ import { CollapsibleSection } from "@/modules/sprint6/components/bonus/Collapsib
 import { BonusTeamTab } from "@/modules/sprint6/components/bonus/BonusTeamTab";
 import { BonusUserDetail } from "@/modules/sprint6/components/bonus/BonusUserDetail";
 
-/* ── Visibility tiers ────────────────────────────────────────────── */
-function firstNameLower(name?: string | null): string {
-  return (name ?? "").trim().split(" ")[0]?.toLowerCase() ?? "";
-}
-
-/** Talia = payment manager = full access to everything */
-function isPaymentManager(userName?: string | null): boolean {
-  return firstNameLower(userName) === "thalia" || firstNameLower(userName) === "talia";
-}
-
-/** Rafael, Tiago, Felipe = privileged coordinators: see scores + limited monetary */
-const PRIVILEGED_COORDINATOR_NAMES = new Set(["rafael", "tiago", "felipe"]);
-function isPrivilegedCoordinator(userName?: string | null): boolean {
-  return PRIVILEGED_COORDINATOR_NAMES.has(firstNameLower(userName));
-}
-
-/** Users who should see PDF review reminder */
-const PDF_REMINDER_NAMES = new Set(["rafael", "tiago", "thalia", "talia", "felipe"]);
-function shouldShowPdfReminder(userName?: string | null): boolean {
-  return PDF_REMINDER_NAMES.has(firstNameLower(userName));
-}
-
-/** Eligible consultant names for ranking */
-const RANKING_ELIGIBLE_NAMES = new Set(["tiago", "thalia", "talia", "felipe", "rafael"]);
-function isRankingEligible(consultantName: string): boolean {
-  return RANKING_ELIGIBLE_NAMES.has(firstNameLower(consultantName));
-}
+/* ── Visibility tiers — driven by session permissions, no hardcoded names ─── */
 
 /* ── Period options ──────────────────────────────────────────────── */
 const PERIOD_OPTIONS: { value: RoiPeriod; label: string }[] = [
@@ -109,16 +83,22 @@ export default function Sprint6BonificacaoPage() {
 
   const permissionRole = session?.bonusRole ?? "consultor";
 
-  const isTaliaFullAccess = isPaymentManager(session?.name);
-  const isPrivileged = isPrivilegedCoordinator(session?.name);
+  // Payment manager: configured in bonus_settings table only — no role/name fallback
+  const isFullAccessManager = session?.isPaymentManager === true;
+  // Coordinators: any user who has subordinates linked in user_coordinator_links
   const canManageTeam = (session?.coordinatorOf ?? []).length > 0;
-  const canSeeRanking = isTaliaFullAccess || isPrivileged;
-  const canSeeAllEvaluations = isTaliaFullAccess;
-  const hideMonetary = !isTaliaFullAccess;
-  const showPdfReminder = shouldShowPdfReminder(session?.name);
+  // Ranking: payment manager only, or coordinator with actual subordinates
+  // Role alone (admin/gestor) does not grant ranking — must have real supervised users
+  const canSeeRanking = isFullAccessManager || canManageTeam;
+  // All evaluations: payment manager only
+  const canSeeAllEvaluations = isFullAccessManager;
+  // Monetary (payout values): payment manager only — never exposed by role alone
+  const hideMonetary = !isFullAccessManager;
+  // PDF reminder: payment manager or anyone who manages a team
+  const showPdfReminder = isFullAccessManager || canManageTeam;
 
   const visibleConsultants = useMemo(() => {
-    if (isTaliaFullAccess) return bonus.consultants;
+    if (canSeeAllEvaluations) return bonus.consultants;
     if (canManageTeam) {
       return bonus.consultants.filter((consultant) =>
         consultant.userId === session?.userId ||
@@ -126,17 +106,21 @@ export default function Sprint6BonificacaoPage() {
       );
     }
     return bonus.consultants.filter((consultant) => consultant.userId === session?.userId);
-  }, [bonus.consultants, canManageTeam, isTaliaFullAccess, session?.coordinatorOf, session?.userId]);
+  }, [bonus.consultants, canManageTeam, canSeeAllEvaluations, session?.coordinatorOf, session?.userId]);
 
   const myConsultant = useMemo(
     () => visibleConsultants.find((consultant) => consultant.userId === session?.userId) ?? visibleConsultants[0] ?? null,
     [visibleConsultants, session?.userId],
   );
 
+  // Payment manager sees all; coordinators see only their own subordinates in the ranking
   const rankingConsultants = useMemo(() => {
     if (!canSeeRanking) return [];
-    return bonus.consultants.filter((consultant) => isRankingEligible(consultant.name));
-  }, [bonus.consultants, canSeeRanking]);
+    if (isFullAccessManager) return bonus.consultants;
+    return bonus.consultants.filter((consultant) =>
+      consultant.userId != null && (session?.coordinatorOf ?? []).includes(consultant.userId),
+    );
+  }, [bonus.consultants, canSeeRanking, isFullAccessManager, session?.coordinatorOf]);
 
   const subordinateConsultants = useMemo(() => {
     if (!canManageTeam) return [];
@@ -261,96 +245,94 @@ export default function Sprint6BonificacaoPage() {
                     Bonificação
                   </h1>
                   <p className="mt-0.5 text-xs sm:text-sm text-white/35 line-clamp-1">
-                    {canSeeRanking ? "Ranking, desempenho e evolução da equipe" : "Seu desempenho e sua avaliação mais recente"}
+                    {isFullAccessManager ? "Visão completa · Ranking, desempenho e pagamentos" : canSeeRanking ? "Ranking, desempenho e evolução da equipe" : "Seu desempenho e sua avaliação mais recente"}
                   </p>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Filter bar — centered */}
-          <div className="flex justify-center">
-            <Popover open={filterOpen} onOpenChange={setFilterOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="flex items-center gap-2 rounded-xl border-border/15 bg-card/40 px-5 py-2.5 text-xs font-semibold text-foreground/80 hover:bg-card/60"
-                >
-                  <Filter className="h-3.5 w-3.5 text-muted-foreground/50" />
-                  Filtros
-                  {(period !== "180d" || consultantFilter) && (
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-primary">
-                      {[period !== "180d", !!consultantFilter].filter(Boolean).length}
-                    </span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="center" sideOffset={8} className="w-[30rem] max-w-[95vw] rounded-2xl border-border/15 bg-card p-5 shadow-2xl backdrop-blur-xl space-y-5">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold text-foreground">Filtros</p>
-                  <button type="button" onClick={() => setFilterOpen(false)} className="text-muted-foreground/40 hover:text-foreground transition-colors">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-
-                {/* Period */}
-                <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold">Período</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {PERIOD_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setPeriod(opt.value)}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                          period === opt.value
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "bg-secondary/50 text-muted-foreground border border-border/10 hover:bg-secondary"
-                        }`}
+                <div className="shrink-0">
+                  <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="flex items-center gap-2 rounded-xl border-white/10 bg-white/[0.06] px-4 py-2 text-xs font-semibold text-white/70 hover:bg-white/10 hover:text-white/90 transition-colors"
                       >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
+                        <Filter className="h-3.5 w-3.5 opacity-60" />
+                        Filtros
+                        {(period !== "180d" || consultantFilter) && (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-400/20 text-[10px] font-bold text-amber-400">
+                            {[period !== "180d", !!consultantFilter].filter(Boolean).length}
+                          </span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" sideOffset={8} className="w-[30rem] max-w-[95vw] rounded-2xl border-border/15 bg-card p-5 shadow-2xl backdrop-blur-xl space-y-5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold text-foreground">Filtros</p>
+                        <button type="button" onClick={() => setFilterOpen(false)} className="text-muted-foreground/40 hover:text-foreground transition-colors">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      {/* Period */}
+                      <div className="space-y-2">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold">Período</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {PERIOD_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setPeriod(opt.value)}
+                              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                                period === opt.value
+                                  ? "bg-primary text-primary-foreground shadow-sm"
+                                  : "bg-secondary/50 text-muted-foreground border border-border/10 hover:bg-secondary"
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Consultant filter (payment manager only) */}
+                      {canSeeAllEvaluations && (
+                        <div className="space-y-2">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold">Consultor</p>
+                          <select
+                            value={consultantFilter}
+                            onChange={(e) => setConsultantFilter(e.target.value)}
+                            className="w-full rounded-lg border border-border/15 bg-secondary/30 px-3 py-2 text-xs text-foreground outline-none focus:border-primary/40 transition-colors"
+                          >
+                            <option value="">Todos os consultores</option>
+                            {bonus.consultants.map((c) => (
+                              <option key={c.userId ?? c.name} value={c.name}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Clear */}
+                      {(period !== "180d" || consultantFilter) && (
+                        <button
+                          type="button"
+                          onClick={() => { setPeriod("180d"); setConsultantFilter(""); }}
+                          className="w-full rounded-lg border border-border/10 bg-secondary/20 py-2 text-xs font-semibold text-muted-foreground/60 hover:text-foreground/80 transition-colors"
+                        >
+                          Limpar filtros
+                        </button>
+                      )}
+                    </PopoverContent>
+                  </Popover>
                 </div>
+              </div>
 
-                {/* Consultant filter (for Thalia) */}
-                {isTaliaFullAccess && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold">Consultor</p>
-                    <select
-                      value={consultantFilter}
-                      onChange={(e) => setConsultantFilter(e.target.value)}
-                      className="w-full rounded-lg border border-border/15 bg-secondary/30 px-3 py-2 text-xs text-foreground outline-none focus:border-primary/40 transition-colors"
-                    >
-                      <option value="">Todos os consultores</option>
-                      {bonus.consultants.map((c) => (
-                        <option key={c.userId ?? c.name} value={c.name}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Clear */}
-                {(period !== "180d" || consultantFilter) && (
-                  <button
-                    type="button"
-                    onClick={() => { setPeriod("180d"); setConsultantFilter(""); }}
-                    className="w-full rounded-lg border border-border/10 bg-secondary/20 py-2 text-xs font-semibold text-muted-foreground/60 hover:text-foreground/80 transition-colors"
-                  >
-                    Limpar filtros
-                  </button>
-                )}
-              </PopoverContent>
-            </Popover>
-
-            {/* Active filter summary */}
-            {(period !== "180d" || consultantFilter) && (
-              <span className="ml-3 self-center text-xs text-muted-foreground/50">
-                {PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? "Semestral"}
-                {consultantFilter && ` · ${consultantFilter}`}
-              </span>
-            )}
+              {/* Active filter summary */}
+              {(period !== "180d" || consultantFilter) && (
+                <p className="text-[11px] text-white/30 pl-[3.375rem]">
+                  {PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? "Semestral"}
+                  {consultantFilter && ` · ${consultantFilter}`}
+                </p>
+              )}
+            </div>
           </div>
 
           {showPdfReminder && (
@@ -386,7 +368,7 @@ export default function Sprint6BonificacaoPage() {
 
           <div className="space-y-3">
             {summaryConsultants.length > 0 && (
-              <div className={`grid gap-2.5 ${canSeeRanking ? (isTaliaFullAccess ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3") : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3"}`}>
+              <div className={`grid gap-2.5 ${canSeeRanking ? (!hideMonetary ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3") : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3"}`}>
                 {[
                   canSeeRanking && {
                     label: "Score médio",
@@ -395,7 +377,7 @@ export default function Sprint6BonificacaoPage() {
                     color: "border-primary/12 bg-primary/[0.04]",
                     valueColor: "text-primary",
                   },
-                  isTaliaFullAccess && {
+                  !hideMonetary && {
                     label: "Payout total",
                     value: money(summaryConsultants.reduce((sum, consultant) => sum + consultant.payout, 0)),
                     sub: `estimativa ${periodLabel(period)}`,
@@ -617,7 +599,7 @@ export default function Sprint6BonificacaoPage() {
           </div>
         </CollapsibleSection>
 
-        {isTaliaFullAccess && (
+        {canSeeAllEvaluations && (
           <CollapsibleSection
             title="Score do Consultor"
             icon={Target}
@@ -708,8 +690,8 @@ export default function Sprint6BonificacaoPage() {
                         onToggle={() => setExpandedConsultant(expandedConsultant === consultant.name ? null : consultant.name)}
                         hideMonetary={hideMonetary}
                         periodLabel={periodLabel(period)}
-                        canEvaluate={isTaliaFullAccess || canManageConsultant}
-                        canSendReport={isTaliaFullAccess || canManageConsultant}
+                        canEvaluate={canSeeAllEvaluations || canManageConsultant}
+                        canSendReport={canSeeAllEvaluations || canManageConsultant}
                         onEvaluate={setEvaluationConsultant}
                         onSendReport={setReportConsultant}
                       />

@@ -34,6 +34,7 @@ export type AuthSession = {
   bitrixUserId?: string | null;
   coordinatorOf?: string[];
   myCoordinator?: string | null;
+  isPaymentManager?: boolean;
   company?: string | null;
   clienteId?: number | null;
   allowedAreas?: AccessArea[] | null;
@@ -154,6 +155,7 @@ const buildSession = async (
     bitrixUserId: bonusContext.bitrixUserId,
     coordinatorOf: bonusContext.coordinatorOf,
     myCoordinator: bonusContext.myCoordinator,
+    isPaymentManager: bonusContext.isPaymentManager,
     company: clienteInfo.clienteName ?? clientName ?? storedSession?.company ?? null,
     clienteId: clienteInfo.clienteId ?? storedSession?.clienteId ?? null,
     allowedAreas,
@@ -358,6 +360,7 @@ export function useAuth() {
             bitrixUserId: bonusContext.bitrixUserId,
             coordinatorOf: bonusContext.coordinatorOf,
             myCoordinator: bonusContext.myCoordinator,
+            isPaymentManager: bonusContext.isPaymentManager,
             accessibleProjectIds: accessibleProjects?.ids ?? null,
             accessibleProjectNames: accessibleProjects?.names ?? null,
             company: clienteInfo.clienteName ?? merged.company ?? null,
