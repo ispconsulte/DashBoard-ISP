@@ -97,10 +97,10 @@ function CustomSelect({
     : filtered;
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative w-full sm:w-auto">
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`flex h-9 w-full min-w-0 sm:min-w-[170px] sm:w-auto items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
+        className={`flex h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
           value && value !== "all"
             ? "border-[hsl(var(--task-purple)/0.4)] bg-[hsl(var(--task-purple)/0.1)] text-white/80"
             : "border-white/[0.08] bg-[hsl(var(--task-surface))] text-white/50"
@@ -118,8 +118,8 @@ function CustomSelect({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full z-[200] mt-1 min-w-[220px] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
-            style={{ background: "hsl(260 30% 12%)", maxHeight: "260px" }}
+            className="absolute left-0 sm:right-0 sm:left-auto top-full z-[200] mt-1 w-[min(220px,calc(100vw-1.5rem))] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
+            style={{ background: "hsl(260 30% 12%)", maxHeight: "min(260px,70vh)" }}
           >
             {options.length > 5 && (
               <div className="shrink-0 px-1.5 pt-1.5 pb-1 border-b border-white/[0.06]" style={{ background: "hsl(260 30% 12%)" }}>
@@ -300,10 +300,10 @@ function MultiSelectProjects({
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative w-full sm:w-auto">
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`flex h-9 w-full min-w-0 sm:min-w-[170px] sm:w-auto items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
+        className={`flex h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
           !isAll
             ? "border-[hsl(var(--task-purple)/0.4)] bg-[hsl(var(--task-purple)/0.1)] text-white/80"
             : "border-white/[0.08] bg-[hsl(var(--task-surface))] text-white/50"
@@ -324,8 +324,8 @@ function MultiSelectProjects({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full z-[200] mt-1 min-w-[240px] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
-            style={{ background: "hsl(260 30% 12%)", maxHeight: "300px" }}
+            className="absolute left-0 sm:right-0 sm:left-auto top-full z-[200] mt-1 w-[min(240px,calc(100vw-1.5rem))] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
+            style={{ background: "hsl(260 30% 12%)", maxHeight: "min(300px,70vh)" }}
           >
             {options.length > 5 && (
               <div className="shrink-0 px-1.5 pt-1.5 pb-1 border-b border-white/[0.06]" style={{ background: "hsl(260 30% 12%)" }}>
@@ -470,9 +470,10 @@ export function TaskFilters({
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="overflow-visible w-full"
+            style={{ overflow: "visible" }}
+            className="w-full"
           >
-            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-end justify-center gap-3 sm:gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 sm:p-4 overflow-visible">
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-end justify-center gap-3 sm:gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 sm:p-4 relative z-[100]" style={{ overflow: "visible" }}>
               {/* Status */}
               <div className="space-y-1.5 w-full sm:w-auto">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Status</label>
@@ -538,18 +539,18 @@ export function TaskFilters({
               {period === "custom" && (
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Intervalo</label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <input
                       type="date"
                       value={dateFrom}
                       onChange={(e) => setDateFrom(e.target.value)}
-                      className="h-9 rounded-xl border border-white/[0.08] bg-[hsl(var(--task-surface))] px-2.5 text-xs text-white/70 outline-none"
+                      className="h-9 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-[hsl(var(--task-surface))] px-2.5 text-xs text-white/70 outline-none"
                     />
                     <input
                       type="date"
                       value={dateTo}
                       onChange={(e) => setDateTo(e.target.value)}
-                      className="h-9 rounded-xl border border-white/[0.08] bg-[hsl(var(--task-surface))] px-2.5 text-xs text-white/70 outline-none"
+                      className="h-9 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-[hsl(var(--task-surface))] px-2.5 text-xs text-white/70 outline-none"
                     />
                   </div>
                 </div>

@@ -30,7 +30,7 @@ export default function AnalyticsSearch({ projects, onSelect, selected }: Props)
   }, []);
 
   return (
-    <div ref={ref} className="relative w-[280px]">
+    <div ref={ref} className="relative w-full max-w-[280px]">
       <div className="relative flex items-center">
         <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/30" />
         <input

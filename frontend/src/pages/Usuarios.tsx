@@ -257,7 +257,7 @@ function MultiSelectDropdown({
 export default function UsuariosPage() {
   usePageSEO("/usuarios");
   const navigate = useNavigate();
-  const { session, loadingSession } = useAuth();
+  const { session, loadingSession, refreshAuthContext } = useAuth();
   const isAdmin = session?.role === "admin" || session?.role === "gerente" || session?.role === "coordenador";
   const token = session?.accessToken;
   const api = useUsersApi(token);
@@ -302,6 +302,8 @@ export default function UsuariosPage() {
         body: JSON.stringify({ value: newVal, updated_at: new Date().toISOString() }),
       });
       setPaymentManagerUserId(newVal);
+      await refreshAuthContext();
+      window.dispatchEvent(new Event("bonus-settings-changed"));
       showFeedback("ok", "Responsável pela bonificação atualizado.");
       setShowPaymentManagerPanel(false);
     } catch (err) {

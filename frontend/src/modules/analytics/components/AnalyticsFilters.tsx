@@ -87,10 +87,10 @@ function CustomSelect({
     : filtered;
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative w-full sm:w-auto">
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`flex h-9 min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
+        className={`flex h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
           value
             ? "border-[hsl(262_83%_58%/0.4)] bg-[hsl(262_83%_58%/0.1)] text-white/80"
             : "border-white/[0.08] bg-[hsl(260_30%_12%)] text-white/50"
@@ -108,8 +108,8 @@ function CustomSelect({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full z-[200] mt-1 min-w-[240px] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
-            style={{ background: "hsl(260 30% 12%)", maxHeight: "260px" }}
+            className="absolute left-0 sm:right-0 sm:left-auto top-full z-[200] mt-1 w-[min(240px,calc(100vw-1.5rem))] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
+            style={{ background: "hsl(260 30% 12%)", maxHeight: "min(260px,70vh)" }}
           >
             {/* Search input — always visible, not scrollable */}
             {options.length > 5 && (
@@ -293,10 +293,10 @@ function MultiSelectProjects({
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative w-full sm:w-auto">
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`flex h-9 min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
+        className={`flex h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
           !isAll
             ? "border-[hsl(262_83%_58%/0.4)] bg-[hsl(262_83%_58%/0.1)] text-white/80"
             : "border-white/[0.08] bg-[hsl(260_30%_12%)] text-white/50"
@@ -317,8 +317,8 @@ function MultiSelectProjects({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full z-[200] mt-1 min-w-[260px] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
-            style={{ background: "hsl(260 30% 12%)", maxHeight: "300px" }}
+            className="absolute left-0 sm:right-0 sm:left-auto top-full z-[200] mt-1 w-[min(260px,calc(100vw-1.5rem))] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
+            style={{ background: "hsl(260 30% 12%)", maxHeight: "min(300px,70vh)" }}
           >
             {options.length > 5 && (
               <div className="shrink-0 px-1.5 pt-1.5 pb-1 border-b border-white/[0.06]" style={{ background: "hsl(260 30% 12%)" }}>
@@ -395,17 +395,17 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
     : [];
 
   return (
-    <div className="space-y-2 flex flex-col items-center">
+    <div className="space-y-2 flex flex-col items-center w-full">
       {/* Search + Filter toggle side by side (same as Tarefas) */}
-      <div className="flex items-center justify-center gap-2 flex-wrap">
+      <div className="flex items-center justify-center gap-2 flex-wrap w-full px-1 sm:px-0">
         {/* Search field */}
-        <div className="relative flex items-center">
+        <div className="relative flex items-center flex-1 min-w-0 max-w-[320px]">
           <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-white/30" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar projeto ou cliente..."
-            className="h-[38px] w-[320px] rounded-xl border border-white/[0.06] bg-white/[0.03] pl-9 pr-7 text-[13px] font-semibold text-white/50 placeholder:text-white/30 outline-none transition hover:border-white/[0.12] hover:text-white/70 focus:border-[hsl(262_83%_58%/0.4)] focus:bg-[hsl(262_83%_58%/0.1)] focus:text-[hsl(262_83%_58%)]"
+            className="h-[38px] w-full rounded-xl border border-white/[0.06] bg-white/[0.03] pl-9 pr-7 text-[13px] font-semibold text-white/50 placeholder:text-white/30 outline-none transition hover:border-white/[0.12] hover:text-white/70 focus:border-[hsl(262_83%_58%/0.4)] focus:bg-[hsl(262_83%_58%/0.1)] focus:text-[hsl(262_83%_58%)]"
           />
           {searchQuery && (
             <button
@@ -419,7 +419,7 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
           {/* Search dropdown */}
           {searchQuery.trim() && searchResults.length > 0 && (
             <div
-              className="absolute left-0 top-full z-[100] mt-1 max-h-60 w-full min-w-[240px] overflow-auto rounded-2xl border border-white/[0.08] p-1.5 shadow-xl shadow-black/40"
+              className="absolute left-0 top-full z-[100] mt-1 max-h-60 w-full overflow-auto rounded-2xl border border-white/[0.08] p-1.5 shadow-xl shadow-black/40"
               style={{ background: "hsl(260 30% 12%)" }}
             >
               {searchResults.slice(0, 10).map((p) => (
@@ -475,18 +475,19 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="overflow-visible w-full"
+            style={{ overflow: "visible" }}
+            className="w-full"
           >
-            <div className="flex flex-wrap items-end justify-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 overflow-visible">
+            <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-end justify-center gap-3 sm:gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 sm:p-4 relative z-[100]" style={{ overflow: "visible" }}>
               {/* Status */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 w-full sm:w-auto">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Status</label>
-                <div className="flex gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1">
+                <div className="flex gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1 overflow-x-auto">
                   {STATUSES.map((s) => (
                     <button
                       key={s.key}
                       onClick={() => onChange({ ...filters, status: s.key })}
-                      className={`rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-all ${
+                      className={`rounded-xl px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-[12px] font-semibold transition-all whitespace-nowrap ${
                         filters.status === s.key
                           ? "bg-[hsl(262_83%_58%)] text-white shadow"
                           : "text-white/30 hover:text-white/50"

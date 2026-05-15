@@ -171,7 +171,9 @@ export function BonusScoreComposition({ consultants }: BonusScoreCompositionProp
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-all ${index === selectedIdx ? "bg-primary/15 font-semibold text-primary" : "text-muted-foreground hover:bg-card/80 hover:text-foreground"}`}
                 >
                   <span className="truncate">{consultant.name}</span>
-                  <span className="ml-2 shrink-0 text-[11px] font-medium">{consultant.score}%</span>
+                  <span className="ml-2 shrink-0 text-[11px] font-medium">
+                    {consultant.coordinatorScore != null ? `${consultant.score}%` : "Pendente"}
+                  </span>
                 </button>
               ))}
             </PopoverContent>
@@ -183,12 +185,14 @@ export function BonusScoreComposition({ consultants }: BonusScoreCompositionProp
         <div className="space-y-4">
           <div className="flex items-center gap-4 rounded-xl border border-border/10 bg-white/[0.02] p-3.5">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10">
-              <span className="text-xl font-bold text-primary">{selected.score}%</span>
+              <span className="text-xl font-bold text-primary">
+                {selected.coordinatorScore != null ? `${selected.score}%` : "Pendente"}
+              </span>
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-foreground">{selected.name}</p>
               <p className="mt-1 text-xs font-semibold text-foreground">
-                Payout: <span className="text-primary">{money(selected.payout)}</span>
+                Estimativa: <span className="text-primary">{selected.payout == null ? "Pendente" : money(selected.payout)}</span>
               </p>
               <p className="mt-1 text-[10px] text-muted-foreground/60">{selected.scoreBreakdown.formulaLabel}</p>
             </div>
@@ -239,7 +243,7 @@ export function BonusScoreComposition({ consultants }: BonusScoreCompositionProp
 
           <div className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
             <p className="text-[11px] text-muted-foreground/60">
-              <span className="font-medium text-foreground">Payout</span> = score ({selected.score}%) × teto ({money(selected.maxBonus)}) = <span className="font-bold text-primary">{money(selected.payout)}</span>
+              <span className="font-medium text-foreground">Estimativa</span> = nota do coordenador × teto ({money(selected.maxBonus)}) = <span className="font-bold text-primary">{selected.payout == null ? "Pendente" : money(selected.payout)}</span>
             </p>
           </div>
         </div>

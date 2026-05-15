@@ -523,6 +523,22 @@ export function BonusEvaluationModal({
       const { error } = await supabase.from("bonus_internal_evaluations").insert(rows);
       if (error) throw error;
 
+      if (status === "submitted") {
+        const { error: notificationError } = await supabase
+          .from("bonus_evaluation_notifications")
+          .upsert({
+            user_id: consultant.userId,
+            evaluator_user_id: session.userId,
+            period_key: periodKey,
+            period_month: periodMonth,
+            period_year: periodYear,
+            message: "Você recebeu uma nova avaliação.",
+            read_at: null,
+            opened_at: null,
+          }, { onConflict: "user_id,evaluator_user_id,period_key" });
+        if (notificationError) throw notificationError;
+      }
+
       toast.success(status === "submitted" ? "Avaliação finalizada e salva." : "Rascunho salvo com sucesso.");
       onSaved?.();
       onOpenChange(false);

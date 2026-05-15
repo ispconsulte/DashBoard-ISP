@@ -11,8 +11,8 @@ export interface BonusScoreSnapshotRow {
   user_id: string | null;
   subject_role: string | null;
   score: number;
-  payout_amount: number;
-  max_payout_amount: number;
+  payout_amount: number | null;
+  max_payout_amount: number | null;
   sync_status: string | null;
   source_provenance: string | null;
   source_updated_at: string | null;
@@ -71,6 +71,20 @@ export interface BonusInternalEvaluationRow {
   updated_at: string;
 }
 
+export interface BonusEvaluationNotificationRow {
+  id: string;
+  user_id: string;
+  evaluator_user_id: string;
+  period_key: string;
+  period_month: number;
+  period_year: number;
+  message: string;
+  read_at: string | null;
+  opened_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface BonusSourceStatusRow {
   id: string;
   source_code: string;
@@ -93,6 +107,7 @@ export interface BonusPersistenceDataResult {
   revenueSnapshots: BonusScoreSnapshotRow[];
   breakdowns: BonusMetricBreakdownRow[];
   evaluations: BonusInternalEvaluationRow[];
+  notifications: BonusEvaluationNotificationRow[];
   sourceStatuses: BonusSourceStatusRow[];
   snapshotsBySubject: Map<string, BonusScoreSnapshotRow>;
   breakdownsBySnapshot: Map<string, BonusMetricBreakdownRow[]>;
@@ -137,13 +152,15 @@ function buildQuarterKeys(period: RoiPeriod) {
   return Array.from(new Set(keys));
 }
 
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
+
 export function useBonusPersistenceData(period: RoiPeriod = "180d", refreshKey = 0): BonusPersistenceDataResult {
-  const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<BonusScoreSnapshotRow[]>([]);
   const [breakdowns, setBreakdowns] = useState<BonusMetricBreakdownRow[]>([]);
   const [evaluations, setEvaluations] = useState<BonusInternalEvaluationRow[]>([]);
+  const [notifications, setNotifications] = useState<BonusEvaluationNotificationRow[]>([]);
   const [sourceStatuses, setSourceStatuses] = useState<BonusSourceStatusRow[]>([]);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -180,7 +197,7 @@ export function useBonusPersistenceData(period: RoiPeriod = "180d", refreshKey =
         const quarterKeys = buildQuarterKeys(period);
 
         const snapshotsQuery = supabase
-          .from("bonus_score_snapshots")
+          .from("bonus_snapshots_safe")
           .select("*")
           .order("period_key", { ascending: false })
           .order("calculated_at", { ascending: false });
@@ -195,14 +212,25 @@ export function useBonusPersistenceData(period: RoiPeriod = "180d", refreshKey =
           evaluationsQuery = evaluationsQuery.in("period_key", monthKeys);
         }
 
-        const [snapshotsRes, evaluationsRes, sourceStatusesRes] = await Promise.all([
+        let notificationsQuery = supabase
+          .from("bonus_evaluation_notifications")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (monthKeys) {
+          notificationsQuery = notificationsQuery.in("period_key", monthKeys);
+        }
+
+        const [snapshotsRes, evaluationsRes, notificationsRes, sourceStatusesRes] = await Promise.all([
           snapshotsQuery,
           evaluationsQuery,
+          notificationsQuery,
           supabase.from("bonus_source_statuses").select("*").order("source_code", { ascending: true }),
         ]);
 
         if (snapshotsRes.error) throw new Error(snapshotsRes.error.message);
         if (evaluationsRes.error) throw new Error(evaluationsRes.error.message);
+        if (notificationsRes.error) throw new Error(notificationsRes.error.message);
         if (sourceStatusesRes.error) throw new Error(sourceStatusesRes.error.message);
 
         const snapshotRows = ((snapshotsRes.data ?? []) as BonusScoreSnapshotRow[]).filter((row) => {
@@ -212,6 +240,7 @@ export function useBonusPersistenceData(period: RoiPeriod = "180d", refreshKey =
           return false;
         });
         const evaluationRows = (evaluationsRes.data ?? []) as BonusInternalEvaluationRow[];
+        const notificationRows = (notificationsRes.data ?? []) as BonusEvaluationNotificationRow[];
         const sourceRows = (sourceStatusesRes.data ?? []) as BonusSourceStatusRow[];
         const snapshotIds = snapshotRows.map((row) => row.id);
 
@@ -233,6 +262,7 @@ export function useBonusPersistenceData(period: RoiPeriod = "180d", refreshKey =
         setSnapshots(snapshotRows);
         setBreakdowns(breakdownRows);
         setEvaluations(evaluationRows);
+        setNotifications(notificationRows);
         setSourceStatuses(sourceRows);
       } catch (loadError: any) {
         if (!cancelled) {
@@ -240,6 +270,7 @@ export function useBonusPersistenceData(period: RoiPeriod = "180d", refreshKey =
           setSnapshots([]);
           setBreakdowns([]);
           setEvaluations([]);
+          setNotifications([]);
           setSourceStatuses([]);
         }
       } finally {
@@ -289,6 +320,7 @@ export function useBonusPersistenceData(period: RoiPeriod = "180d", refreshKey =
     revenueSnapshots: snapshots.filter((row) => row.snapshot_kind === "revenue_quarterly"),
     breakdowns,
     evaluations,
+    notifications,
     sourceStatuses,
     snapshotsBySubject,
     breakdownsBySnapshot,

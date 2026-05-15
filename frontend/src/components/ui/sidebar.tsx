@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -128,7 +128,7 @@ const Sidebar = React.forwardRef<
   if (isMobile) {
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile}>
-      <SheetContent
+        <SheetContent
           data-sidebar="sidebar"
           data-mobile="true"
           className="p-0 text-sidebar-foreground [&>button]:hidden border-r-0"
@@ -138,6 +138,8 @@ const Sidebar = React.forwardRef<
           } as React.CSSProperties}
           side={side}
         >
+          <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
+          <SheetDescription className="sr-only">Menu lateral com links de navegação do sistema</SheetDescription>
           <div className="flex h-full w-full flex-col overflow-y-auto">{children}</div>
         </SheetContent>
       </Sheet>

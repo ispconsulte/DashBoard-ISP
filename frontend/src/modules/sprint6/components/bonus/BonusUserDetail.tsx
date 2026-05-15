@@ -107,12 +107,12 @@ function MetricTile({ icon: Icon, label, value }: { icon: typeof Clock; label: s
 
 /* ── Composition Section ──────────────────────────── */
 function CompositionView({ breakdown, score, hideMonetary, maxBonus, payout }: {
-  breakdown: BonusScoreBreakdown; score: number; hideMonetary: boolean; maxBonus: number; payout: number;
+  breakdown: BonusScoreBreakdown; score: number; hideMonetary: boolean; maxBonus: number; payout: number | null;
 }) {
   const sorted = [...breakdown.factors].sort((a, b) => b.contribution - a.contribution);
   const best = sorted[0];
   const worst = sorted[sorted.length - 1];
-  const gap = maxBonus - payout;
+  const gap = payout == null ? 0 : maxBonus - payout;
 
   return (
     <div className="space-y-3">
@@ -189,11 +189,11 @@ function CompositionView({ breakdown, score, hideMonetary, maxBonus, payout }: {
       {!hideMonetary && (
         <div className="rounded-lg bg-white/[0.02] border border-white/[0.04] px-3 py-2">
           <p className="text-[11px] text-muted-foreground">
-            <span className="text-foreground font-semibold">Score {score}%</span> × Teto{" "}
+            <span className="text-foreground font-semibold">Nota do coordenador</span> × Teto{" "}
             <span className="text-foreground font-semibold">{money(maxBonus)}</span> ={" "}
-            <span className="text-primary font-bold">{money(payout)}</span>
+            <span className="text-primary font-bold">{payout == null ? "Pendente" : money(payout)}</span>
           </p>
-          {gap > 0 && (
+          {payout != null && gap > 0 && (
             <p className="text-[10px] text-muted-foreground/50 mt-0.5">
               Faltam <span className="text-foreground/60 font-medium">{money(gap)}</span> para atingir o teto
             </p>
@@ -204,6 +204,57 @@ function CompositionView({ breakdown, score, hideMonetary, maxBonus, payout }: {
   );
 }
 
+/* ── Skill legend definitions ─────────────────────── */
+const SKILL_LEGENDS: Record<string, { label: string; description: string; color: string }> = {
+  "Hard Skill": {
+    label: "Hard Skill",
+    description: "Conhecimento técnico e qualidade de execução",
+    color: "text-teal-400",
+  },
+  "Soft Skills": {
+    label: "Soft Skills",
+    description: "Comportamento, comunicação e organização",
+    color: "text-blue-400",
+  },
+  "People Skills": {
+    label: "People Skills",
+    description: "Colaboração, empatia e interação com a equipe",
+    color: "text-indigo-400",
+  },
+};
+
+function formatPeriodKey(periodKey: string | null | undefined): string {
+  if (!periodKey) return "";
+  const [year, month] = periodKey.split("-");
+  if (!year || !month) return periodKey;
+  const months = ["jan", "fev", "mar", "abr", "maio", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const monthLabel = months[parseInt(month, 10) - 1] ?? month;
+  return `${monthLabel}/${year}`;
+}
+
+function formatDatePTBR(isoString: string | null | undefined): string {
+  if (!isoString) return "";
+  try {
+    const d = new Date(isoString);
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    return `${day}/${month}/${year} às ${hours}:${minutes}`;
+  } catch {
+    return "";
+  }
+}
+
+function parseImprovementTags(raw: string): string[] {
+  const bracketMatches = raw.match(/\[([^\]]+)\]/g);
+  if (bracketMatches && bracketMatches.length > 0) {
+    return bracketMatches.map((tag) => tag.slice(1, -1).trim()).filter(Boolean);
+  }
+  return raw.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+}
+
 /* ── Manual Evaluation Section ────────────────────── */
 function EvaluationView({ consultant, hideMonetary }: { consultant: BonusConsultantCard; hideMonetary: boolean }) {
   const hasEvaluation = consultant.manualEvaluation.status === "submitted" || consultant.manualEvaluation.status === "draft";
@@ -211,16 +262,20 @@ function EvaluationView({ consultant, hideMonetary }: { consultant: BonusConsult
     return (
       <div className="rounded-xl border border-border/10 bg-card/20 p-6 text-center">
         <ClipboardCheck className="h-6 w-6 mx-auto text-muted-foreground/20 mb-2" />
-        <p className="text-sm text-foreground/70 font-medium">Nenhuma avaliação manual registrada</p>
+        <p className="text-sm text-foreground/70 font-medium">Pendente de nota do coordenador</p>
         <p className="text-xs text-muted-foreground/50 mt-1">A avaliação será exibida aqui quando o coordenador registrá-la.</p>
       </div>
     );
   }
 
+  const evaluatorName = consultant.coordinatorName;
+  const submittedAt = consultant.manualEvaluation.rows.find((r) => r.submitted_at)?.submitted_at ?? null;
+  const formattedDate = formatDatePTBR(submittedAt);
+
   const summaryRows = [
-    { label: "Hard Skill", value: consultant.manualEvaluation.hardManualScore, payout: consultant.manualEvaluation.hardManualPayout },
-    { label: "Soft Skills", value: consultant.manualEvaluation.softSkillScore, payout: consultant.manualEvaluation.softSkillPayout },
-    { label: "People Skills", value: consultant.manualEvaluation.peopleSkillScore, payout: consultant.manualEvaluation.peopleSkillPayout },
+    { key: "Hard Skill", label: "Hard Skill", value: consultant.manualEvaluation.hardManualScore, payout: consultant.manualEvaluation.hardManualPayout },
+    { key: "Soft Skills", label: "Soft Skills", value: consultant.manualEvaluation.softSkillScore, payout: consultant.manualEvaluation.softSkillPayout },
+    { key: "People Skills", label: "People Skills", value: consultant.manualEvaluation.peopleSkillScore, payout: consultant.manualEvaluation.peopleSkillPayout },
   ].filter((r) => r.value != null);
 
   const highlights = consultant.manualEvaluation.rows
@@ -228,56 +283,95 @@ function EvaluationView({ consultant, hideMonetary }: { consultant: BonusConsult
     .slice(0, 4);
 
   return (
-    <div className="space-y-3">
-      <Badge
-        variant="outline"
-        className={`text-[10px] ${
-          consultant.manualEvaluation.status === "submitted"
-            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-            : "border-amber-500/20 bg-amber-500/10 text-amber-300"
-        }`}
-      >
-        {consultant.manualEvaluation.status === "submitted"
-          ? `Avaliação fechada${consultant.manualEvaluation.periodKey ? ` · ${consultant.manualEvaluation.periodKey}` : ""}`
-          : `Rascunho${consultant.manualEvaluation.periodKey ? ` · ${consultant.manualEvaluation.periodKey}` : ""}`}
-      </Badge>
+    <div className="space-y-4">
+      {/* Evaluator header */}
+      <div className="rounded-xl border border-primary/12 bg-primary/[0.04] px-4 py-3 space-y-1.5">
+        <div className="flex items-center gap-2">
+          <ClipboardCheck className="h-3.5 w-3.5 text-primary/60 shrink-0" />
+          <p className="text-xs font-semibold text-foreground">
+            {evaluatorName
+              ? `Avaliação realizada por ${evaluatorName}${formattedDate ? ` em ${formattedDate}` : ""}`
+              : formattedDate
+              ? `Avaliação registrada em ${formattedDate}`
+              : "Avaliação do coordenador"}
+          </p>
+        </div>
+        <Badge
+          variant="outline"
+          className={`text-[10px] ${
+            consultant.manualEvaluation.status === "submitted"
+              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+              : "border-amber-500/20 bg-amber-500/10 text-amber-300"
+          }`}
+        >
+          {consultant.manualEvaluation.status === "submitted" ? "Avaliação fechada" : "Rascunho"}
+          {consultant.manualEvaluation.periodKey ? ` · ${formatPeriodKey(consultant.manualEvaluation.periodKey)}` : ""}
+        </Badge>
+      </div>
 
+      {/* Score cards with skill legends */}
       {summaryRows.length > 0 && (
         <div className={`grid gap-2 ${summaryRows.length === 1 ? "grid-cols-1" : summaryRows.length === 2 ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-3"}`}>
-          {summaryRows.map((item) => (
-            <div key={item.label} className="rounded-xl border border-border/8 bg-card/20 p-3.5">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{item.label}</p>
-              <p className="mt-1.5 text-xl font-bold text-foreground">{Math.round(item.value!)}/100</p>
-              {!hideMonetary && item.payout != null && (
-                <p className="mt-0.5 text-[11px] text-muted-foreground/55">estimativa: {money(item.payout)}</p>
-              )}
-            </div>
-          ))}
+          {summaryRows.map((item) => {
+            const legend = SKILL_LEGENDS[item.key];
+            return (
+              <div key={item.label} className="rounded-xl border border-border/8 bg-card/20 p-3.5 space-y-1">
+                <p className={`text-[10px] uppercase tracking-wider font-semibold ${legend?.color ?? "text-muted-foreground/60"}`}>{item.label}</p>
+                {legend && <p className="text-[10px] text-muted-foreground/50 leading-snug">{legend.description}</p>}
+                <p className="mt-1 text-xl font-bold text-foreground">{Math.round(item.value!)}/100</p>
+                {!hideMonetary && item.payout != null && (
+                  <p className="text-[11px] text-muted-foreground/55">estimativa: {money(item.payout)}</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
+      {/* Feedback highlights */}
       {highlights.length > 0 && (
         <div className="space-y-2">
-          {highlights.map((row) => (
-            <div key={`${row.category}-${row.subtopic}`} className="rounded-xl border border-border/8 bg-white/[0.02] p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-foreground">
-                  {row.category && BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES]
-                    ? BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES].label
-                    : (row.category ?? "categoria")}
-                  {" · "}
-                  {row.category && row.subtopic
-                    ? BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES]?.subtopics.find((s) => s.key === row.subtopic)?.label ?? row.subtopic
-                    : (row.subtopic ?? "subtópico")}
-                </p>
-                <span className="text-[11px] font-medium text-muted-foreground/60">
-                  {row.score_1_10 != null ? `${Number(row.score_1_10)}/10` : "—"}
-                </span>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 font-semibold px-0.5">Detalhes da avaliação</p>
+          {highlights.map((row) => {
+            const catLabel = row.category && BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES]
+              ? BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES].label
+              : (row.category ?? "");
+            const subtopicLabel = row.category && row.subtopic
+              ? BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES]?.subtopics.find((s) => s.key === row.subtopic)?.label ?? row.subtopic
+              : (row.subtopic ?? "");
+            const improvementTags = row.pontos_de_melhoria ? parseImprovementTags(row.pontos_de_melhoria) : [];
+
+            return (
+              <div key={`${row.category}-${row.subtopic}`} className="rounded-xl border border-border/8 bg-white/[0.02] p-3.5 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">{catLabel}</p>
+                    <p className="text-xs font-semibold text-foreground mt-0.5">{subtopicLabel}</p>
+                  </div>
+                  {row.score_1_10 != null && (
+                    <span className={`text-sm font-bold shrink-0 ${Number(row.score_1_10) >= 8 ? "text-emerald-400" : Number(row.score_1_10) >= 5 ? "text-amber-400" : "text-red-400"}`}>
+                      {Number(row.score_1_10)}/10
+                    </span>
+                  )}
+                </div>
+                {row.justificativa && (
+                  <p className="text-xs leading-relaxed text-foreground/80">{row.justificativa}</p>
+                )}
+                {improvementTags.length > 0 && (
+                  <div className="pt-1 space-y-1.5">
+                    <p className="text-[10px] text-amber-400/80 font-semibold uppercase tracking-wider">Ponto de melhoria</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {improvementTags.map((tag) => (
+                        <span key={tag} className="inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/[0.07] px-2 py-0.5 text-[11px] text-amber-300/90">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              {row.justificativa && <p className="mt-1.5 text-xs leading-relaxed text-foreground/85">{row.justificativa}</p>}
-              {row.pontos_de_melhoria && <p className="mt-1 text-xs leading-relaxed text-muted-foreground/70">Melhoria: {row.pontos_de_melhoria}</p>}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -303,6 +397,7 @@ export function BonusUserDetail({
   allTasks,
 }: BonusUserDetailProps) {
   const [detailTab, setDetailTab] = useState("metricas");
+  const hasCoordinatorScore = consultant.coordinatorScore != null;
 
   const userTasks = useMemo(() => {
     if (!consultant.name) return [];
@@ -350,13 +445,17 @@ export function BonusUserDetail({
           </div>
         </div>
         <div className="hidden sm:flex items-center gap-2 md:gap-3 shrink-0">
-          <div className={`rounded-lg sm:rounded-xl border px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center ${scoreBg(consultant.score)}`}>
-            <p className={`text-sm sm:text-base font-bold ${scoreColor(consultant.score)}`}>{consultant.score}%</p>
-            <p className="text-[10px] sm:text-[11px] text-muted-foreground">score</p>
+          <div className={`rounded-lg sm:rounded-xl border px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center ${hasCoordinatorScore ? scoreBg(consultant.score) : "border-amber-500/15 bg-amber-500/[0.05]"}`}>
+            <p className={`text-sm sm:text-base font-bold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
+              {hasCoordinatorScore ? `${consultant.score}%` : "Pendente"}
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground">nota coordenador</p>
           </div>
         </div>
         <div className="sm:hidden shrink-0 text-right ml-1">
-          <p className={`text-[11px] font-semibold ${scoreColor(consultant.score)}`}>{consultant.score}%</p>
+          <p className={`text-[11px] font-semibold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
+            {hasCoordinatorScore ? `${consultant.score}%` : "Pendente"}
+          </p>
         </div>
         <ChevronDown className={`h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 text-muted-foreground/50 transition-transform ${expanded ? "rotate-180" : ""}`} />
       </button>
@@ -416,7 +515,7 @@ export function BonusUserDetail({
                 <TabsContent value="composicao" className="mt-0">
                   <CompositionView
                     breakdown={consultant.scoreBreakdown}
-                    score={consultant.score}
+                    score={consultant.automaticScore}
                     hideMonetary={hideMonetary}
                     maxBonus={consultant.maxBonus}
                     payout={consultant.payout}

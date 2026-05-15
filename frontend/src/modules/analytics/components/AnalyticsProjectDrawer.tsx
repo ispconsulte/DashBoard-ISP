@@ -86,8 +86,12 @@ export default function AnalyticsProjectDrawer({ project, tasks, classifyTask, o
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-white/[0.08]"
-            style={{ background: "linear-gradient(165deg, hsl(270 50% 12%), hsl(234 45% 6%))" }}
+            className="fixed right-0 top-0 z-50 flex h-full flex-col border-l border-white/[0.08]"
+            style={{
+              width: "min(100vw, 32rem)",
+              background: "linear-gradient(165deg, hsl(270 50% 12%), hsl(234 45% 6%))",
+              overflowX: "hidden",
+            }}
           >
             {/* Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/[0.06] px-6 py-4" style={{ background: "hsl(270 50% 12% / 0.95)", backdropFilter: "blur(12px)" }}>

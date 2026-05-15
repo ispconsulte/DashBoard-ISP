@@ -586,7 +586,7 @@ export default function AnalyticsProjectList({
                       >
                         <button
                           onClick={() => toggleExpand(groupKey)}
-                          className="group flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-white/[0.02]"
+                          className="group flex w-full items-center gap-2 sm:gap-4 px-3 sm:px-5 py-4 text-left transition hover:bg-white/[0.02]"
                         >
                           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[hsl(262_83%_58%/0.22)] bg-[hsl(262_83%_58%/0.08)]">
                             <Building2 className="h-5 w-5 text-[hsl(262_83%_65%)]" />
@@ -598,7 +598,7 @@ export default function AnalyticsProjectList({
 
                           <div className="flex flex-1 flex-col gap-2 min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="truncate text-base font-bold text-white/90 max-w-[260px]">
+                              <span className="truncate text-base font-bold text-white/90 max-w-[120px] xs:max-w-[160px] sm:max-w-[260px]">
                                 {displayLabel}
                               </span>
                               <span className="rounded-full border border-white/[0.07] bg-white/[0.06] px-2.5 py-0.5 text-[11px] font-bold text-white/40">
@@ -641,7 +641,7 @@ export default function AnalyticsProjectList({
                                   <span className="text-[10px] text-white/25">atrasadas</span>
                                 </div>
                               )}
-                              <div className="flex items-center gap-2 min-w-[140px] flex-1 max-w-[220px]">
+                              <div className="flex items-center gap-2 min-w-0 flex-1 max-w-[220px]">
                                 <Clock className="h-3 w-3 shrink-0 text-white/20" />
                                 <span className="text-xs font-bold text-white/40 shrink-0">{Math.round(totalHours)}h</span>
                                 {totalContracted > 0 && (
@@ -659,7 +659,7 @@ export default function AnalyticsProjectList({
                             </div>
                           </div>
 
-                          <div className="flex shrink-0 items-center gap-2">
+                          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();

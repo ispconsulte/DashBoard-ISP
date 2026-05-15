@@ -63,19 +63,19 @@ function ScoreComposition({
   breakdown: BonusScoreBreakdown;
   score: number;
   maxBonus: number;
-  payout: number;
+  payout: number | null;
   hideMonetary?: boolean;
 }) {
-  const gap = maxBonus - payout;
+  const gap = payout == null ? 0 : maxBonus - payout;
   const sorted = [...breakdown.factors].sort((a, b) => b.contribution - a.contribution);
   const best = sorted[0];
   const worst = sorted[sorted.length - 1];
 
   return (
     <div className="space-y-3">
-      {/* Header with score pill */}
+      {/* Header with automatic support score pill */}
       <div className="flex items-center justify-between">
-        <p className="text-xs font-bold text-foreground tracking-wide">Composição do Score</p>
+        <p className="text-xs font-bold text-foreground tracking-wide">Métricas automáticas de apoio</p>
         <div className={`rounded-lg px-2.5 py-1 ${scoreBg(score)}`}>
           <span className={`text-sm font-bold ${scoreColor(score)}`}>{score}%</span>
         </div>
@@ -147,13 +147,13 @@ function ScoreComposition({
       {!hideMonetary && (
         <div className="rounded-lg bg-white/[0.02] border border-white/[0.04] px-3 py-2">
           <p className="text-[11px] text-muted-foreground">
-            <span className="text-foreground font-semibold">Score {score}%</span>
+            <span className="text-foreground font-semibold">Nota do coordenador</span>
             {" × Teto "}
             <span className="text-foreground font-semibold">{money(maxBonus)}</span>
             {" = "}
-            <span className="text-primary font-bold">{money(payout)}</span>
+            <span className="text-primary font-bold">{payout == null ? "Pendente" : money(payout)}</span>
           </p>
-          {gap > 0 && (
+          {payout != null && gap > 0 && (
             <p className="text-[10px] text-muted-foreground/50 mt-0.5">
               Faltam <span className="text-foreground/60 font-medium">{money(gap)}</span> para atingir o teto ({Math.round((gap / maxBonus) * 100)}%)
             </p>
@@ -162,6 +162,44 @@ function ScoreComposition({
       )}
     </div>
   );
+}
+
+const SKILL_LEGENDS_RANKING: Record<string, { description: string; color: string }> = {
+  "Hard Skill Manual": { description: "Conhecimento técnico e qualidade de execução", color: "text-teal-400" },
+  "Soft Skills": { description: "Comportamento, comunicação e organização", color: "text-blue-400" },
+  "People Skills": { description: "Colaboração, empatia e interação com a equipe", color: "text-indigo-400" },
+};
+
+function formatPeriodKey(periodKey: string | null | undefined): string {
+  if (!periodKey) return "";
+  const [year, month] = periodKey.split("-");
+  if (!year || !month) return periodKey;
+  const months = ["jan", "fev", "mar", "abr", "maio", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const monthLabel = months[parseInt(month, 10) - 1] ?? month;
+  return `${monthLabel}/${year}`;
+}
+
+function formatDatePTBR(isoString: string | null | undefined): string {
+  if (!isoString) return "";
+  try {
+    const d = new Date(isoString);
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    return `${day}/${month}/${year} às ${hours}:${minutes}`;
+  } catch {
+    return "";
+  }
+}
+
+function parseImprovementTags(raw: string): string[] {
+  const bracketMatches = raw.match(/\[([^\]]+)\]/g);
+  if (bracketMatches && bracketMatches.length > 0) {
+    return bracketMatches.map((tag) => tag.slice(1, -1).trim()).filter(Boolean);
+  }
+  return raw.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
 }
 
 function ManualEvaluationSection({
@@ -173,13 +211,16 @@ function ManualEvaluationSection({
 }) {
   const hasEvaluation = consultant.manualEvaluation.status === "submitted" || consultant.manualEvaluation.status === "draft";
 
-  // Don't render the section at all if there's no evaluation data
   if (!hasEvaluation) return null;
 
+  const evaluatorName = consultant.coordinatorName;
+  const submittedAt = consultant.manualEvaluation.rows.find((row) => row.submitted_at)?.submitted_at ?? null;
+  const formattedDate = formatDatePTBR(submittedAt);
+
   const summaryRows = [
-    { label: "Hard Skill Manual", value: consultant.manualEvaluation.hardManualScore, payout: consultant.manualEvaluation.hardManualPayout },
-    { label: "Soft Skills", value: consultant.manualEvaluation.softSkillScore, payout: consultant.manualEvaluation.softSkillPayout },
-    { label: "People Skills", value: consultant.manualEvaluation.peopleSkillScore, payout: consultant.manualEvaluation.peopleSkillPayout },
+    { key: "Hard Skill Manual", label: "Hard Skill Manual", value: consultant.manualEvaluation.hardManualScore, payout: consultant.manualEvaluation.hardManualPayout },
+    { key: "Soft Skills", label: "Soft Skills", value: consultant.manualEvaluation.softSkillScore, payout: consultant.manualEvaluation.softSkillPayout },
+    { key: "People Skills", label: "People Skills", value: consultant.manualEvaluation.peopleSkillScore, payout: consultant.manualEvaluation.peopleSkillPayout },
   ].filter((item) => item.value != null);
 
   const highlights = consultant.manualEvaluation.rows
@@ -189,7 +230,7 @@ function ManualEvaluationSection({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-bold tracking-wide text-foreground">Avaliação Manual</p>
+        <p className="text-xs font-bold tracking-wide text-foreground">Avaliação do Coordenador</p>
         <Badge
           variant="outline"
           className={`text-[10px] ${
@@ -198,56 +239,81 @@ function ManualEvaluationSection({
               : "border-amber-500/20 bg-amber-500/10 text-amber-300"
           }`}
         >
-          {consultant.manualEvaluation.status === "submitted"
-            ? "Fechada"
-            : "Em rascunho"}
+          {consultant.manualEvaluation.status === "submitted" ? "Fechada" : "Em rascunho"}
         </Badge>
       </div>
 
+      {(evaluatorName || formattedDate) && (
+        <p className="text-[11px] text-muted-foreground/60 -mt-1">
+          {evaluatorName
+            ? `Realizada por ${evaluatorName}${formattedDate ? ` em ${formattedDate}` : ""}`
+            : formattedDate
+            ? `Registrada em ${formattedDate}`
+            : ""}
+        </p>
+      )}
+
       {summaryRows.length > 0 && (
         <div className={`grid gap-2 ${summaryRows.length === 1 ? "grid-cols-1" : summaryRows.length === 2 ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-3"}`}>
-          {summaryRows.map((item) => (
-            <div key={item.label} className="rounded-xl border border-border/8 bg-card/20 p-3.5">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{item.label}</p>
-              <p className="mt-1.5 text-xl font-bold text-foreground">{Math.round(item.value!)}/100</p>
-              {!hideMonetary && item.payout != null && (
-                <p className="mt-0.5 text-[11px] text-muted-foreground/55">estimativa: {money(item.payout)}</p>
-              )}
-            </div>
-          ))}
+          {summaryRows.map((item) => {
+            const legend = SKILL_LEGENDS_RANKING[item.key];
+            return (
+              <div key={item.label} className="rounded-xl border border-border/8 bg-card/20 p-3.5 space-y-1">
+                <p className={`text-[10px] uppercase tracking-wider font-semibold ${legend?.color ?? "text-muted-foreground/60"}`}>{item.label}</p>
+                {legend && <p className="text-[10px] text-muted-foreground/45 leading-snug">{legend.description}</p>}
+                <p className="mt-1 text-xl font-bold text-foreground">{Math.round(item.value!)}/100</p>
+                {!hideMonetary && item.payout != null && (
+                  <p className="text-[11px] text-muted-foreground/55">estimativa: {money(item.payout)}</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
       {highlights.length > 0 && (
         <div className="space-y-2">
-          {highlights.map((row) => (
-            <div key={`${row.category}-${row.subtopic}`} className="rounded-xl border border-border/8 bg-white/[0.02] p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-foreground">
-                  {row.category && BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES]
-                    ? BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES].label
-                    : (row.category ?? "categoria")}
-                  {" · "}
-                  {row.category && row.subtopic
-                    ? BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES]?.subtopics.find((item) => item.key === row.subtopic)?.label ?? row.subtopic
-                    : (row.subtopic ?? "subtópico")}
-                </p>
-                <span className="text-[11px] font-medium text-muted-foreground/60">
-                  {row.score_1_10 != null ? `${Number(row.score_1_10)}/10` : "Não encontrado"}
-                </span>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 font-semibold px-0.5">Detalhes da avaliação</p>
+          {highlights.map((row) => {
+            const catLabel = row.category && BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES]
+              ? BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES].label
+              : (row.category ?? "");
+            const subtopicLabel = row.category && row.subtopic
+              ? BONUS_EVALUATION_CATEGORIES[row.category as keyof typeof BONUS_EVALUATION_CATEGORIES]?.subtopics.find((item) => item.key === row.subtopic)?.label ?? row.subtopic
+              : (row.subtopic ?? "");
+            const improvementTags = row.pontos_de_melhoria ? parseImprovementTags(row.pontos_de_melhoria) : [];
+
+            return (
+              <div key={`${row.category}-${row.subtopic}`} className="rounded-xl border border-border/8 bg-white/[0.02] p-3.5 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">{catLabel}</p>
+                    <p className="text-xs font-semibold text-foreground mt-0.5">{subtopicLabel}</p>
+                  </div>
+                  {row.score_1_10 != null && (
+                    <span className={`text-sm font-bold shrink-0 ${Number(row.score_1_10) >= 8 ? "text-emerald-400" : Number(row.score_1_10) >= 5 ? "text-amber-400" : "text-red-400"}`}>
+                      {Number(row.score_1_10)}/10
+                    </span>
+                  )}
+                </div>
+                {row.justificativa && (
+                  <p className="text-xs leading-relaxed text-foreground/80">{row.justificativa}</p>
+                )}
+                {improvementTags.length > 0 && (
+                  <div className="pt-1 space-y-1.5">
+                    <p className="text-[10px] text-amber-400/80 font-semibold uppercase tracking-wider">Ponto de melhoria</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {improvementTags.map((tag) => (
+                        <span key={tag} className="inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/[0.07] px-2 py-0.5 text-[11px] text-amber-300/90">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              {row.justificativa && (
-                <p className="mt-2 text-xs leading-relaxed text-foreground/85">
-                  {row.justificativa}
-                </p>
-              )}
-              {row.pontos_de_melhoria && (
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground/70">
-                  Melhoria: {row.pontos_de_melhoria}
-                </p>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -281,6 +347,7 @@ export function RankingCard({
   showRank?: boolean;
 }) {
   const isTopThree = showRank && rank <= 3;
+  const hasCoordinatorScore = consultant.coordinatorScore != null;
   const badgeColors = showRank
     ? rank === 1
       ? "text-amber-300 bg-amber-500/15 border-amber-500/20"
@@ -313,11 +380,13 @@ export function RankingCard({
           </div>
         </div>
         <div className="hidden sm:flex items-center gap-2 md:gap-3 shrink-0">
-          <div className={`rounded-lg sm:rounded-xl border px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center ${scoreBg(consultant.score)}`}>
-            <p className={`text-sm sm:text-base font-bold ${scoreColor(consultant.score)}`}>{consultant.score}%</p>
-            <p className="text-[10px] sm:text-[11px] text-muted-foreground">score</p>
+          <div className={`rounded-lg sm:rounded-xl border px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center ${hasCoordinatorScore ? scoreBg(consultant.score) : "border-amber-500/15 bg-amber-500/[0.05]"}`}>
+            <p className={`text-sm sm:text-base font-bold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
+              {hasCoordinatorScore ? `${consultant.score}%` : "Pendente"}
+            </p>
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground">nota coordenador</p>
           </div>
-          {!hideMonetary && (
+          {!hideMonetary && hasCoordinatorScore && consultant.payout != null && (
             <div className="rounded-lg sm:rounded-xl border border-primary/15 bg-primary/[0.06] px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center">
               <p className="text-sm sm:text-base font-bold text-primary">{money(consultant.payout)}</p>
               <p className="text-[10px] sm:text-[11px] text-primary/50">de {money(consultant.maxBonus)}</p>
@@ -325,8 +394,10 @@ export function RankingCard({
           )}
         </div>
         <div className="sm:hidden shrink-0 text-right ml-1">
-          {!hideMonetary && <p className="text-xs font-bold text-primary">{money(consultant.payout)}</p>}
-          <p className={`text-[11px] font-semibold ${scoreColor(consultant.score)}`}>{consultant.score}%</p>
+          {!hideMonetary && consultant.payout != null && <p className="text-xs font-bold text-primary">{money(consultant.payout)}</p>}
+          <p className={`text-[11px] font-semibold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
+            {hasCoordinatorScore ? `${consultant.score}%` : "Pendente"}
+          </p>
         </div>
         <ChevronDown className={`h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 text-muted-foreground/50 transition-transform ${expanded ? "rotate-180" : ""}`} />
       </button>
@@ -355,10 +426,10 @@ export function RankingCard({
                       }`}
                     >
                       {consultant.manualEvaluation.status === "submitted"
-                        ? `Avaliado${consultant.manualEvaluation.periodKey ? ` · ${consultant.manualEvaluation.periodKey}` : ""}`
+                        ? `Avaliado${consultant.manualEvaluation.periodKey ? ` · ${formatPeriodKey(consultant.manualEvaluation.periodKey)}` : ""}`
                         : consultant.manualEvaluation.status === "draft"
-                        ? `Rascunho${consultant.manualEvaluation.periodKey ? ` · ${consultant.manualEvaluation.periodKey}` : ""}`
-                        : "Sem avaliação manual"}
+                        ? `Rascunho${consultant.manualEvaluation.periodKey ? ` · ${formatPeriodKey(consultant.manualEvaluation.periodKey)}` : ""}`
+                        : "Pendente de nota do coordenador"}
                     </Badge>
                     {consultant.coordinatorName && (
                       <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/60">
@@ -396,7 +467,7 @@ export function RankingCard({
 
               <ScoreComposition
                 breakdown={consultant.scoreBreakdown}
-                score={consultant.score}
+                score={consultant.automaticScore}
                 maxBonus={consultant.maxBonus}
                 payout={consultant.payout}
                 hideMonetary={hideMonetary}
@@ -440,7 +511,7 @@ export function RankingCard({
               <div className="flex items-start gap-2 rounded-lg border border-border/6 bg-card/10 px-3 py-2">
                 <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground/25 mt-0.5" />
                 <p className="text-[11px] text-muted-foreground/40 leading-relaxed">
-                  O valor exibido é o cálculo automático com base nos dados disponíveis. Aprovação final sujeita à validação gerencial.
+                  A nota principal da bonificação vem da avaliação do coordenador. As métricas automáticas acima são apenas apoio para análise.
                 </p>
               </div>
             </div>

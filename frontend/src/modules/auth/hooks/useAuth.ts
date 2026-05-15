@@ -69,6 +69,7 @@ export const ACCESS_RULES: Record<UserRole, Record<AccessArea, boolean>> = {
 
 const SESSION_KEY = "auth_session";
 const AUTH_SESSION_EVENT = "auth-session-changed";
+const BONUS_SETTINGS_EVENT = "bonus-settings-changed";
 
 /**
  * Read stored session metadata from localStorage.
@@ -246,6 +247,31 @@ export function useAuth() {
     [persistSession, clearSession]
   );
 
+  const refreshAuthContext = useCallback(async (): Promise<AuthSession | null> => {
+    const sdkTokens = await getSDKAccessToken();
+    const current = authStore.session ?? readStoredSession();
+    if (!sdkTokens || !current) return current ?? null;
+
+    try {
+      const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${sdkTokens.accessToken}` },
+      });
+      if (!userRes.ok) return refreshSession({ ...current, accessToken: sdkTokens.accessToken, refreshToken: sdkTokens.refreshToken });
+      const userData = await userRes.json();
+      const refreshed = await buildSession(
+        { access_token: sdkTokens.accessToken, refresh_token: sdkTokens.refreshToken, user: userData, expires_in: 3600 },
+        current.email,
+        current,
+      );
+      setSession(refreshed);
+      persistSession(refreshed);
+      setAuthStore({ session: refreshed, loading: false });
+      return refreshed;
+    } catch {
+      return current;
+    }
+  }, [persistSession, refreshSession]);
+
   // ── Initial session restore ──
   useEffect(() => {
     const handleAuthSnapshot = (snapshot: AuthStoreSnapshot) => {
@@ -394,10 +420,28 @@ export function useAuth() {
     };
 
     window.addEventListener(AUTH_SESSION_EVENT, handleSessionChanged as EventListener);
+    const handleBonusSettingsChanged = () => { void refreshAuthContext(); };
+    window.addEventListener(BONUS_SETTINGS_EVENT, handleBonusSettingsChanged);
     return () => {
       window.removeEventListener(AUTH_SESSION_EVENT, handleSessionChanged as EventListener);
+      window.removeEventListener(BONUS_SETTINGS_EVENT, handleBonusSettingsChanged);
     };
-  }, []);
+  }, [refreshAuthContext]);
+
+  useEffect(() => {
+    if (!session?.accessToken) return;
+    const channel = supabaseExt
+      .channel("bonus-settings-auth-refresh")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bonus_settings", filter: "key=eq.payment_manager_user_id" },
+        () => { void refreshAuthContext(); },
+      )
+      .subscribe();
+    return () => {
+      supabaseExt.removeChannel(channel);
+    };
+  }, [session?.accessToken, refreshAuthContext]);
 
   // ── Proactive token refresh timer ──
   useEffect(() => {
@@ -531,7 +575,7 @@ export function useAuth() {
   );
 
   return useMemo(
-    () => ({ session, loadingSession, isAuthenticated: Boolean(session), canAccess, login, register, logout }),
-    [session, loadingSession, canAccess, login, register, logout]
+    () => ({ session, loadingSession, isAuthenticated: Boolean(session), canAccess, login, register, logout, refreshAuthContext }),
+    [session, loadingSession, canAccess, login, register, logout, refreshAuthContext]
   );
 }

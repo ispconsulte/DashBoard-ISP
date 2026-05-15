@@ -127,7 +127,7 @@ export function InsightRow({
 }: {
   name: string;
   score: number;
-  payout: number;
+  payout: number | null;
   icon: typeof TrendingUp;
   color: "emerald" | "red";
   hideMonetary?: boolean;
@@ -148,7 +148,7 @@ export function InsightRow({
           <p className="text-xs text-muted-foreground">{score}%</p>
         </div>
       </div>
-      {!hideMonetary && <p className="shrink-0 text-sm font-bold text-foreground">{money(payout)}</p>}
+      {!hideMonetary && <p className="shrink-0 text-sm font-bold text-foreground">{payout == null ? "Pendente" : money(payout)}</p>}
     </div>
   );
 }

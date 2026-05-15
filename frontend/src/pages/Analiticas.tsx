@@ -514,7 +514,7 @@ export default function AnaliticasPage() {
 
   return (
     <div className="page-gradient w-full">
-      <div className="mx-auto w-full max-w-[1900px] space-y-5 p-4 sm:p-5 md:p-8">
+      <div className="mx-auto w-full max-w-[1900px] space-y-5 p-4 sm:p-5 md:p-8 overflow-x-hidden">
         {/* Header */}
         <AnalyticsPageHeader
           effectiveUser={effectiveUser}
@@ -560,7 +560,7 @@ export default function AnaliticasPage() {
         />
 
         {/* Row 1: Client Radar + Velocity Chart */}
-        <div className="grid gap-5 lg:grid-cols-2">
+        <div className="grid gap-5 lg:grid-cols-2 overflow-x-hidden">
           <AnalyticsProductivityPulse tasks={filteredTasks} classifyTask={classifyTask} />
           <AnalyticsVelocityChart tasks={filteredTasks} classifyTask={classifyTask} />
         </div>

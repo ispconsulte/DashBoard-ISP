@@ -24,6 +24,7 @@ import { useSharedTasks } from "@/contexts/SharedTasksContext";
 import type { RoiPeriod } from "@/modules/sprint6/types";
 import PageSkeleton from "@/components/ui/PageSkeleton";
 import DataErrorCard from "@/components/ui/DataErrorCard";
+import { supabaseExt as supabase } from "@/lib/supabase";
 
 import {
   money,
@@ -113,6 +114,13 @@ export default function Sprint6BonificacaoPage() {
     [visibleConsultants, session?.userId],
   );
 
+  const pendingEvaluationNotification = useMemo(() => {
+    if (!session?.userId) return null;
+    return bonus.persistence.notifications.find((notification) =>
+      String(notification.user_id) === String(session.userId) && !notification.opened_at,
+    ) ?? null;
+  }, [bonus.persistence.notifications, session?.userId]);
+
   // Payment manager sees all; coordinators see only their own subordinates in the ranking
   const rankingConsultants = useMemo(() => {
     if (!canSeeRanking) return [];
@@ -149,13 +157,13 @@ export default function Sprint6BonificacaoPage() {
   }, [rankingConsultants, search, evaluationFilter]);
 
   const summaryConsultants = canSeeRanking ? rankingConsultants : myConsultant ? [myConsultant] : [];
-  const topPerformer = rankingConsultants[0] ?? null;
+  const topPerformer = rankingConsultants.find((consultant) => consultant.coordinatorScore != null) ?? null;
   const needsAttention = useMemo(
-    () => rankingConsultants.filter((consultant) => consultant.score < 60).slice(0, 3),
+    () => rankingConsultants.filter((consultant) => consultant.coordinatorScore != null && consultant.score < 60).slice(0, 3),
     [rankingConsultants],
   );
   const trendingUp = useMemo(
-    () => rankingConsultants.filter((consultant) => consultant.score >= 75 && (consultant.onTimeRate == null || consultant.onTimeRate >= 60)).slice(0, 3),
+    () => rankingConsultants.filter((consultant) => consultant.coordinatorScore != null && consultant.score >= 75 && (consultant.onTimeRate == null || consultant.onTimeRate >= 60)).slice(0, 3),
     [rankingConsultants],
   );
 
@@ -372,15 +380,19 @@ export default function Sprint6BonificacaoPage() {
                 {[
                   canSeeRanking && {
                     label: "Score médio",
-                    value: `${Math.round(summaryConsultants.reduce((sum, consultant) => sum + consultant.score, 0) / summaryConsultants.length)}%`,
-                    sub: `${summaryConsultants.length} consultor${summaryConsultants.length > 1 ? "es" : ""} · ${periodLabel(period)}`,
+                    value: summaryConsultants.some((consultant) => consultant.coordinatorScore != null)
+                      ? `${Math.round(summaryConsultants.reduce((sum, consultant) => sum + (consultant.coordinatorScore ?? 0), 0) / summaryConsultants.filter((consultant) => consultant.coordinatorScore != null).length)}%`
+                      : "Pendente",
+                    sub: `nota do coordenador · ${periodLabel(period)}`,
                     color: "border-primary/12 bg-primary/[0.04]",
                     valueColor: "text-primary",
                   },
                   !hideMonetary && {
                     label: "Payout total",
-                    value: money(summaryConsultants.reduce((sum, consultant) => sum + consultant.payout, 0)),
-                    sub: `estimativa ${periodLabel(period)}`,
+                    value: summaryConsultants.some((consultant) => consultant.payout != null)
+                      ? money(summaryConsultants.reduce((sum, consultant) => sum + (consultant.payout ?? 0), 0))
+                      : "Pendente",
+                    sub: `estimativa por nota do coordenador · ${periodLabel(period)}`,
                     color: "border-emerald-500/12 bg-emerald-500/[0.04]",
                     valueColor: "text-emerald-400",
                   },
@@ -400,7 +412,7 @@ export default function Sprint6BonificacaoPage() {
                   },
                   !canSeeRanking && {
                     label: "Meu Score",
-                    value: myConsultant ? `${myConsultant.score}%` : "—",
+                    value: myConsultant?.coordinatorScore != null ? `${myConsultant.score}%` : "Pendente",
                     sub: periodLabel(period),
                     color: "border-primary/12 bg-primary/[0.04]",
                     valueColor: "text-primary",
@@ -535,14 +547,38 @@ export default function Sprint6BonificacaoPage() {
     }
 
     return (
-      <BonusUserDetail
-        consultant={myConsultant}
-        expanded={expandedConsultant === myConsultant.name}
-        onToggle={() => setExpandedConsultant(expandedConsultant === myConsultant.name ? null : myConsultant.name)}
-        hideMonetary={true}
-        periodLabel={periodLabel(period)}
-        allTasks={allTasks}
-      />
+      <div className="space-y-3">
+        {pendingEvaluationNotification && (
+          <div className="rounded-2xl border border-primary/15 bg-primary/[0.06] p-4 sm:p-5">
+            <p className="text-sm font-bold text-foreground">Você recebeu uma nova avaliação.</p>
+            <p className="mt-1 text-xs text-muted-foreground/60">
+              Período {pendingEvaluationNotification.period_key}. Abra para revisar as notas do coordenador.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                setExpandedConsultant(myConsultant.name);
+                await supabase
+                  .from("bonus_evaluation_notifications")
+                  .update({ opened_at: new Date().toISOString(), read_at: new Date().toISOString() })
+                  .eq("id", pendingEvaluationNotification.id);
+                setRefreshKey((current) => current + 1);
+              }}
+              className="mt-3 rounded-xl border border-primary/25 bg-primary/12 px-4 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/18"
+            >
+              Ver avaliação
+            </button>
+          </div>
+        )}
+        <BonusUserDetail
+          consultant={myConsultant}
+          expanded={expandedConsultant === myConsultant.name}
+          onToggle={() => setExpandedConsultant(expandedConsultant === myConsultant.name ? null : myConsultant.name)}
+          hideMonetary={true}
+          periodLabel={periodLabel(period)}
+          allTasks={allTasks}
+        />
+      </div>
     );
   }
 

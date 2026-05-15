@@ -917,6 +917,7 @@ body {
     radial-gradient(circle at bottom right, hsl(160 84% 39% / 0.05), transparent 24%),
     transparent;
   min-height: calc(100vh - 3.5rem);
+  overflow-x: hidden;
 }
 
 .task-page {

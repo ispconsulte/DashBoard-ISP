@@ -78,9 +78,11 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
           <p className="mt-1 text-[11px] text-muted-foreground/50">{periodLabel}</p>
         </div>
         <div className="rounded-xl border border-amber-500/12 bg-amber-500/[0.04] p-3.5">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">Score médio</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">Nota média do coordenador</p>
           <p className="mt-1.5 text-lg font-bold leading-none text-amber-400">
-            {subordinates.length > 0 ? `${Math.round(subordinates.reduce((s, c) => s + c.score, 0) / subordinates.length)}%` : "—"}
+            {subordinates.some((c) => c.coordinatorScore != null)
+              ? `${Math.round(subordinates.reduce((s, c) => s + (c.coordinatorScore ?? 0), 0) / subordinates.filter((c) => c.coordinatorScore != null).length)}%`
+              : "Pendente"}
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground/50">da equipe</p>
         </div>
@@ -91,6 +93,7 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
         {filtered.map((consultant) => {
           const isExpanded = expandedId === consultant.userId;
           const evalStatus = consultant.manualEvaluation.status;
+          const hasCoordinatorScore = consultant.coordinatorScore != null;
 
           return (
             <div
@@ -133,8 +136,10 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <div className={`rounded-xl border px-3 py-1.5 text-center ${scoreBg(consultant.score)}`}>
-                    <p className={`text-sm font-bold ${scoreColor(consultant.score)}`}>{consultant.score}%</p>
+                  <div className={`rounded-xl border px-3 py-1.5 text-center ${hasCoordinatorScore ? scoreBg(consultant.score) : "border-amber-500/15 bg-amber-500/[0.05]"}`}>
+                    <p className={`text-sm font-bold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
+                      {hasCoordinatorScore ? `${consultant.score}%` : "Pendente"}
+                    </p>
                   </div>
                   <ChevronDown className={`h-4 w-4 text-muted-foreground/50 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                 </div>
@@ -154,7 +159,8 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
                       {/* Metrics */}
                       <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
                         {[
-                          { label: "Score", value: `${consultant.score}%` },
+                          { label: "Nota coordenador", value: hasCoordinatorScore ? `${consultant.score}%` : "Pendente de nota do coordenador" },
+                          { label: "Score automático", value: `${consultant.automaticScore}%` },
                           { label: "No Prazo", value: consultant.onTimeRate != null ? `${Math.round(consultant.onTimeRate)}%` : "—" },
                           { label: "Utilização", value: consultant.utilization != null ? `${Math.round(consultant.utilization)}%` : "—" },
                           { label: "Projetos", value: consultant.projectCount > 0 ? String(consultant.projectCount) : "—" },

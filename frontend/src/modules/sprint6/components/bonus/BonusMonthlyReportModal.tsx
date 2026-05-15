@@ -262,8 +262,8 @@ export function BonusMonthlyReportModal({
         if (!cancelled) {
           setPreviewRows(rows);
           setPreviewSummary({
-            score: Number(snapshotRows?.[0]?.score ?? consultant.score ?? 0),
-            payout: Number(snapshotRows?.[0]?.payout_amount ?? consultant.payout ?? 0),
+            score: Number(consultant.coordinatorScore ?? 0),
+            payout: Number(consultant.payout ?? 0),
             onTimeRate: Number(consultant.onTimeRate ?? 0),
             hard: avg(hardRows),
             soft: avg(softRows),
@@ -274,7 +274,7 @@ export function BonusMonthlyReportModal({
         if (!cancelled) {
           setPreviewRows([]);
           setPreviewSummary({
-            score: consultant.score ?? 0,
+            score: consultant.coordinatorScore ?? 0,
             payout: consultant.payout ?? 0,
             onTimeRate: Number(consultant.onTimeRate ?? 0),
             hard: Math.round(consultant.manualEvaluation.hardManualScore ?? 0),

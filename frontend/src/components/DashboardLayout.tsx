@@ -337,15 +337,13 @@ function DashboardInner() {
         </div>
       )}
 
+      {/* Mobile sidebar (Sheet portal — must be outside main to avoid overflow clipping) */}
+      {isMobile && <AppSidebar />}
+
       {/* Main content column */}
       <main style={{ minWidth: 0, overflowX: "hidden", gridColumn: isMobile ? "1 / -1" : undefined }}>
         {/* Mobile top bar with hamburger */}
         <MobileHeader />
-
-        {/* Mobile sidebar (Sheet overlay) */}
-        {isMobile && (
-          <AppSidebar />
-        )}
 
         <SharedTasksProvider value={sharedTasksResult}>
           <RouteErrorBoundary resetKey={location.pathname}>

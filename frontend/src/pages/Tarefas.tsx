@@ -1000,7 +1000,7 @@ export default function TarefasPage() {
         </motion.div>
 
         {/* ═══ KPI CARDS ═══ */}
-        <motion.div variants={stagger} initial="initial" animate="animate" className="mb-5 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <motion.div variants={stagger} initial="initial" animate="animate" className="mb-5 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-5 overflow-x-hidden">
           <KpiCard icon={Layers} label="Total de Tarefas" value={stats.total} color="purple" delay={0} loading={loading} sub={`${uniqueProjects.size} projeto${uniqueProjects.size !== 1 ? "s" : ""} ativo${uniqueProjects.size !== 1 ? "s" : ""}`} />
           <KpiCard icon={Timer} label="Horas Alocadas" value={totalHoursLabel} color="blue" delay={0.05} loading={loading} sub={stats.total > 0 ? `~${formatHoursHuman(totalHours / Math.max(stats.total, 1))} por tarefa` : "Sem dados"} />
           <KpiCard icon={Hourglass} label="Em Andamento" value={stats.pending} color="yellow" delay={0.1} loading={loading} sub={stats.total > 0 ? `${Math.round((stats.pending / stats.total) * 100)}% do total` : "Nenhuma"} />
@@ -1034,7 +1034,7 @@ export default function TarefasPage() {
                 transition={{ duration: 0.3 }}
                 className="overflow-hidden"
               >
-        <div className="grid gap-3 sm:gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(240px,260px)_minmax(280px,320px)]">
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(240px,260px)_minmax(280px,320px)] overflow-x-hidden">
 
           {/* LEFT: Focus — Top performers */}
           <motion.div
@@ -1180,7 +1180,7 @@ export default function TarefasPage() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.3 }}
-            className="task-card flex flex-col max-h-[60vh] xl:max-h-[calc(100vh-340px)] min-h-[260px] overflow-hidden md:col-span-2 xl:col-span-1"
+            className="task-card flex flex-col max-h-[60vh] xl:max-h-[calc(100vh-340px)] min-h-[260px] overflow-hidden md:col-span-2 xl:col-span-1 overflow-x-hidden"
           >
             <div className="flex items-center justify-center gap-2 mb-4 sticky top-0 z-10 bg-[hsl(var(--task-surface))] pb-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[hsl(var(--task-yellow)/0.15)]">

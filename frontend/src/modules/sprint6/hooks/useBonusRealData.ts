@@ -7,6 +7,7 @@ import { useClientHealthData } from "@/modules/sprint6/hooks/useClientHealthData
 import { useProjectFinancials } from "@/modules/sprint6/hooks/useProjectFinancials";
 import {
   useBonusPersistenceData,
+  type BonusEvaluationNotificationRow,
   type BonusInternalEvaluationRow,
   type BonusMetricBreakdownRow,
   type BonusScoreSnapshotRow,
@@ -17,6 +18,7 @@ import type { RoiPeriod } from "@/modules/sprint6/types";
 import {
   averageNumbers,
   BONUS_EVALUATION_CATEGORIES,
+  BONUS_MANUAL_CATEGORY_WEIGHTS,
   BONUS_MANUAL_WEIGHTS,
   getBonusCategoryPayoutFromScore,
   getBonusCeiling,
@@ -75,8 +77,10 @@ export interface BonusConsultantCard {
   department: string | null;
   coordinatorUserId: string | null;
   coordinatorName: string | null;
+  coordinatorScore: number | null;
+  automaticScore: number;
   score: number;
-  payout: number;
+  payout: number | null;
   maxBonus: number;
   hoursTracked: number;
   totalTasks: number;
@@ -136,6 +140,7 @@ export interface BonusPersistenceSummary {
   revenueSnapshots: BonusScoreSnapshotRow[];
   breakdowns: BonusMetricBreakdownRow[];
   evaluations: BonusInternalEvaluationRow[];
+  notifications: BonusEvaluationNotificationRow[];
   sourceStatusRows: BonusSourceStatusRow[];
   sourceStatuses: {
     sourceCode: string;
@@ -345,6 +350,18 @@ function consultantScoreFromMetrics(metrics: {
       total,
     },
   };
+}
+
+function coordinatorScoreFromEvaluation(evaluation?: BonusManualEvaluationSummary | null) {
+  if (!evaluation || evaluation.status !== "submitted") return null;
+  const weighted = [
+    { score: evaluation.hardManualScore, weight: BONUS_MANUAL_CATEGORY_WEIGHTS.hard_skill_manual },
+    { score: evaluation.softSkillScore, weight: BONUS_MANUAL_CATEGORY_WEIGHTS.soft_skill },
+    { score: evaluation.peopleSkillScore, weight: BONUS_MANUAL_CATEGORY_WEIGHTS.people_skill },
+  ].filter((item): item is { score: number; weight: number } => typeof item.score === "number" && !Number.isNaN(item.score));
+  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+  if (totalWeight <= 0) return null;
+  return Math.round(weighted.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight);
 }
 
 export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: string | null, refreshKey = 0): UseBonusRealDataResult {
@@ -651,12 +668,11 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
             return normalizedCapacity === normalizedUser;
           }) ??
           null;
-        const score = consultantScoreFromMetrics({
+        const automaticScore = consultantScoreFromMetrics({
           onTimeRate,
           overdueRate,
           utilization: capacityMeta?.utilizationPercent ?? null,
           healthScore,
-          manualEvaluation: matchedUser ? manualEvaluationsByUserId.get(matchedUser.id) ?? null : null,
         });
         const maxBonus = getBonusCeiling(capacityMeta?.seniority ?? matchedUser.seniority ?? null);
         const coordinatorUserId = coordinatorBySubordinateId.get(matchedUser.id) ?? null;
@@ -680,6 +696,8 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           softSkillPayout: getBonusCategoryPayoutFromScore("soft_skill", baseManualEvaluation.softSkillScore, capacityMeta?.seniority ?? matchedUser.seniority ?? null),
           peopleSkillPayout: getBonusCategoryPayoutFromScore("people_skill", baseManualEvaluation.peopleSkillScore, capacityMeta?.seniority ?? matchedUser.seniority ?? null),
         };
+        const coordinatorScore = coordinatorScoreFromEvaluation(manualEvaluation);
+        const payout = coordinatorScore != null ? Math.round((coordinatorScore / 100) * maxBonus) : null;
 
         const card: BonusConsultantCard = {
           userId: matchedUser.id,
@@ -689,8 +707,10 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           department: capacityMeta?.department ?? matchedUser.department ?? null,
           coordinatorUserId,
           coordinatorName,
-          score: Math.round(score.score * 100),
-          payout: Math.round(score.score * maxBonus),
+          coordinatorScore,
+          automaticScore: Math.round(automaticScore.score * 100),
+          score: coordinatorScore ?? 0,
+          payout,
           maxBonus,
           hoursTracked: Math.round(acc.hoursTracked * 10) / 10,
           totalTasks: acc.totalTasks,
@@ -700,14 +720,14 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           utilization: capacityMeta?.utilizationPercent ?? null,
           healthScore: healthScore != null ? Math.round(healthScore * 10) / 10 : null,
           projectCount: acc.projectIds.size,
-          scoreBreakdown: score.breakdown,
+          scoreBreakdown: automaticScore.breakdown,
           manualEvaluation,
         };
         if (matchedUser.email) card.email = matchedUser.email;
         return card;
       })
       .filter((value): value is NonNullable<typeof value> => value != null)
-      .sort((a, b) => b.payout - a.payout || b.hoursTracked - a.hoursTracked);
+      .sort((a, b) => (b.score - a.score) || ((b.payout ?? -1) - (a.payout ?? -1)) || b.hoursTracked - a.hoursTracked);
   }, [tasks.tasks, elapsed.times, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, coordinatorBySubordinateId, eligibleUserIds]);
 
   const projectSpotlights = useMemo<BonusProjectSpotlight[]>(() => {
@@ -864,6 +884,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
     consultantCards.forEach((consultant) => {
       const userId = consultant.userId;
       if (!userId) return;
+      if (consultant.coordinatorScore == null || consultant.payout == null) return;
 
       const subjectKey = `consultant:${userId}`;
       const snapshotKey = `consultant_monthly:${currentMonthKey}:${subjectKey}`;
@@ -1023,7 +1044,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
   );
 
   const overview = useMemo<BonusOverview>(() => {
-    const avgConsultantScore = average(consultantCards.map((consultant) => consultant.score));
+    const avgConsultantScore = average(consultantCards.map((consultant) => consultant.coordinatorScore).filter((value): value is number => value != null));
     const avgOnTimeRate = average(
       consultantCards.map((consultant) => consultant.onTimeRate).filter((value): value is number => value != null),
     );
@@ -1033,7 +1054,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
 
     return {
       monthlyEstimatedPayout:
-        consultantCards.reduce((sum, consultant) => sum + consultant.payout, 0) +
+        consultantCards.reduce((sum, consultant) => sum + (consultant.payout ?? 0), 0) +
         revenueSummary.croMonthlyEstimate,
       connectedConsultants: consultantCards.length,
       avgConsultantScore: avgConsultantScore != null ? Math.round(avgConsultantScore) : null,
@@ -1123,6 +1144,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       revenueSnapshots: combinedRevenueSnapshots,
       breakdowns: combinedBreakdowns,
       evaluations: persistence.evaluations,
+      notifications: persistence.notifications,
       sourceStatusRows: persistence.sourceStatuses,
       sourceStatuses: persistence.sourceStatuses.map((row) => ({
         sourceCode: row.source_code,
