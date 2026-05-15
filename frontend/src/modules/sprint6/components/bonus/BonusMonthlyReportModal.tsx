@@ -15,7 +15,7 @@ import type { BonusConsultantCard } from "@/modules/sprint6/hooks/useBonusRealDa
 import type { AuthSession } from "@/modules/auth/hooks/useAuth";
 import { toast } from "sonner";
 import { money } from "./BonusHelpers";
-import { SUPABASE_URL } from "@/lib/supabase";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase";
 import { exportBonusReportPdf, type BonusPdfData } from "@/lib/exportBonusPdf";
 
 /* ── Pretty category/subtopic labels ────────────────────────────────── */
@@ -311,6 +311,7 @@ export function BonusMonthlyReportModal({
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.accessToken}`,
+          apikey: SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({
           consultantId: consultant.userId,
