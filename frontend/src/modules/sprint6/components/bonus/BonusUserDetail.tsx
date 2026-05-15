@@ -227,7 +227,7 @@ function formatPeriodKey(periodKey: string | null | undefined): string {
   if (!periodKey) return "";
   const [year, month] = periodKey.split("-");
   if (!year || !month) return periodKey;
-  const months = ["jan", "fev", "mar", "abr", "maio", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const months = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
   const monthLabel = months[parseInt(month, 10) - 1] ?? month;
   return `${monthLabel}/${year}`;
 }
