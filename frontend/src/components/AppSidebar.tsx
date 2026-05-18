@@ -155,9 +155,7 @@ function ToggleButton() {
 
 type SectionKey = "management" | "tools" | "administration";
 
-export function AppSidebar({
-}: {
-}) {
+export function AppSidebar() {
   const { session, logout, canAccess } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

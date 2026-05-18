@@ -37,13 +37,14 @@ export default function ContractedHoursModal({
     : project?.projectName ?? "";
 
   const targetProject = project ?? (clientProjects?.[0] ?? null);
-  if (!targetProject) return null;
 
   useEffect(() => {
     setHours(currentHours > 0 ? String(currentHours) : "");
     setNotes("");
     setError("");
-  }, [currentHours, targetProject.projectId, clientProjects?.length]);
+  }, [currentHours, targetProject?.projectId, clientProjects?.length]);
+
+  if (!targetProject) return null;
 
   const totalUsed = isClientMode
     ? clientProjects!.reduce((s, p) => s + p.hoursUsed, 0)
