@@ -170,14 +170,6 @@ function average(values: number[]) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function monthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function quarterKey(date: Date) {
-  return `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}`;
-}
-
 function resolveStatus(statusRaw: string | number | undefined, deadline: Date | null): TaskStatusKey {
   if (typeof statusRaw === "number") {
     if (statusRaw === 5) return "done";
@@ -1123,12 +1115,10 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
     {
       id: "bonus-snapshots",
       label: "Snapshots de bonificação",
-      status: persistence.snapshots.length > 0 ? "connected" : derivedPersistence.snapshots.length > 0 ? "partial" : persistence.error ? "partial" : "pending",
+      status: persistence.snapshots.length > 0 ? "connected" : persistence.error ? "partial" : "pending",
       helper:
         persistence.snapshots.length > 0
           ? "Snapshots persistidos por período já disponíveis no banco."
-          : derivedPersistence.snapshots.length > 0
-          ? "Snapshots calculados em tempo real já aparecem no dashboard, mas ainda não foram persistidos no banco."
           : "Snapshots mensais/trimestrais ainda não foram gerados a partir das fontes disponíveis.",
     },
     {
@@ -1137,7 +1127,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       status: persistence.evaluations.length > 0 ? "connected" : persistence.error ? "partial" : "pending",
       helper: "Soft skills, people skills e NPS manual quando o dado não vem nativamente do Bitrix.",
     },
-  ], [tasks.tasks.length, elapsed.times.length, tasks.error, elapsed.error, financials.data.size, financials.error, health.summary?.clients.length, health.error, persistence.sourceStatuses, persistence.snapshots.length, persistence.evaluations.length, persistence.error, derivedPersistence.snapshots.length]);
+  ], [tasks.tasks.length, elapsed.times.length, tasks.error, elapsed.error, financials.data.size, financials.error, health.summary?.clients.length, health.error, persistence.sourceStatuses, persistence.snapshots.length, persistence.evaluations.length, persistence.error]);
 
   return {
     loading: tasks.loading || elapsed.loading || capacity.loading || health.loading || financials.loading || persistence.loading,

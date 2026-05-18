@@ -687,8 +687,11 @@ export default function Sprint6BonificacaoPage() {
           }
         >
           <BonusTrendsSection
-            consultants={rankingConsultants}
-            consultantSnapshots={bonus.persistence.consultantSnapshots.filter((snapshot) => !snapshot.user_id || rankingConsultants.some((consultant) => consultant.userId === snapshot.user_id))}
+            consultants={visibleConsultants}
+            consultantSnapshots={bonus.persistence.consultantSnapshots.filter((snapshot) =>
+              !snapshot.user_id ||
+              visibleConsultants.some((consultant) => consultant.userId === String(snapshot.user_id))
+            )}
           />
         </CollapsibleSection>
 
