@@ -23,7 +23,6 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import PageHeaderCard from "@/components/PageHeaderCard";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -257,9 +256,9 @@ function periodCutoff(period: PeriodFilter): Date | null {
 
 /* ─── Componentes auxiliares ─── */
 
-const CARD = "rounded-2xl border border-white/[0.08] bg-[hsl(228_25%_10%/0.9)] shadow-[0_2px_24px_hsl(222_45%_4%/0.25)]";
-const INNER = "rounded-xl border border-white/[0.06] bg-white/[0.025]";
-const SEL = "w-full h-10 rounded-lg border border-white/[0.08] bg-[hsl(230_28%_12%)] px-3 pr-8 text-sm text-white outline-none appearance-none cursor-pointer transition-colors hover:border-white/20 focus:border-white/20 [color-scheme:dark]";
+const CARD = "rounded-2xl border border-border/12 bg-card/35";
+const INNER = "rounded-xl border border-border/8 bg-card/20";
+const SEL = "w-full h-10 rounded-xl border border-border/15 bg-card/40 px-3 pr-8 text-sm text-foreground outline-none appearance-none cursor-pointer transition-colors hover:bg-card/55 focus:border-primary/30 [color-scheme:dark]";
 
 function NativeSelect({ value, onChange, children, className = "" }: { value: string; onChange: (v: string) => void; children: React.ReactNode; className?: string }) {
   return (
@@ -271,7 +270,7 @@ function NativeSelect({ value, onChange, children, className = "" }: { value: st
       >
         {children}
       </select>
-      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-white/40">
+      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground/40">
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
@@ -284,14 +283,14 @@ function StatCard({ label, value, helper, icon: Icon }: { label: string; value: 
   return (
     <div className={`${CARD} flex flex-col gap-4 p-5`}>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40 leading-snug">{label}</p>
-        <div className="rounded-xl border border-amber-400/[0.15] bg-amber-400/[0.08] p-2.5 text-amber-300/80 shrink-0">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/60 leading-snug">{label}</p>
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-2.5 text-amber-400 shrink-0">
           <Icon className="h-4 w-4" />
         </div>
       </div>
       <div>
-        <p className="text-[2rem] font-bold tracking-tight text-white leading-none">{value}</p>
-        <p className="mt-2 text-[12px] leading-[1.6] text-white/45">{helper}</p>
+        <p className="text-[2rem] font-bold tracking-tight text-foreground leading-none">{value}</p>
+        <p className="mt-2 text-[12px] leading-[1.6] text-muted-foreground/55">{helper}</p>
       </div>
     </div>
   );
@@ -299,10 +298,10 @@ function StatCard({ label, value, helper, icon: Icon }: { label: string; value: 
 
 function EmptyPanel({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-12 text-center">
-      <FileQuestion className="mx-auto h-8 w-8 text-white/20" />
-      <p className="mt-3 text-base font-semibold text-white/80">{title}</p>
-      <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-white/45">{description}</p>
+    <div className="rounded-2xl border border-dashed border-border/20 bg-card/20 px-6 py-12 text-center">
+      <FileQuestion className="mx-auto h-8 w-8 text-muted-foreground/25" />
+      <p className="mt-3 text-base font-semibold text-foreground/70">{title}</p>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground/50">{description}</p>
     </div>
   );
 }
@@ -310,10 +309,10 @@ function EmptyPanel({ title, description }: { title: string; description: string
 function MetaField({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Hash }) {
   return (
     <div className="flex items-start gap-2 min-w-0">
-      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/30" />
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/35" />
       <div className="min-w-0">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-white/35">{label}</p>
-        <p className="mt-0.5 truncate text-sm text-white/80">{value}</p>
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/45">{label}</p>
+        <p className="mt-0.5 truncate text-sm text-foreground/80">{value}</p>
       </div>
     </div>
   );
@@ -322,12 +321,12 @@ function MetaField({ label, value, icon: Icon }: { label: string; value: string;
 function SectionHeader({ icon: Icon, title, subtitle }: { icon: typeof Bug; title: string; subtitle?: string }) {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="rounded-lg border border-white/[0.06] bg-white/[0.04] p-2 text-sky-300/70">
+      <div className="rounded-lg border border-primary/15 bg-primary/[0.07] p-2 text-primary/70">
         <Icon className="h-4 w-4" />
       </div>
       <div>
-        <h2 className="text-[15px] font-semibold text-white">{title}</h2>
-        {subtitle && <p className="text-[13px] text-white/45">{subtitle}</p>}
+        <h2 className="text-[15px] font-semibold text-foreground">{title}</h2>
+        {subtitle && <p className="text-[13px] text-muted-foreground/55">{subtitle}</p>}
       </div>
     </div>
   );
@@ -337,12 +336,12 @@ function PaginationBar({ page, totalPages, onPrev, onNext, label }: { page: numb
   if (totalPages <= 1) return null;
   return (
     <div className={`flex items-center justify-between ${CARD} px-5 py-3`}>
-      <p className="text-sm text-white/50">{label ?? `Página ${page} de ${totalPages}`}</p>
+      <p className="text-sm text-muted-foreground/55">{label ?? `Página ${page} de ${totalPages}`}</p>
       <div className="flex gap-2">
-        <Button type="button" variant="outline" disabled={page <= 1} onClick={onPrev} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
+        <Button type="button" variant="outline" disabled={page <= 1} onClick={onPrev} className="rounded-xl border-border/15 bg-card/40 hover:bg-card/60">
           Anterior
         </Button>
-        <Button type="button" variant="outline" disabled={page >= totalPages} onClick={onNext} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
+        <Button type="button" variant="outline" disabled={page >= totalPages} onClick={onNext} className="rounded-xl border-border/15 bg-card/40 hover:bg-card/60">
           Próxima
         </Button>
       </div>
@@ -365,8 +364,8 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
       onClick={onClick}
       className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors ${
         active
-          ? "border-sky-400/40 bg-sky-400/15 text-sky-200"
-          : "border-white/[0.08] bg-white/[0.03] text-white/50 hover:bg-white/[0.06] hover:text-white/70"
+          ? "border-primary/30 bg-primary/10 text-primary"
+          : "border-border/12 bg-card/20 text-muted-foreground/55 hover:bg-card/40 hover:text-foreground/70"
       }`}
     >
       {label}
@@ -636,56 +635,59 @@ export default function AdminDiagnostico() {
 
   return (
     <div className="page-gradient w-full">
-      <div className="mx-auto w-full max-w-[1900px] space-y-6 px-4 py-10 sm:px-5 md:px-8">
-        <PageHeaderCard
-          icon={ShieldAlert}
-          title="Central de Integridade"
-          subtitle="Painel administrativo para monitorar sincronizações, revisar tarefas problemáticas e decidir o que volta ou não para a operação."
-          actions={
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={() => void loadDashboard()} disabled={loading || syncing} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                {loading ? "Atualizando..." : "Atualizar painel"}
-              </Button>
-              <Button type="button" onClick={() => void runSyncNow()} disabled={loading || syncing} className="gap-2">
-                <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-                {syncing ? "Sincronizando..." : "Sincronizar agora"}
-              </Button>
+      <div className="mx-auto w-full max-w-[1800px] space-y-5 p-4 sm:p-5 md:p-6 lg:p-8">
+
+        {/* Header */}
+        <div
+          className="relative overflow-hidden rounded-2xl border border-border/10"
+          style={{ background: "linear-gradient(135deg, hsl(220 30% 11%) 0%, hsl(225 35% 14%) 40%, hsl(230 25% 12%) 100%)" }}
+        >
+          <div className="relative flex flex-col gap-3 p-4 sm:p-5 md:px-6 md:py-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3.5">
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/20 shrink-0 shadow-lg shadow-black/20"
+                  style={{ background: "linear-gradient(145deg, hsl(38 80% 28% / 0.55), hsl(38 60% 18% / 0.45))" }}
+                >
+                  <ShieldAlert className="h-5 w-5 text-amber-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">Central de Integridade</h1>
+                  <p className="mt-0.5 text-xs sm:text-sm text-muted-foreground/55 line-clamp-1">
+                    Monitore sincronizações, revise tarefas problemáticas e decida o que volta para a operação.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <Button type="button" variant="outline" onClick={() => void loadDashboard()} disabled={loading || syncing} className="rounded-xl border-border/15 bg-card/40 text-muted-foreground hover:bg-card/60 hover:text-foreground gap-2 text-xs">
+                  <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+                  {loading ? "Atualizando..." : "Atualizar"}
+                </Button>
+                <Button type="button" onClick={() => void runSyncNow()} disabled={loading || syncing} className="rounded-xl gap-2 text-xs">
+                  <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                  {syncing ? "Sincronizando..." : "Sincronizar agora"}
+                </Button>
+              </div>
             </div>
-          }
-        />
+          </div>
+        </div>
 
         {error && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</div>
+          <div className="rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-300">{error}</div>
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
           <div className="overflow-x-auto">
-            <TabsList className="inline-flex h-auto min-w-full flex-nowrap gap-1 rounded-xl border border-white/[0.08] bg-[hsl(230_28%_9%/0.95)] p-1.5 sm:w-full sm:flex-wrap">
-              <TabsTrigger
-                value="overview"
-                className="flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-[13px] font-medium text-white/50 transition-all hover:text-white/80 data-[state=active]:bg-white/[0.1] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-white/[0.12]"
-              >
-                Visão geral
-              </TabsTrigger>
-              <TabsTrigger
-                value="tasks"
-                className="flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-[13px] font-medium text-white/50 transition-all hover:text-white/80 data-[state=active]:bg-white/[0.1] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-white/[0.12]"
-              >
-                Tarefas para revisão
-              </TabsTrigger>
-              <TabsTrigger
-                value="elapsed"
-                className="flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-[13px] font-medium text-white/50 transition-all hover:text-white/80 data-[state=active]:bg-white/[0.1] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-white/[0.12]"
-              >
-                Horas sem vínculo
-              </TabsTrigger>
-              <TabsTrigger
-                value="sync"
-                className="flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-[13px] font-medium text-white/50 transition-all hover:text-white/80 data-[state=active]:bg-white/[0.1] data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-white/[0.12]"
-              >
-                Monitoramento
-              </TabsTrigger>
+            <TabsList className="inline-flex h-auto min-w-full flex-nowrap gap-1 rounded-xl border border-border/12 bg-card/40 p-1.5 sm:w-full sm:flex-wrap">
+              {(["overview", "tasks", "elapsed", "sync"] as const).map((val, i) => (
+                <TabsTrigger
+                  key={val}
+                  value={val}
+                  className="flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-[13px] font-medium text-muted-foreground/60 transition-all hover:text-foreground/80 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-primary/20"
+                >
+                  {["Visão geral", "Tarefas para revisão", "Horas sem vínculo", "Monitoramento"][i]}
+                </TabsTrigger>
+              ))}
             </TabsList>
           </div>
 
@@ -730,10 +732,10 @@ export default function AdminDiagnostico() {
                   ].map((item) => (
                     <div key={item.title} className={`${INNER} flex flex-col gap-2 p-4`}>
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-[13px] font-semibold text-white/90">{item.title}</p>
+                        <p className="text-[13px] font-semibold text-foreground/90">{item.title}</p>
                         <p className={`text-2xl font-bold tracking-tight ${item.color}`}>{item.count}</p>
                       </div>
-                      <p className="text-[12px] leading-[1.55] text-white/40">{item.desc}</p>
+                      <p className="text-[12px] leading-[1.55] text-muted-foreground/55">{item.desc}</p>
                     </div>
                   ))}
                 </div>
@@ -750,8 +752,8 @@ export default function AdminDiagnostico() {
                     <div key={item.title} className={`${INNER} flex items-start gap-3 p-4`}>
                       <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${item.dot}`} />
                       <div>
-                        <p className="text-[13px] font-semibold text-white/90">{item.title}</p>
-                        <p className="mt-1 text-[12px] leading-[1.55] text-white/40">{item.desc}</p>
+                        <p className="text-[13px] font-semibold text-foreground/90">{item.title}</p>
+                        <p className="mt-1 text-[12px] leading-[1.55] text-muted-foreground/55">{item.desc}</p>
                       </div>
                     </div>
                   ))}
@@ -766,21 +768,21 @@ export default function AdminDiagnostico() {
             <div className={`${CARD} p-5 space-y-4`}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-[15px] font-semibold text-white">Tarefas para revisão</p>
-                  <p className="mt-0.5 text-[13px] text-white/50">
+                  <p className="text-[15px] font-semibold text-foreground">Tarefas para revisão</p>
+                  <p className="mt-0.5 text-[13px] text-muted-foreground/60">
                     {filteredTasks.length} tarefa(s) encontrada(s) · {deletableTasks.length} excluível(is)
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-3 py-2">
-                    <span className="whitespace-nowrap text-[11px] font-medium text-red-100/80">Excluir lote</span>
+                    <span className="whitespace-nowrap text-[11px] font-medium text-red-300/80">Excluir lote</span>
                     <input
                       type="number"
                       min={1}
                       max={Math.max(1, deletableTasks.length)}
                       value={batchTaskCount}
                       onChange={(e) => setBatchTaskCount(Math.min(Math.max(1, Number(e.target.value) || 1), Math.max(1, deletableTasks.length)))}
-                      className="h-8 w-14 rounded-md border border-white/10 bg-black/20 px-2 text-center text-xs text-white outline-none"
+                      className="h-8 w-14 rounded-md border border-border/15 bg-card/40 px-2 text-center text-xs text-foreground outline-none"
                     />
                     <Button
                       type="button"
@@ -799,7 +801,7 @@ export default function AdminDiagnostico() {
                     variant="outline"
                     size="sm"
                     onClick={() => setShowTaskFilters((v) => !v)}
-                    className={`h-8 gap-1.5 border-white/10 text-white hover:bg-white/10 shrink-0 ${showTaskFilters ? "bg-white/10" : "bg-white/5"}`}
+                    className={`h-8 gap-1.5 border-border/15 text-muted-foreground hover:text-foreground hover:bg-card/60 shrink-0 ${showTaskFilters ? "bg-card/50" : "bg-card/30"}`}
                   >
                     <Filter className="h-3.5 w-3.5" />
                     Filtros
@@ -815,34 +817,34 @@ export default function AdminDiagnostico() {
                 value={taskSearch}
                 onChange={(e) => setTaskSearch(e.target.value)}
                 placeholder="Buscar por nome, responsável ou ID…"
-                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                className="w-full rounded-lg border border-border/15 bg-card/30 px-3.5 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/35 focus:border-primary/30 [color-scheme:dark]"
               />
 
               {/* Filter panel */}
               {showTaskFilters && (
-                <div className="border-t border-white/[0.06] pt-4 space-y-3">
+                <div className="border-t border-border/12 pt-4 space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <div className="space-y-1.5">
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Categoria</label>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Categoria</label>
                       <NativeSelect value={taskCategory} onChange={(v) => setTaskCategory(v as TaskFilterCategory)}>
                         {TASK_CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </NativeSelect>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Período</label>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Período</label>
                       <NativeSelect value={taskPeriod} onChange={(v) => setTaskPeriod(v as PeriodFilter)}>
                         {PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </NativeSelect>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Responsável</label>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Responsável</label>
                       <NativeSelect value={taskResponsible} onChange={setTaskResponsible}>
                         <option value="">Todos</option>
                         {taskResponsibleOptions.map((n) => <option key={n} value={n}>{n}</option>)}
                       </NativeSelect>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Projeto</label>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Projeto</label>
                       <NativeSelect value={taskProject} onChange={setTaskProject}>
                         <option value="">Todos</option>
                         {taskProjectOptions.map((n) => <option key={n} value={n}>{n}</option>)}
@@ -851,7 +853,7 @@ export default function AdminDiagnostico() {
                   </div>
                   {taskActiveFilterCount > 0 && (
                     <div className="flex justify-end">
-                      <Button type="button" variant="ghost" size="sm" onClick={clearTaskFilters} className="h-8 gap-1.5 text-white/50 hover:text-white">
+                      <Button type="button" variant="ghost" size="sm" onClick={clearTaskFilters} className="h-8 gap-1.5 text-muted-foreground/60 hover:text-foreground">
                         <X className="h-3.5 w-3.5" /> Limpar filtros
                       </Button>
                     </div>
@@ -863,12 +865,12 @@ export default function AdminDiagnostico() {
             {/* Global explanation */}
             {filteredTasks.length > 0 && (
               <div className={`${CARD} flex items-start gap-3 px-5 py-3.5`}>
-                <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/60" />
-                <div className="flex flex-wrap gap-x-6 gap-y-1 text-[12px] leading-[1.6] text-white/50">
-                  <span><span className="font-medium text-white/60">Não encontrada / sem acesso</span> — não houve exclusão confirmada por evento oficial</span>
-                  <span><span className="font-medium text-white/60">Projeto arquivado</span> — a tarefa existe, mas o grupo/projeto está fechado no Bitrix</span>
-                  <span><span className="font-medium text-white/60">Dados incompletos</span> — sem projeto, responsável ou prazo</span>
-                  <span><span className="font-medium text-white/60">Sem atualização recente</span> — a tarefa ficou tempo demais sem ser vista novamente</span>
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary/50" />
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-[12px] leading-[1.6] text-muted-foreground/55">
+                  <span><span className="font-medium text-muted-foreground/80">Não encontrada / sem acesso</span> — não houve exclusão confirmada por evento oficial</span>
+                  <span><span className="font-medium text-muted-foreground/80">Projeto arquivado</span> — a tarefa existe, mas o grupo/projeto está fechado no Bitrix</span>
+                  <span><span className="font-medium text-muted-foreground/80">Dados incompletos</span> — sem projeto, responsável ou prazo</span>
+                  <span><span className="font-medium text-muted-foreground/80">Sem atualização recente</span> — a tarefa ficou tempo demais sem ser vista novamente</span>
                 </div>
               </div>
             )}
@@ -886,23 +888,23 @@ export default function AdminDiagnostico() {
                       <div className="flex flex-col gap-3">
                         {/* Title + actions */}
                         <div className="flex items-start justify-between gap-3">
-                          <h3 className="text-[14px] font-semibold leading-snug text-white line-clamp-2 min-w-0">{task.title}</h3>
+                          <h3 className="text-[14px] font-semibold leading-snug text-foreground line-clamp-2 min-w-0">{task.title}</h3>
                           <div className="flex shrink-0 gap-1.5">
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
-                              className="h-7 gap-1 border-white/10 bg-white/[0.06] text-[11px] text-white hover:bg-white/[0.12]"
+                              className="h-7 gap-1 border-border/15 bg-card/30 text-[11px] text-muted-foreground hover:bg-card/60 hover:text-foreground"
                               onClick={() => setDialogState({ type: "task", item: task })}
                             >
-                              <ShieldAlert className="h-3 w-3 text-amber-300/80" />
+                              <ShieldAlert className="h-3 w-3 text-amber-400/80" />
                               Revisar
                             </Button>
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
-                              className="h-7 gap-1 border-white/10 bg-white/[0.06] text-[11px] text-white hover:bg-white/[0.12]"
+                              className="h-7 gap-1 border-border/15 bg-card/30 text-[11px] text-muted-foreground hover:bg-card/60 hover:text-foreground"
                               onClick={() =>
                                 setDialogState({
                                   type: "task",
@@ -910,7 +912,7 @@ export default function AdminDiagnostico() {
                                 })
                               }
                             >
-                              <ArrowUpRight className="h-3 w-3 text-sky-300/80" />
+                              <ArrowUpRight className="h-3 w-3 text-primary/70" />
                               {task.visibility_mode === "show_in_operations" ? "Resguardar" : "Liberar"}
                             </Button>
                             <Button
@@ -938,13 +940,13 @@ export default function AdminDiagnostico() {
                         </div>
 
                         {/* Reason */}
-                        <p className="text-[12px] leading-[1.55] text-amber-200/55">
+                        <p className="text-[12px] leading-[1.55] text-amber-400/60">
                           {getReasonSummary(task)}
                         </p>
 
                         {/* Admin note */}
                         {task.admin_note && (
-                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.06] px-3 py-2 text-[12px] leading-relaxed text-sky-100">
+                          <div className="rounded-lg border border-primary/15 bg-primary/[0.06] px-3 py-2 text-[12px] leading-relaxed text-foreground/80">
                             <strong className="font-semibold">Nota:</strong> {task.admin_note}
                           </div>
                         )}
@@ -969,21 +971,21 @@ export default function AdminDiagnostico() {
             <div className={`${CARD} p-5 space-y-4`}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-[15px] font-semibold text-white">Horas sem vínculo</p>
-                  <p className="mt-0.5 text-[13px] text-white/50">
+                  <p className="text-[15px] font-semibold text-foreground">Horas sem vínculo</p>
+                  <p className="mt-0.5 text-[13px] text-muted-foreground/60">
                     {filteredElapsed.length} lançamento(s) encontrado(s) · {deletableElapsed.length} excluível(is)
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-3 py-2">
-                    <span className="whitespace-nowrap text-[11px] font-medium text-red-100/80">Excluir lote</span>
+                    <span className="whitespace-nowrap text-[11px] font-medium text-red-300/80">Excluir lote</span>
                     <input
                       type="number"
                       min={1}
                       max={Math.max(1, deletableElapsed.length)}
                       value={batchElapsedCount}
                       onChange={(e) => setBatchElapsedCount(Math.min(Math.max(1, Number(e.target.value) || 1), Math.max(1, deletableElapsed.length)))}
-                      className="h-8 w-14 rounded-md border border-white/10 bg-black/20 px-2 text-center text-xs text-white outline-none"
+                      className="h-8 w-14 rounded-md border border-border/15 bg-card/40 px-2 text-center text-xs text-foreground outline-none"
                     />
                     <Button
                       type="button"
@@ -1002,7 +1004,7 @@ export default function AdminDiagnostico() {
                     variant="outline"
                     size="sm"
                     onClick={() => setShowElapsedFilters((v) => !v)}
-                    className={`h-8 gap-1.5 border-white/10 text-white hover:bg-white/10 shrink-0 ${showElapsedFilters ? "bg-white/10" : "bg-white/5"}`}
+                    className={`h-8 gap-1.5 border-border/15 text-muted-foreground hover:text-foreground hover:bg-card/60 shrink-0 ${showElapsedFilters ? "bg-card/50" : "bg-card/30"}`}
                   >
                     <Filter className="h-3.5 w-3.5" />
                     Filtros
@@ -1018,27 +1020,27 @@ export default function AdminDiagnostico() {
                 value={elapsedSearch}
                 onChange={(e) => setElapsedSearch(e.target.value)}
                 placeholder="Buscar por tarefa, responsável ou ID…"
-                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                className="w-full rounded-lg border border-border/15 bg-card/30 px-3.5 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/35 focus:border-primary/30 [color-scheme:dark]"
               />
 
               {showElapsedFilters && (
-                <div className="border-t border-white/[0.06] pt-4 space-y-3">
+                <div className="border-t border-border/12 pt-4 space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     <div className="space-y-1.5">
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Período</label>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Período</label>
                       <NativeSelect value={elapsedPeriod} onChange={(v) => setElapsedPeriod(v as PeriodFilter)}>
                         {PERIOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </NativeSelect>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Responsável</label>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Responsável</label>
                       <NativeSelect value={elapsedResponsible} onChange={setElapsedResponsible}>
                         <option value="">Todos</option>
                         {elapsedResponsibleOptions.map((n) => <option key={n} value={n}>{n}</option>)}
                       </NativeSelect>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40">Projeto / Tarefa</label>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Projeto / Tarefa</label>
                       <NativeSelect value={elapsedProject} onChange={setElapsedProject}>
                         <option value="">Todos</option>
                         {elapsedProjectOptions.map((n) => <option key={n} value={n}>{n}</option>)}
@@ -1047,7 +1049,7 @@ export default function AdminDiagnostico() {
                   </div>
                   {elapsedActiveFilterCount > 0 && (
                     <div className="flex justify-end">
-                      <Button type="button" variant="ghost" size="sm" onClick={clearElapsedFilters} className="h-8 gap-1.5 text-white/50 hover:text-white">
+                      <Button type="button" variant="ghost" size="sm" onClick={clearElapsedFilters} className="h-8 gap-1.5 text-muted-foreground/60 hover:text-foreground">
                         <X className="h-3.5 w-3.5" /> Limpar filtros
                       </Button>
                     </div>
@@ -1059,8 +1061,8 @@ export default function AdminDiagnostico() {
             {/* Global explanation */}
             {filteredElapsed.length > 0 && (
               <div className={`${CARD} flex items-start gap-3 px-5 py-3.5`}>
-                <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-300/60" />
-                <p className="text-[12px] leading-[1.6] text-white/50">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary/50" />
+                <p className="text-[12px] leading-[1.6] text-muted-foreground/55">
                   A duração exibida é calculada a partir dos minutos e segundos informados pelo Bitrix. Em lançamentos manuais sem intervalo de tempo definido, a central usa a data de criação como referência de período para evitar valores incorretos.
                 </p>
               </div>
@@ -1078,13 +1080,13 @@ export default function AdminDiagnostico() {
                     <div key={entry.id} className={`${CARD} p-4`}>
                       <div className="flex flex-col gap-3">
                         <div className="flex items-start justify-between gap-3">
-                          <h3 className="text-[14px] font-semibold leading-snug text-white line-clamp-2 min-w-0">{entry.label}</h3>
+                          <h3 className="text-[14px] font-semibold leading-snug text-foreground line-clamp-2 min-w-0">{entry.label}</h3>
                           <div className="flex shrink-0 gap-1.5">
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
-                              className="h-7 gap-1 border-white/10 bg-white/[0.06] text-[11px] text-white hover:bg-white/[0.12]"
+                              className="h-7 gap-1 border-border/15 bg-card/30 text-[11px] text-muted-foreground hover:bg-card/60 hover:text-foreground"
                               onClick={() => setDialogState({ type: "elapsed", item: entry })}
                             >
                               <ShieldAlert className="h-3 w-3 text-amber-300/80" />
@@ -1119,18 +1121,18 @@ export default function AdminDiagnostico() {
                           <MetaField icon={Clock3} label="Atualização" value={formatDateTime(entry.updated_at)} />
                         </div>
 
-                        <p className="text-[12px] leading-[1.55] text-amber-200/55">
+                        <p className="text-[12px] leading-[1.55] text-amber-400/60">
                           {humanizeOrphanDetail(entry.orphan_detail) ?? entry.meaning}
                         </p>
 
                         {entry.comment_text && (
-                          <p className="text-[12px] leading-relaxed text-white/50">
-                            <strong className="font-semibold text-white/70">Comentário:</strong> {entry.comment_text}
+                          <p className="text-[12px] leading-relaxed text-muted-foreground/60">
+                            <strong className="font-semibold text-muted-foreground/80">Comentário:</strong> {entry.comment_text}
                           </p>
                         )}
 
                         {entry.admin_note && (
-                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.06] px-3 py-2 text-[12px] leading-relaxed text-sky-100">
+                          <div className="rounded-lg border border-primary/15 bg-primary/[0.06] px-3 py-2 text-[12px] leading-relaxed text-foreground/80">
                             <strong className="font-semibold">Nota:</strong> {entry.admin_note}
                           </div>
                         )}
@@ -1163,18 +1165,18 @@ export default function AdminDiagnostico() {
                   ].map((item) => (
                     <div key={item.label} className={`${INNER} p-4`}>
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-white">{item.label}</p>
+                        <p className="text-sm font-semibold text-foreground">{item.label}</p>
                         {item.run && (
                           <Pill className={item.run.status === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200"}>
                             {item.run.status === "success" ? "Sucesso" : item.run.status ?? "sem registro"}
                           </Pill>
                         )}
                       </div>
-                      <p className="mt-2 text-[13px] leading-[1.6] text-white/55">
+                      <p className="mt-2 text-[13px] leading-[1.6] text-muted-foreground/65">
                         Executada em {formatDateTime(item.run?.started_at)}
                         {item.run?.finished_at && <> · Concluída em {formatDateTime(item.run.finished_at)}</>}
                       </p>
-                      <p className="mt-1 text-[11px] text-white/40">
+                      <p className="mt-1 text-[11px] text-muted-foreground/50">
                         Duração: {formatDuration(item.run?.duration_ms)}
                       </p>
                     </div>
@@ -1192,20 +1194,20 @@ export default function AdminDiagnostico() {
                       <div key={config.job_name} className={`${INNER} p-4`}>
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-white">{config.job_name}</p>
-                            <p className="mt-0.5 text-[12px] text-sky-300/50">{jobSubtitle(config.job_name)}</p>
-                            <p className="mt-1 text-[11px] text-white/35">
+                            <p className="text-sm font-semibold text-foreground">{config.job_name}</p>
+                            <p className="mt-0.5 text-[12px] text-primary/60">{jobSubtitle(config.job_name)}</p>
+                            <p className="mt-1 text-[11px] text-muted-foreground/45">
                               Cron: {config.cron_expression} · {summarizeCron(config.cron_expression)}
                             </p>
                           </div>
-                          <Pill className={config.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-white/10 bg-white/[0.03] text-white/50"}>
+                          <Pill className={config.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-border/12 bg-card/20 text-muted-foreground/50"}>
                             {config.enabled ? "Ativo" : "Desativado"}
                           </Pill>
                         </div>
-                        <p className="mt-2.5 text-[13px] leading-[1.6] text-white/50">
+                        <p className="mt-2.5 text-[13px] leading-[1.6] text-muted-foreground/60">
                           Última execução real: {formatDateTime(realLatest?.started_at ?? config.last_scheduled_at)}
                           {realLatest && (
-                            <> · <span className={realLatest.status === "success" ? "text-emerald-300/70" : "text-red-300/70"}>{realLatest.status === "success" ? "Sucesso" : realLatest.status}</span></>
+                            <> · <span className={realLatest.status === "success" ? "text-emerald-400/70" : "text-red-400/70"}>{realLatest.status === "success" ? "Sucesso" : realLatest.status}</span></>
                           )}
                         </p>
                       </div>
@@ -1219,22 +1221,22 @@ export default function AdminDiagnostico() {
       </div>
 
       <Dialog open={Boolean(deleteDialogState)} onOpenChange={(open) => !open && !saving && setDeleteDialogState(null)}>
-        <DialogContent className="border-red-500/20 bg-[hsl(230_28%_11%)] text-white sm:max-w-lg">
+        <DialogContent className="border-red-500/20 bg-card sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-400/20 bg-red-500/10 text-red-200">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-400/20 bg-red-500/10 text-red-300">
                 <Trash2 className="h-4 w-4" />
               </span>
               Confirmar exclusão
             </DialogTitle>
-            <DialogDescription className="text-white/50">
+            <DialogDescription className="text-muted-foreground/70">
               Esta ação remove registros da base local e atualiza a Central de Integridade ao concluir.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
-            <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
-              <p className="text-sm font-semibold text-white">
+            <div className={`${INNER} p-4`}>
+              <p className="text-sm font-semibold text-foreground">
                 {deleteDialogState?.mode === "single" && deleteDialogState.item.type === "task"
                   ? `Tarefa #${deleteDialogState.item.item.task_id}`
                   : deleteDialogState?.mode === "single" && deleteDialogState.item.type === "elapsed"
@@ -1245,7 +1247,7 @@ export default function AdminDiagnostico() {
                         ? `${deleteDialogState.items.length} lançamento(s) da lista filtrada`
                         : "Registro selecionado"}
               </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-white/50">
+              <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground/60">
                 {deleteDialogState?.mode === "batch"
                   ? "O lote usa a ordem atual da lista filtrada e exclui um registro por vez. Se algum item falhar, o processo para e mostra o erro."
                   : "Use esta exclusão para testar poucos casos antes de remover volumes maiores."}
@@ -1253,14 +1255,14 @@ export default function AdminDiagnostico() {
             </div>
 
             {deleteProgress && (
-              <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.08] px-3 py-2 text-sm text-sky-100">
+              <div className="rounded-lg border border-primary/20 bg-primary/[0.08] px-3 py-2 text-sm text-foreground/80">
                 {deleteProgress}
               </div>
             )}
           </div>
 
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={() => setDeleteDialogState(null)} disabled={saving} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
+            <Button type="button" variant="outline" onClick={() => setDeleteDialogState(null)} disabled={saving} className="border-border/15 bg-card/40 hover:bg-card/60">
               Cancelar
             </Button>
             <Button type="button" variant="destructive" onClick={() => void confirmDeleteDialog()} disabled={saving}>
@@ -1273,24 +1275,24 @@ export default function AdminDiagnostico() {
 
       {/* ═══════ DIALOG DE REVISÃO ═══════ */}
       <Dialog open={Boolean(dialogState)} onOpenChange={(open) => !open && setDialogState(null)}>
-        <DialogContent className="border-white/10 bg-[hsl(230_28%_11%)] text-white sm:max-w-xl">
+        <DialogContent className="border-border/15 bg-card sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-foreground">
               {dialogState?.type === "task" ? "Revisar tarefa" : "Revisar lançamento"}
             </DialogTitle>
-            <DialogDescription className="text-white/50">
+            <DialogDescription className="text-muted-foreground/70">
               Defina se este caso permanece isolado na central, se pode voltar para a operação ou se deve ser removido.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className={`${INNER} p-4`}>
-              <p className="text-sm font-semibold text-white">
+              <p className="text-sm font-semibold text-foreground">
                 {dialogState?.type === "task"
                   ? dialogState.item.title
                   : `${dialogState?.item.label ?? "Lançamento sem vínculo"} #${dialogState?.type === "elapsed" ? dialogState.item.id : ""}`}
               </p>
-              <p className="mt-2 text-[13px] leading-[1.6] text-white/50">
+              <p className="mt-2 text-[13px] leading-[1.6] text-muted-foreground/65">
                 {dialogState?.type === "task"
                   ? getReasonSummary(dialogState.item)
                   : (dialogState?.type === "elapsed" && humanizeOrphanDetail(dialogState.item.orphan_detail)) || dialogState?.item.meaning || "Lançamento referencia uma tarefa não encontrada na última verificação."}
@@ -1298,29 +1300,29 @@ export default function AdminDiagnostico() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white">Destino do caso</label>
+              <label className="text-sm font-medium text-foreground">Destino do caso</label>
               <NativeSelect value={visibilityMode} onChange={(v) => setVisibilityMode(v as VisibilityMode)}>
                 {visibilityOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </NativeSelect>
-              <p className="text-[12px] leading-5 text-white/40">{visibilityOptions.find((o) => o.value === visibilityMode)?.helper}</p>
+              <p className="text-[12px] leading-5 text-muted-foreground/55">{visibilityOptions.find((o) => o.value === visibilityMode)?.helper}</p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white">Etapa da revisão</label>
+              <label className="text-sm font-medium text-foreground">Etapa da revisão</label>
               <NativeSelect value={reviewStatus} onChange={(v) => setReviewStatus(v as ReviewStatus)}>
                 {reviewOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </NativeSelect>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white" htmlFor="admin-note">Observação administrativa</label>
+              <label className="text-sm font-medium text-foreground" htmlFor="admin-note">Observação administrativa</label>
               <textarea
                 id="admin-note"
                 value={adminNote}
                 onChange={(e) => setAdminNote(e.target.value)}
                 rows={3}
                 placeholder="Ex.: atividade arquivada na origem, manter apenas para histórico."
-                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3.5 py-3 text-sm text-white outline-none placeholder:text-white/25"
+                className="w-full rounded-lg border border-border/15 bg-card/30 px-3.5 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/35 focus:border-primary/30 [color-scheme:dark] resize-none"
               />
             </div>
           </div>
@@ -1331,7 +1333,7 @@ export default function AdminDiagnostico() {
               Excluir da base local
             </Button>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button type="button" variant="outline" onClick={() => setDialogState(null)} disabled={saving} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
+              <Button type="button" variant="outline" onClick={() => setDialogState(null)} disabled={saving} className="border-border/15 bg-card/40 hover:bg-card/60">
                 Cancelar
               </Button>
               <Button type="button" onClick={() => void submitReview()} disabled={saving}>

@@ -18,6 +18,8 @@ import {
   normalizeTaskTitle,
 } from "@/modules/tasks/utils";
 import WelcomeTasksModal from "@/components/WelcomeTasksModal";
+import { useBonusEvaluationNotifier } from "@/modules/sprint6/hooks/useBonusEvaluationNotifier";
+import { BonusEvaluationNotificationCard } from "@/modules/sprint6/components/bonus/BonusEvaluationNotificationCard";
 
 
 /** Map route paths to access areas */
@@ -266,6 +268,10 @@ function DashboardInner() {
     session?.email || "",
     session?.role,
   );
+
+  const { current: bonusNotif, dismiss: dismissBonusNotif } = useBonusEvaluationNotifier({
+    userId: session?.userId,
+  });
   if (loadingSession) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,rgba(96,122,255,0.12),transparent_28%),linear-gradient(180deg,hsl(234_45%_8%),hsl(222_47%_5%))] px-4">
@@ -354,6 +360,16 @@ function DashboardInner() {
 
       {/* Virtual Assistant Reminder */}
       <AssistantReminder notifTasks={notifTasks} statusAlert={statusAlert} onDismissAlert={dismissAlert} />
+
+      {/* Bonus evaluation notification card (fixed bottom-right) */}
+      {bonusNotif && (
+        <div className="fixed bottom-6 right-6 z-50 pointer-events-none">
+          <BonusEvaluationNotificationCard
+            notification={bonusNotif}
+            onDismiss={dismissBonusNotif}
+          />
+        </div>
+      )}
 
       {/* First-access welcome modal */}
       {session?.email && <WelcomeTasksModal userEmail={session.email} />}

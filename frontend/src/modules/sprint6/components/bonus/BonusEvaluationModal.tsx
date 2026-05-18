@@ -21,7 +21,13 @@ import {
 } from "@/modules/sprint6/bonusEvaluation";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
-type SubtopicValue = { score: number; justificativa: string; pontos_de_melhoria: string };
+type SubtopicValue = {
+  score: number;
+  justificativa: string;
+  justificativa_chips: string[];
+  pontos_de_melhoria: string;
+  pontos_de_melhoria_chips: string[];
+};
 type EvaluationFormState = Record<BonusEvaluationCategory, Record<string, SubtopicValue>>;
 
 const categoryKeys = Object.keys(BONUS_EVALUATION_CATEGORIES) as BonusEvaluationCategory[];
@@ -69,11 +75,27 @@ function getSuggestions(subtopicKey: string): Observation[] {
 function buildDefaultState(): EvaluationFormState {
   return categoryKeys.reduce((acc, cat) => {
     acc[cat] = BONUS_EVALUATION_CATEGORIES[cat].subtopics.reduce((inner, sub) => {
-      inner[sub.key] = { score: 5, justificativa: "", pontos_de_melhoria: "" };
+      inner[sub.key] = { score: 5, justificativa: "", justificativa_chips: [], pontos_de_melhoria: "", pontos_de_melhoria_chips: [] };
       return inner;
     }, {} as EvaluationFormState[BonusEvaluationCategory]);
     return acc;
   }, {} as EvaluationFormState);
+}
+
+/** Extract bracket tags from stored string and return { chips, text } */
+function parseBracketField(raw: string): { chips: string[]; text: string } {
+  const chips: string[] = [];
+  const cleaned = raw.replace(/\[([^\]]+)\]/g, (_, tag: string) => { chips.push(tag.trim()); return ""; }).replace(/\s{2,}/g, " ").trim();
+  return { chips, text: cleaned };
+}
+
+/** Compose stored value from chips + free text */
+function composeField(chips: string[], text: string): string {
+  const chipsPart = chips.length > 0 ? chips.join(", ") : "";
+  if (!chipsPart && !text.trim()) return "";
+  if (!chipsPart) return text.trim();
+  if (!text.trim()) return chipsPart;
+  return `${chipsPart}. ${text.trim()}`;
 }
 
 /* ── Score visual helpers ───────────────────────────────────────────── */
@@ -167,24 +189,9 @@ function ObservationChip({
   );
 }
 
-/* ── Helper: append/remove observation text ─────────────────────────── */
-function toggleObservation(current: string, obs: string): string {
-  const marker = `[${obs}]`;
-  if (current.includes(marker)) {
-    return current
-      .replace(marker, "")
-      .replace(/\s{2,}/g, " ")
-      .replace(/^\s*[·•]\s*/, "")
-      .replace(/\s*[·•]\s*$/, "")
-      .trim();
-  }
-  const prefix = current.trim();
-  if (!prefix) return marker;
-  return `${prefix} ${marker}`;
-}
-
-function hasObservation(text: string, obs: string): boolean {
-  return text.includes(`[${obs}]`);
+/* ── Toggle chip in array ───────────────────────────────────────────── */
+function toggleChip(chips: string[], obs: string): string[] {
+  return chips.includes(obs) ? chips.filter((c) => c !== obs) : [...chips, obs];
 }
 
 /* ── Collapsible subtopic card ──────────────────────────────────────── */
@@ -205,8 +212,10 @@ function SubtopicCard({
   onToggle: () => void;
   onChange: (patch: Partial<SubtopicValue>) => void;
 }) {
-  const filled = value.justificativa.trim().length > 0;
-  const hasPreset = value.score !== 5 || filled || value.pontos_de_melhoria.trim().length > 0;
+  const justChips = value.justificativa_chips ?? [];
+  const melhChips = value.pontos_de_melhoria_chips ?? [];
+  const filled = value.justificativa.trim().length > 0 || justChips.length > 0;
+  const hasPreset = value.score !== 5 || filled || value.pontos_de_melhoria.trim().length > 0 || melhChips.length > 0;
   const suggestions = getSuggestions(subtopicKey);
 
   return (
@@ -310,17 +319,15 @@ function SubtopicCard({
                     <ObservationChip
                       key={obs}
                       label={obs}
-                      selected={hasObservation(value.justificativa, obs)}
-                      onToggle={() =>
-                        onChange({ justificativa: toggleObservation(value.justificativa, obs) })
-                      }
+                      selected={justChips.includes(obs)}
+                      onToggle={() => onChange({ justificativa_chips: toggleChip(justChips, obs) })}
                     />
                   ))}
                 </div>
                 <Textarea
                   value={value.justificativa}
                   onChange={(e) => onChange({ justificativa: e.target.value })}
-                  placeholder="Detalhe, se necessário..."
+                  placeholder="Detalhe adicional, se necessário..."
                   rows={2}
                   className="resize-none rounded-xl border-border/6 bg-white/[0.02] text-sm placeholder:text-muted-foreground/25 focus-visible:ring-1 focus-visible:ring-primary/20"
                 />
@@ -336,10 +343,8 @@ function SubtopicCard({
                     <ObservationChip
                       key={obs}
                       label={obs}
-                      selected={hasObservation(value.pontos_de_melhoria, obs)}
-                      onToggle={() =>
-                        onChange({ pontos_de_melhoria: toggleObservation(value.pontos_de_melhoria, obs) })
-                      }
+                      selected={melhChips.includes(obs)}
+                      onToggle={() => onChange({ pontos_de_melhoria_chips: toggleChip(melhChips, obs) })}
                     />
                   ))}
                 </div>
@@ -439,10 +444,14 @@ export function BonusEvaluationModal({
 
         (data ?? []).forEach((row: { category: string | null; subtopic: string | null; score_1_10: number | null; justificativa: string | null; pontos_de_melhoria: string | null }) => {
           if (!row.category || !row.subtopic || !next[row.category as BonusEvaluationCategory]?.[row.subtopic]) return;
+          const justParsed = parseBracketField(row.justificativa ?? "");
+          const melhoraParsed = parseBracketField(row.pontos_de_melhoria ?? "");
           next[row.category as BonusEvaluationCategory][row.subtopic] = {
             score: Number(row.score_1_10 ?? 5),
-            justificativa: row.justificativa ?? "",
-            pontos_de_melhoria: row.pontos_de_melhoria ?? "",
+            justificativa: justParsed.text,
+            justificativa_chips: justParsed.chips,
+            pontos_de_melhoria: melhoraParsed.text,
+            pontos_de_melhoria_chips: melhoraParsed.chips,
           };
         });
 
@@ -498,11 +507,11 @@ export function BonusEvaluationModal({
           category,
           subtopic,
           score_1_10: value.score,
-          justificativa: value.justificativa,
-          pontos_de_melhoria: value.pontos_de_melhoria,
+          justificativa: composeField(value.justificativa_chips ?? [], value.justificativa),
+          pontos_de_melhoria: composeField(value.pontos_de_melhoria_chips ?? [], value.pontos_de_melhoria),
           soft_skill_score: category === "soft_skill" ? value.score * 10 : null,
           people_skill_score: category === "people_skill" ? value.score * 10 : null,
-          notes: value.justificativa,
+          notes: composeField(value.justificativa_chips ?? [], value.justificativa),
           source_provenance: "manual",
           source_form: "bonus_evaluation_modal",
           status,
@@ -552,38 +561,78 @@ export function BonusEvaluationModal({
   /* ── Progress indicator per category ──────────────────────────────── */
   const filledCount = useCallback(
     (cat: BonusEvaluationCategory) => {
-      return Object.values(form[cat]).filter((v) => v.justificativa.trim().length > 0).length;
+      return Object.values(form[cat]).filter((v) => v.justificativa.trim().length > 0 || (v.justificativa_chips ?? []).length > 0).length;
     },
     [form],
   );
 
-  /* ── Permission check ────────────────────────────────────────────── */
-  const permissionRole = session?.bonusRole ?? "consultor";
+  /* ── Permission check ─────────────────────────────────────────────────
+     Evaluation is only allowed when the logged user is explicitly listed
+     as coordinator/responsible for the evaluated user.
+     isPaymentManager and bonusRole alone do NOT grant evaluate permission.
+  ── */
   const hasPermission = useMemo(() => {
-    if (permissionRole === "admin") return true;
-    if (permissionRole === "gestor" && consultant?.userId) {
-      return (session?.coordinatorOf ?? []).includes(consultant.userId);
-    }
-    return false;
-  }, [permissionRole, consultant?.userId, session?.coordinatorOf]);
+    if (!consultant?.userId || !session?.userId) return false;
+    return (session?.coordinatorOf ?? []).includes(consultant.userId);
+  }, [consultant?.userId, session?.coordinatorOf, session?.userId]);
+
+  const responsibleCoordinatorName = consultant?.coordinatorName ?? null;
 
   if (!open) return null;
 
   if (!hasPermission) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-sm border-white/[0.06] bg-[linear-gradient(180deg,hsl(224_35%_10%/0.98),hsl(229_33%_8%/0.98))] p-8 text-center sm:rounded-lg">
-          <div className="flex flex-col items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/10 border border-destructive/15">
-              <ShieldAlert className="h-6 w-6 text-destructive" />
+        <DialogContent className="max-w-sm p-0 overflow-hidden border-border/10 bg-[linear-gradient(180deg,hsl(224_35%_10%/0.99),hsl(229_33%_8%/0.99))] shadow-2xl shadow-black/50 sm:rounded-2xl rounded-none">
+          {/* top accent stripe */}
+          <div className="h-1 w-full bg-gradient-to-r from-destructive/60 via-destructive/40 to-destructive/10" />
+          <div className="flex flex-col items-center gap-5 px-7 py-8 text-center">
+            {/* icon */}
+            <div className="relative flex h-14 w-14 items-center justify-center">
+              <motion.div
+                className="absolute inset-0 rounded-2xl bg-destructive/10 border border-destructive/15"
+                animate={{ opacity: [1, 0.4, 1] }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <motion.div
+                animate={{ scale: [1, 1.08, 1] }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <ShieldAlert className="relative h-6 w-6 text-destructive" />
+              </motion.div>
             </div>
-            <DialogHeader className="space-y-1.5">
-              <DialogTitle className="text-base font-bold text-foreground">Acesso restrito</DialogTitle>
-              <p className="text-sm text-muted-foreground/60">
-                Você não tem permissão para avaliar este consultor.
-              </p>
-            </DialogHeader>
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="mt-2">
+
+            {/* text block */}
+            <div className="space-y-3">
+              <DialogTitle className="text-base font-bold tracking-tight text-foreground">
+                Avaliação não permitida
+              </DialogTitle>
+              <div className="space-y-1.5 text-[13px] leading-relaxed text-muted-foreground/65">
+                <p>Você não é o coordenador responsável por este usuário.</p>
+                <p>Repasse esta avaliação para o coordenador responsável.</p>
+              </div>
+              {/* coordinator name pill */}
+              <div className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-medium ${
+                responsibleCoordinatorName
+                  ? "border-primary/20 bg-primary/[0.07] text-foreground/80"
+                  : "border-border/15 bg-card/30 text-muted-foreground/45 italic"
+              }`}>
+                {responsibleCoordinatorName
+                  ? <>
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary/60 shrink-0" />
+                      Coordenador responsável: <span className="font-semibold text-foreground/90">{responsibleCoordinatorName}</span>
+                    </>
+                  : "Coordenador responsável não identificado."}
+              </div>
+            </div>
+
+            {/* close button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              className="w-full rounded-xl border-border/15 bg-card/30 hover:bg-card/50 text-foreground/70 hover:text-foreground transition-colors"
+            >
               Fechar
             </Button>
           </div>

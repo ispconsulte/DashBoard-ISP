@@ -117,29 +117,28 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
                         {levelLabel(consultant.level)}
                       </Badge>
                     )}
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] ${
-                        evalStatus === "submitted"
-                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-                          : evalStatus === "draft"
-                          ? "border-amber-500/20 bg-amber-500/10 text-amber-300"
-                          : "border-border/20 bg-card/30 text-muted-foreground/60"
-                      }`}
-                    >
-                      {evalStatus === "submitted" ? "Avaliado" : evalStatus === "draft" ? "Rascunho" : "Pendente"}
-                    </Badge>
+                    {evalStatus === "submitted" && (
+                      <Badge variant="outline" className="text-[10px] border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+                        Avaliação enviada
+                      </Badge>
+                    )}
+                    {evalStatus === "draft" && (
+                      <Badge variant="outline" className="text-[10px] border-amber-500/20 bg-amber-500/10 text-amber-300">
+                        Rascunho salvo
+                      </Badge>
+                    )}
                   </div>
                   <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground/50">
-                    {consultant.completedTasks > 0 && <span>{consultant.completedTasks}/{consultant.totalTasks} tarefas</span>}
-                    {consultant.hoursTracked > 0 && <><span className="text-muted-foreground/20">·</span><span>{formatHoursHuman(consultant.hoursTracked)}</span></>}
+                    {consultant.completedTasks > 0 && <span>{consultant.completedTasks} de {consultant.totalTasks} tarefas concluídas</span>}
+                    {consultant.hoursTracked > 0 && <><span className="text-muted-foreground/20">·</span><span>{formatHoursHuman(consultant.hoursTracked)} registradas</span></>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <div className={`rounded-xl border px-3 py-1.5 text-center ${hasCoordinatorScore ? scoreBg(consultant.score) : "border-amber-500/15 bg-amber-500/[0.05]"}`}>
-                    <p className={`text-sm font-bold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
-                      {hasCoordinatorScore ? `${consultant.score}%` : "Pendente"}
+                  <div className={`rounded-xl border px-3 py-1.5 text-center ${hasCoordinatorScore ? scoreBg(consultant.score) : "border-border/15 bg-card/25"}`}>
+                    <p className={`text-sm font-bold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-muted-foreground/40"}`}>
+                      {hasCoordinatorScore ? `${consultant.score}%` : "—"}
                     </p>
+                    <p className="text-[9px] text-muted-foreground/35 mt-0.5 leading-none">nota coord.</p>
                   </div>
                   <ChevronDown className={`h-4 w-4 text-muted-foreground/50 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                 </div>
@@ -159,15 +158,17 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
                       {/* Metrics */}
                       <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
                         {[
-                          { label: "Nota coordenador", value: hasCoordinatorScore ? `${consultant.score}%` : "Pendente de nota do coordenador" },
-                          { label: "Score automático", value: `${consultant.automaticScore}%` },
-                          { label: "No Prazo", value: consultant.onTimeRate != null ? `${Math.round(consultant.onTimeRate)}%` : "—" },
-                          { label: "Utilização", value: consultant.utilization != null ? `${Math.round(consultant.utilization)}%` : "—" },
-                          { label: "Projetos", value: consultant.projectCount > 0 ? String(consultant.projectCount) : "—" },
-                        ].map((m) => (
+                          { label: "Nota do coordenador", value: hasCoordinatorScore ? `${consultant.score}%` : null, placeholder: "Pendente de nota" },
+                          { label: "Score automático", value: `${consultant.automaticScore}%`, placeholder: null },
+                          { label: "No Prazo", value: consultant.onTimeRate != null ? `${Math.round(consultant.onTimeRate)}%` : null, placeholder: null },
+                          { label: "Utilização", value: consultant.utilization != null ? `${Math.round(consultant.utilization)}%` : null, placeholder: null },
+                          { label: "Projetos", value: consultant.projectCount > 0 ? String(consultant.projectCount) : null, placeholder: null },
+                        ].filter((m) => m.value != null || m.placeholder != null).map((m) => (
                           <div key={m.label} className="rounded-xl border border-border/8 bg-card/20 p-3 text-center">
                             <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50">{m.label}</p>
-                            <p className="mt-1 text-base font-bold text-foreground">{m.value}</p>
+                            <p className={`mt-1 text-base font-bold ${m.value != null ? "text-foreground" : "text-muted-foreground/35"}`}>
+                              {m.value ?? m.placeholder}
+                            </p>
                           </div>
                         ))}
                       </div>

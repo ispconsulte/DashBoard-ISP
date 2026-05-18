@@ -274,45 +274,6 @@ export default function UsuariosPage() {
   const [feedback, setFeedback] = useState<{ type: "ok" | "error"; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"users">("users");
 
-  // Payment manager config
-  const [paymentManagerUserId, setPaymentManagerUserId] = useState<string | null>(null);
-  const [paymentManagerDraft, setPaymentManagerDraft] = useState<string>("none");
-  const [savingPaymentManager, setSavingPaymentManager] = useState(false);
-  const [showPaymentManagerPanel, setShowPaymentManagerPanel] = useState(false);
-
-  useEffect(() => {
-    if (!token) return;
-    supabaseRest("bonus_settings?key=eq.payment_manager_user_id&select=value&limit=1", token)
-      .then(safeJson)
-      .then((rows: { value?: string | null }[]) => {
-        const val = rows?.[0]?.value ?? null;
-        setPaymentManagerUserId(val);
-        setPaymentManagerDraft(val ?? "none");
-      })
-      .catch(() => {});
-  }, [token]);
-
-  const handleSavePaymentManager = async () => {
-    if (!token) return;
-    setSavingPaymentManager(true);
-    try {
-      const newVal = paymentManagerDraft === "none" ? null : paymentManagerDraft;
-      await supabaseRest("bonus_settings?key=eq.payment_manager_user_id", token, {
-        method: "PATCH",
-        body: JSON.stringify({ value: newVal, updated_at: new Date().toISOString() }),
-      });
-      setPaymentManagerUserId(newVal);
-      await refreshAuthContext();
-      window.dispatchEvent(new Event("bonus-settings-changed"));
-      showFeedback("ok", "Responsável pela bonificação atualizado.");
-      setShowPaymentManagerPanel(false);
-    } catch (err) {
-      showFeedback("error", err instanceof Error ? err.message : "Falha ao salvar.");
-    } finally {
-      setSavingPaymentManager(false);
-    }
-  };
-
   // Edit state
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [editForm, setEditForm] = useState<Partial<UserRow>>({});
@@ -773,79 +734,6 @@ export default function UsuariosPage() {
           )}
         </AnimatePresence>
 
-
-        {/* ═══ PAYMENT MANAGER PANEL ═══ */}
-        {session?.role === "admin" && (
-          <div className="task-card p-4">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--task-yellow)/0.12)]">
-                  <Shield className="h-4 w-4 text-[hsl(var(--task-yellow))]" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-[hsl(var(--task-text))]">Responsável pela Bonificação</p>
-                  <p className="text-[11px] text-[hsl(var(--task-text-muted))] truncate">
-                    {paymentManagerUserId
-                      ? (api.users.find(u => u.id === paymentManagerUserId)?.name ?? `ID ${paymentManagerUserId}`)
-                      : "Nenhum responsável definido"}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => { setShowPaymentManagerPanel(v => !v); setPaymentManagerDraft(paymentManagerUserId ?? "none"); }}
-                className="flex items-center gap-1.5 rounded-lg border border-[hsl(var(--task-border))] bg-[hsl(var(--task-surface))] px-3 py-1.5 text-xs font-medium text-[hsl(var(--task-text-muted))] hover:border-[hsl(var(--task-yellow)/0.4)] hover:text-[hsl(var(--task-yellow))] transition shrink-0"
-              >
-                <Pencil className="h-3 w-3" /> Alterar
-              </button>
-            </div>
-
-            <AnimatePresence>
-              {showPaymentManagerPanel && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-4 pt-4 border-t border-[hsl(var(--task-border))] space-y-3">
-                    <p className="text-[11px] text-[hsl(var(--task-text-muted))]">
-                      O responsável selecionado terá acesso total aos valores de pagamento/bonificação de todos os consultores.
-                    </p>
-                    <Select value={paymentManagerDraft} onValueChange={setPaymentManagerDraft}>
-                      <SelectTrigger className={taskSelectTriggerClass}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className={taskSelectContentClass}>
-                        <SelectItem value="none" className={taskSelectItemClass}>Nenhum responsável</SelectItem>
-                        {api.users
-                          .filter(u => u.active !== false)
-                          .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
-                          .map(u => (
-                            <SelectItem key={u.id} value={u.id} className={taskSelectItemClass}>
-                              {u.name} — {u.email}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => setShowPaymentManagerPanel(false)}
-                        className="rounded-lg border border-[hsl(var(--task-border))] px-3 py-1.5 text-xs text-[hsl(var(--task-text-muted))] hover:text-[hsl(var(--task-text))] transition"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        onClick={handleSavePaymentManager}
-                        disabled={savingPaymentManager || paymentManagerDraft === (paymentManagerUserId ?? "none")}
-                        className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 px-4 py-1.5 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/30 transition disabled:opacity-50"
-                      >
-                        {savingPaymentManager ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Salvar
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
 
         {/* Users content */}
             {/* ═══ CREATE FORM ═══ */}

@@ -8,6 +8,7 @@ import {
   PieChart,
   AlertCircle,
   Users,
+  UserRound,
   FileText,
   Filter,
   X,
@@ -16,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { usePageSEO } from "@/hooks/usePageSEO";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
@@ -182,13 +184,13 @@ export default function Sprint6BonificacaoPage() {
   const completionRate = totalTasks > 0 ? Math.round((totalCompletedTasks / totalTasks) * 100) : 0;
   const hasActiveRankingFilters = search.trim().length > 0 || evaluationFilter !== "all";
 
+  // Tabs are only used for payment manager's global view (ranking + all-evaluations read-only)
   const availableTabs = useMemo(() => {
     const tabs: string[] = [];
     if (canSeeRanking) tabs.push("ranking");
-    if (canManageTeam) tabs.push("team");
     if (canSeeAllEvaluations) tabs.push("all-evaluations");
     return tabs;
-  }, [canManageTeam, canSeeAllEvaluations, canSeeRanking]);
+  }, [canSeeAllEvaluations, canSeeRanking]);
 
   useEffect(() => {
     if (availableTabs.length === 0) return;
@@ -241,7 +243,7 @@ export default function Sprint6BonificacaoPage() {
             <div className="relative flex flex-col gap-2 p-4 sm:p-5 md:px-6 md:py-5">
               <div className="flex items-center gap-3.5">
                 <div
-                  className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] shrink-0 backdrop-blur-sm shadow-lg shadow-black/30"
+                  className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/20 shrink-0 backdrop-blur-sm shadow-lg shadow-black/30"
                   style={{
                     background: "linear-gradient(145deg, hsl(45 80% 30% / 0.5), hsl(45 60% 20% / 0.4))",
                   }}
@@ -252,7 +254,7 @@ export default function Sprint6BonificacaoPage() {
                   <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-foreground tracking-tight leading-tight">
                     Bonificação
                   </h1>
-                  <p className="mt-0.5 text-xs sm:text-sm text-white/35 line-clamp-1">
+                  <p className="mt-0.5 text-xs sm:text-sm text-muted-foreground/55 line-clamp-1">
                     {isFullAccessManager ? "Visão completa · Ranking, desempenho e pagamentos" : canSeeRanking ? "Ranking, desempenho e evolução da equipe" : "Seu desempenho e sua avaliação mais recente"}
                   </p>
                 </div>
@@ -305,16 +307,17 @@ export default function Sprint6BonificacaoPage() {
                       {canSeeAllEvaluations && (
                         <div className="space-y-2">
                           <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-semibold">Consultor</p>
-                          <select
-                            value={consultantFilter}
-                            onChange={(e) => setConsultantFilter(e.target.value)}
-                            className="w-full rounded-lg border border-border/15 bg-secondary/30 px-3 py-2 text-xs text-foreground outline-none focus:border-primary/40 transition-colors"
-                          >
-                            <option value="">Todos os consultores</option>
-                            {bonus.consultants.map((c) => (
-                              <option key={c.userId ?? c.name} value={c.name}>{c.name}</option>
-                            ))}
-                          </select>
+                          <Select value={consultantFilter || "__all__"} onValueChange={(v) => setConsultantFilter(v === "__all__" ? "" : v)}>
+                            <SelectTrigger className="h-9 w-full rounded-xl border-border/15 bg-card/40 text-xs text-foreground hover:bg-card/55 focus:ring-0 focus:ring-offset-0 focus:border-primary/30">
+                              <SelectValue placeholder="Todos os consultores" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl border border-border/15 bg-[hsl(222_47%_11%)] shadow-2xl shadow-black/40 z-50">
+                              <SelectItem value="__all__" className="text-xs text-muted-foreground/70 hover:text-foreground hover:bg-white/[0.05] rounded-lg cursor-pointer focus:bg-white/[0.05] focus:text-foreground">Todos os consultores</SelectItem>
+                              {bonus.consultants.map((c) => (
+                                <SelectItem key={c.userId ?? c.name} value={c.name} className="text-xs text-muted-foreground/70 hover:text-foreground hover:bg-white/[0.05] rounded-lg cursor-pointer focus:bg-white/[0.05] focus:text-foreground">{c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       )}
 
@@ -335,7 +338,7 @@ export default function Sprint6BonificacaoPage() {
 
               {/* Active filter summary */}
               {(period !== "180d" || consultantFilter) && (
-                <p className="text-[11px] text-white/30 pl-[3.375rem]">
+                <p className="text-[11px] text-muted-foreground/40 pl-[3.375rem]">
                   {PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? "Semestral"}
                   {consultantFilter && ` · ${consultantFilter}`}
                 </p>
@@ -398,13 +401,13 @@ export default function Sprint6BonificacaoPage() {
                   },
                   {
                     label: "Tarefas concluídas",
-                    value: `${totalCompletedTasks}/${totalTasks}`,
+                    value: `${totalCompletedTasks} de ${totalTasks}`,
                     sub: completionRate > 0 ? `${completionRate}% de conclusão · ${periodLabel(period)}` : `sem tarefas no período ${periodLabel(period)}`,
                     color: "border-blue-500/12 bg-blue-500/[0.04]",
                     valueColor: "text-blue-400",
                   },
                   {
-                    label: "Horas registradas",
+                    label: "Horas em tarefas concluídas",
                     value: `${Math.round(totalHoursTracked)}h`,
                     sub: summaryConsultants.length > 0 ? `média de ${Math.round(totalHoursTracked / summaryConsultants.length || 0)}h/pessoa · ${periodLabel(period)}` : `nenhuma hora · ${periodLabel(period)}`,
                     color: "border-amber-500/12 bg-amber-500/[0.04]",
@@ -427,76 +430,100 @@ export default function Sprint6BonificacaoPage() {
               </div>
             )}
 
-            {availableTabs.length > 0 ? (
-              <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="space-y-4">
-                <TabsList className="h-auto rounded-xl bg-card/40 border border-border/10 p-1 flex flex-wrap justify-start">
-                  {canSeeRanking && (
-                    <TabsTrigger
-                      value="ranking"
-                      className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60"
-                    >
-                      <Crown className="h-3.5 w-3.5 mr-1.5" />
-                      Ranking Geral
-                    </TabsTrigger>
-                  )}
-                  {canManageTeam && (
-                    <TabsTrigger
-                      value="team"
-                      className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60"
-                    >
-                      <Users className="h-3.5 w-3.5 mr-1.5" />
-                      Minha Equipe
-                      {subordinateConsultants.length > 0 && (
-                        <span className="ml-1.5 text-[10px] font-bold bg-primary/10 text-primary rounded-md px-1.5 py-0.5">
-                          {subordinateConsultants.length}
-                        </span>
-                      )}
-                    </TabsTrigger>
-                  )}
-                  {canSeeAllEvaluations && (
-                    <TabsTrigger
-                      value="all-evaluations"
-                      className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60"
-                    >
-                      <Users className="h-3.5 w-3.5 mr-1.5" />
-                      Todas as Avaliações
-                    </TabsTrigger>
-                  )}
-                </TabsList>
+            {/* ── Minha Avaliação ── always shown when user has own data ── */}
+            {myConsultant && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.07]">
+                    <UserRound className="h-4 w-4 text-primary/70" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-foreground">Minha avaliação</p>
+                    <p className="text-[11px] text-muted-foreground/45 mt-0.5">
+                      {myConsultant.manualEvaluation.status === "submitted"
+                        ? "Nota enviada pelo coordenador"
+                        : myConsultant.manualEvaluation.status === "draft"
+                        ? "Rascunho em andamento"
+                        : "Pendente de nota do coordenador"}
+                    </p>
+                  </div>
+                </div>
+                {renderOwnContent()}
+              </div>
+            )}
 
-                {canSeeRanking && (
+            {/* ── Equipe sob minha responsabilidade ── coordinators only ── */}
+            {canManageTeam && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/[0.07]">
+                    <Users className="h-4 w-4 text-amber-400/70" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-foreground">Equipe sob minha responsabilidade</p>
+                    <p className="text-[11px] text-muted-foreground/45 mt-0.5">
+                      {subordinateConsultants.length} membro{subordinateConsultants.length !== 1 ? "s" : ""} · avalie diretamente nesta seção
+                    </p>
+                  </div>
+                </div>
+                <BonusTeamTab
+                  subordinates={subordinateConsultants}
+                  session={session}
+                  periodLabel={periodLabel(period)}
+                  onEvaluate={setEvaluationConsultant}
+                  onSendReport={setReportConsultant}
+                />
+              </div>
+            )}
+
+            {/* ── Ranking / global view ── payment manager read-only tabs ── */}
+            {canSeeRanking && (
+              availableTabs.length > 1 ? (
+                <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="space-y-4">
+                  <TabsList className="h-auto rounded-xl bg-card/40 border border-border/10 p-1 flex flex-wrap justify-start">
+                    {canSeeRanking && (
+                      <TabsTrigger
+                        value="ranking"
+                        className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60"
+                      >
+                        <Crown className="h-3.5 w-3.5 mr-1.5" />
+                        Ranking Geral
+                      </TabsTrigger>
+                    )}
+                    {canSeeAllEvaluations && (
+                      <TabsTrigger
+                        value="all-evaluations"
+                        className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60"
+                      >
+                        <Users className="h-3.5 w-3.5 mr-1.5" />
+                        Todas as Avaliações
+                      </TabsTrigger>
+                    )}
+                  </TabsList>
+
                   <TabsContent value="ranking" className="mt-0 space-y-3">
                     {renderRankingContent()}
                   </TabsContent>
-                )}
 
-                {canManageTeam && (
-                  <TabsContent value="team" className="mt-0">
-                    <BonusTeamTab
-                      subordinates={subordinateConsultants}
-                      session={session}
-                      periodLabel={periodLabel(period)}
-                      onEvaluate={setEvaluationConsultant}
-                      onSendReport={setReportConsultant}
-                    />
-                  </TabsContent>
-                )}
+                  {canSeeAllEvaluations && (
+                    <TabsContent value="all-evaluations" className="mt-0">
+                      <BonusTeamTab
+                        subordinates={bonus.consultants}
+                        session={session}
+                        periodLabel={periodLabel(period)}
+                        onEvaluate={setEvaluationConsultant}
+                        onSendReport={setReportConsultant}
+                      />
+                    </TabsContent>
+                  )}
+                </Tabs>
+              ) : (
+                <div className="space-y-3">{renderRankingContent()}</div>
+              )
+            )}
 
-                {canSeeAllEvaluations && (
-                  <TabsContent value="all-evaluations" className="mt-0">
-                    <BonusTeamTab
-                      subordinates={bonus.consultants}
-                      session={session}
-                      periodLabel={periodLabel(period)}
-                      onEvaluate={setEvaluationConsultant}
-                      onSendReport={setReportConsultant}
-                    />
-                  </TabsContent>
-                )}
-              </Tabs>
-            ) : canSeeRanking ? (
-              <div className="space-y-3">{renderRankingContent()}</div>
-            ) : (
+            {/* ── Fallback: no team, no own data ── */}
+            {!myConsultant && !canManageTeam && !canSeeRanking && (
               <div className="space-y-3">{renderOwnContent()}</div>
             )}
           </div>
@@ -523,6 +550,7 @@ export default function Sprint6BonificacaoPage() {
           if (!open) setReportConsultant(null);
         }}
       />
+
     </div>
   );
 
@@ -665,6 +693,26 @@ export default function Sprint6BonificacaoPage() {
         </CollapsibleSection>
 
         <div id="bonus-ranking">
+          {(() => {
+            const total = rankingConsultants.length;
+            const evaluated = rankingConsultants.filter((consultant) => consultant.coordinatorScore != null).length;
+            const ratio = total > 0 ? evaluated / total : 0;
+            const counterColor =
+              total === 0
+                ? "text-muted-foreground bg-card/30 border-border/10"
+                : evaluated === total
+                ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
+                : ratio >= 0.5
+                ? "text-amber-300 bg-amber-500/10 border-amber-500/20"
+                : "text-red-300 bg-red-500/10 border-red-500/20";
+            const counterBadge = total > 0
+              ? (
+                <span className={`text-[10px] font-bold rounded-md px-1.5 py-0.5 border ${counterColor}`}>
+                  {`${evaluated} de ${total} consultores avaliados pelo coordenador`}
+                </span>
+              )
+              : undefined;
+            return (
           <CollapsibleSection
             title="Ranking de Consultores"
             icon={Crown}
@@ -673,7 +721,7 @@ export default function Sprint6BonificacaoPage() {
                 ? `${rankingConsultants.length} consultores · Líder: ${topPerformer.name} com ${topPerformer.score}%`
                 : "Nenhum consultor encontrado neste período"
             }
-            badge={rankingConsultants.length > 0 ? <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-md px-1.5 py-0.5">{rankingConsultants.length}</span> : undefined}
+            badge={counterBadge ?? (rankingConsultants.length > 0 ? <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-md px-1.5 py-0.5">{rankingConsultants.length}</span> : undefined)}
           >
             <div className="space-y-4">
               <div className="grid gap-2.5 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-center">
@@ -687,15 +735,16 @@ export default function Sprint6BonificacaoPage() {
                   />
                 </div>
 
-                <select
-                  value={evaluationFilter}
-                  onChange={(event) => setEvaluationFilter(event.target.value as "all" | "evaluated" | "pending")}
-                  className="h-10 rounded-xl border border-border/15 bg-card/40 px-3 text-sm text-foreground outline-none transition-colors hover:bg-card/55 focus:border-primary/30"
-                >
-                  <option value="all">Todas as avaliações</option>
-                  <option value="evaluated">Somente avaliados</option>
-                  <option value="pending">Somente pendentes</option>
-                </select>
+                <Select value={evaluationFilter} onValueChange={(v) => setEvaluationFilter(v as "all" | "evaluated" | "pending")}>
+                  <SelectTrigger className="h-10 rounded-xl border-border/15 bg-card/40 text-sm text-foreground hover:bg-card/55 focus:ring-0 focus:ring-offset-0 focus:border-primary/30">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border border-border/15 bg-[hsl(222_47%_11%)] shadow-2xl shadow-black/40 z-50">
+                    <SelectItem value="all" className="text-sm text-muted-foreground/70 hover:text-foreground hover:bg-white/[0.05] rounded-lg cursor-pointer focus:bg-white/[0.05] focus:text-foreground">Todas as avaliações</SelectItem>
+                    <SelectItem value="evaluated" className="text-sm text-muted-foreground/70 hover:text-foreground hover:bg-white/[0.05] rounded-lg cursor-pointer focus:bg-white/[0.05] focus:text-foreground">Somente avaliados</SelectItem>
+                    <SelectItem value="pending" className="text-sm text-muted-foreground/70 hover:text-foreground hover:bg-white/[0.05] rounded-lg cursor-pointer focus:bg-white/[0.05] focus:text-foreground">Somente pendentes</SelectItem>
+                  </SelectContent>
+                </Select>
 
                 {hasActiveRankingFilters ? (
                   <button
@@ -764,6 +813,8 @@ export default function Sprint6BonificacaoPage() {
               </div>
             </div>
           </CollapsibleSection>
+            );
+          })()}
         </div>
       </>
     );

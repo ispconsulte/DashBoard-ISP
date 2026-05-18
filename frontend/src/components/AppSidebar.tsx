@@ -16,6 +16,7 @@ import {
   Plug,
   Contact,
   BadgeDollarSign,
+  Crown,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
@@ -191,7 +192,7 @@ export function AppSidebar({
     const p = location.pathname;
     if (["/tarefas", "/analiticas", "/calendario", "/admin/testes/clientes", "/admin/testes/bonificacao"].some((r) => p.startsWith(r))) return "management";
     if (["/ferramentas", "/comodato"].some((r) => p.startsWith(r))) return "tools";
-    if (["/usuarios", "/integracoes", "/admin"].some((r) => p.startsWith(r))) return "administration";
+    if (["/usuarios", "/integracoes", "/admin", "/administracao"].some((r) => p.startsWith(r))) return "administration";
     return null;
   };
 
@@ -421,6 +422,7 @@ export function AppSidebar({
                   {canAccessUsuarios && <SidebarNavItem to="/usuarios" icon={Shield} label="Painel de Usuários" iconColor="hsl(0 84% 60%)" />}
                   {canAccessIntegracoes && <SidebarNavItem to="/integracoes" icon={Plug} label="Integrações" iconColor="hsl(160 84% 39%)" />}
                   {canAccessDiagnostico && <SidebarNavItem to="/admin/diagnostico" icon={Bug} label="Central de Integridade" iconColor="hsl(38 92% 50%)" />}
+                  {canAccessDiagnostico && <SidebarNavItem to="/administracao/bonificacao" icon={Crown} label="Gestão de Bonificação" iconColor="hsl(45 90% 55%)" />}
                 </>
               ) : (
                 <>
@@ -452,6 +454,11 @@ export function AppSidebar({
                       {canAccessDiagnostico && (
                         <NavLink to="/admin/diagnostico" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
                           <Bug className="h-4 w-4" style={{ color: "hsl(38 92% 50%)" }} /><span>Central de Integridade</span>
+                        </NavLink>
+                      )}
+                      {canAccessDiagnostico && (
+                        <NavLink to="/administracao/bonificacao" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
+                          <Crown className="h-4 w-4" style={{ color: "hsl(45 90% 55%)" }} /><span>Gestão de Bonificação</span>
                         </NavLink>
                       )}
                     </div>

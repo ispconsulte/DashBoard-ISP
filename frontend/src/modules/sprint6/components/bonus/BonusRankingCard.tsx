@@ -75,7 +75,10 @@ function ScoreComposition({
     <div className="space-y-3">
       {/* Header with automatic support score pill */}
       <div className="flex items-center justify-between">
-        <p className="text-xs font-bold text-foreground tracking-wide">Métricas automáticas de apoio</p>
+        <div className="space-y-0.5">
+          <p className="text-xs font-bold text-foreground tracking-wide">Métricas automáticas de apoio</p>
+          <p className="text-[10px] text-muted-foreground/40 leading-snug">Score calculado automaticamente — pode incluir dados desatualizados</p>
+        </div>
         <div className={`rounded-lg px-2.5 py-1 ${scoreBg(score)}`}>
           <span className={`text-sm font-bold ${scoreColor(score)}`}>{score}%</span>
         </div>
@@ -348,6 +351,15 @@ export function RankingCard({
 }) {
   const isTopThree = showRank && rank <= 3;
   const hasCoordinatorScore = consultant.coordinatorScore != null;
+  const delta = hasCoordinatorScore
+    ? Math.round((consultant.coordinatorScore as number) - consultant.automaticScore)
+    : null;
+  const deltaLabel = delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta} pts`;
+  const deltaColor = delta == null
+    ? "text-muted-foreground/50"
+    : delta >= 0
+    ? "text-emerald-400"
+    : "text-red-400";
   const badgeColors = showRank
     ? rank === 1
       ? "text-amber-300 bg-amber-500/15 border-amber-500/20"
@@ -380,11 +392,11 @@ export function RankingCard({
           </div>
         </div>
         <div className="hidden sm:flex items-center gap-2 md:gap-3 shrink-0">
-          <div className={`rounded-lg sm:rounded-xl border px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center ${hasCoordinatorScore ? scoreBg(consultant.score) : "border-amber-500/15 bg-amber-500/[0.05]"}`}>
-            <p className={`text-sm sm:text-base font-bold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
-              {hasCoordinatorScore ? `${consultant.score}%` : "Pendente"}
+          <div className={`rounded-lg sm:rounded-xl border px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center ${hasCoordinatorScore ? scoreBg(consultant.score) : "border-border/10 bg-card/25"}`}>
+            <p className={`text-sm sm:text-base font-bold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-muted-foreground/45"}`}>
+              {hasCoordinatorScore ? `${consultant.score}%` : "—"}
             </p>
-            <p className="text-[10px] sm:text-[11px] text-muted-foreground">nota coordenador</p>
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground/50">{hasCoordinatorScore ? "nota coord." : "sem avaliação"}</p>
           </div>
           {!hideMonetary && hasCoordinatorScore && consultant.payout != null && (
             <div className="rounded-lg sm:rounded-xl border border-primary/15 bg-primary/[0.06] px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center">
@@ -395,8 +407,8 @@ export function RankingCard({
         </div>
         <div className="sm:hidden shrink-0 text-right ml-1">
           {!hideMonetary && consultant.payout != null && <p className="text-xs font-bold text-primary">{money(consultant.payout)}</p>}
-          <p className={`text-[11px] font-semibold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
-            {hasCoordinatorScore ? `${consultant.score}%` : "Pendente"}
+          <p className={`text-[11px] font-semibold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-muted-foreground/45"}`}>
+            {hasCoordinatorScore ? `${consultant.score}%` : "—"}
           </p>
         </div>
         <ChevronDown className={`h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 text-muted-foreground/50 transition-transform ${expanded ? "rotate-180" : ""}`} />
@@ -429,7 +441,7 @@ export function RankingCard({
                         ? `Avaliado${consultant.manualEvaluation.periodKey ? ` · ${formatPeriodKey(consultant.manualEvaluation.periodKey)}` : ""}`
                         : consultant.manualEvaluation.status === "draft"
                         ? `Rascunho${consultant.manualEvaluation.periodKey ? ` · ${formatPeriodKey(consultant.manualEvaluation.periodKey)}` : ""}`
-                        : "Pendente de nota do coordenador"}
+                        : "Sem avaliação"}
                     </Badge>
                     {consultant.coordinatorName && (
                       <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/60">

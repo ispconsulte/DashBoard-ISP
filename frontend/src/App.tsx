@@ -64,6 +64,7 @@ const AdminDiagnosticoPage = lazyWithRecovery(() => import("./pages/AdminDiagnos
 const FerramentasPage = lazyWithRecovery(() => import("./pages/Ferramentas"), "ferramentas");
 const Sprint6BonificacaoPage = lazyWithRecovery(() => import("./pages/sprint6/Sprint6BonificacaoPage"), "sprint6-bonificacao");
 const ClientesPage = lazyWithRecovery(() => import("./pages/clientes/ClientesPage"), "clientes");
+const AdminBonificacaoPage = lazyWithRecovery(() => import("./pages/admin/AdminBonificacaoPage"), "admin-bonificacao");
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -98,6 +99,7 @@ const AppRoutes = () => (
         <Route path="/ferramentas" element={<LazyPage><FerramentasPage /></LazyPage>} />
         <Route path="/calendario" element={<LazyPage><CalendarioPage /></LazyPage>} />
         <Route path="/admin/diagnostico" element={<LazyPage><AdminDiagnosticoPage /></LazyPage>} />
+        <Route path="/administracao/bonificacao" element={<LazyPage><AdminBonificacaoPage /></LazyPage>} />
         <Route path="/admin/testes/bonificacao" element={<LazyPage><Sprint6BonificacaoPage /></LazyPage>} />
         <Route path="/admin/testes/clientes" element={<LazyPage><ClientesPage /></LazyPage>} />
       </Route>

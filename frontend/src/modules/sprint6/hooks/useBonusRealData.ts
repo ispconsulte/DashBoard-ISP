@@ -25,6 +25,7 @@ import {
   normalizeBonusRole,
   normalizeBonusSeniority,
 } from "@/modules/sprint6/bonusEvaluation";
+import { useBonusConfig, BONUS_CONFIG_DEFAULTS, type BonusConfig } from "@/modules/sprint6/hooks/useBonusConfig";
 
 type BonusCoverageStatus = "connected" | "partial" | "pending";
 
@@ -203,24 +204,30 @@ function consultantScoreFromMetrics(metrics: {
   utilization: number | null;
   healthScore: number | null;
   manualEvaluation?: BonusManualEvaluationSummary | null;
-}): { score: number; breakdown: BonusScoreBreakdown } {
-  const onTimeNorm = metrics.onTimeRate != null ? clamp(metrics.onTimeRate / 95) : 0.55;
-  const overdueNorm = metrics.overdueRate != null ? clamp(1 - metrics.overdueRate / 30) : 0.6;
+}, config: BonusConfig = BONUS_CONFIG_DEFAULTS): { score: number; breakdown: BonusScoreBreakdown } {
+  const ontimePct = config.thresholdOntimePct;
+  const healthPts = config.thresholdHealthPts;
+  const utilizMin = config.utilizationMinPct;
+  const utilizMax = config.utilizationMaxPct;
+  const utilizPenaltyRange = 100 - utilizMax;
+
+  const onTimeNorm = metrics.onTimeRate != null ? clamp((metrics.onTimeRate ?? 0) / ontimePct) : 0.55;
+  const overdueNorm = metrics.overdueRate != null ? clamp(1 - (metrics.overdueRate ?? 0) / 30) : 0.6;
 
   let utilizationNorm = 0.6;
   if (metrics.utilization != null) {
     const u = metrics.utilization;
-    if (u >= 70 && u <= 95) utilizationNorm = 1;
-    else if (u < 70) utilizationNorm = clamp(u / 70);
-    else utilizationNorm = clamp(1 - (u - 95) / 45);
+    if (u >= utilizMin && u <= utilizMax) utilizationNorm = 1;
+    else if (u < utilizMin) utilizationNorm = clamp((u ?? 0) / utilizMin);
+    else utilizationNorm = clamp(1 - ((u ?? 0) - utilizMax) / utilizPenaltyRange);
   }
 
-  const healthNorm = metrics.healthScore != null ? clamp(metrics.healthScore / 80) : 0.65;
+  const healthNorm = metrics.healthScore != null ? clamp((metrics.healthScore ?? 0) / healthPts) : 0.65;
 
   if (metrics.manualEvaluation?.hasManualEvaluation) {
-    const hardManualNorm = metrics.manualEvaluation.hardManualScore != null ? clamp(metrics.manualEvaluation.hardManualScore / 100) : 0;
-    const softNorm = metrics.manualEvaluation.softSkillScore != null ? clamp(metrics.manualEvaluation.softSkillScore / 100) : 0;
-    const peopleNorm = metrics.manualEvaluation.peopleSkillScore != null ? clamp(metrics.manualEvaluation.peopleSkillScore / 100) : 0;
+    const hardManualNorm = metrics.manualEvaluation.hardManualScore != null ? clamp((metrics.manualEvaluation.hardManualScore ?? 0) / 100) : 0;
+    const softNorm = metrics.manualEvaluation.softSkillScore != null ? clamp((metrics.manualEvaluation.softSkillScore ?? 0) / 100) : 0;
+    const peopleNorm = metrics.manualEvaluation.peopleSkillScore != null ? clamp((metrics.manualEvaluation.peopleSkillScore ?? 0) / 100) : 0;
     const total = clamp(
       onTimeNorm * BONUS_MANUAL_WEIGHTS.hardAuto +
       hardManualNorm * BONUS_MANUAL_WEIGHTS.hardManual +
@@ -365,6 +372,13 @@ function coordinatorScoreFromEvaluation(evaluation?: BonusManualEvaluationSummar
 }
 
 export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: string | null, refreshKey = 0): UseBonusRealDataResult {
+  const config = useBonusConfig();
+  const configPayoutMap = useMemo(() => ({
+    junior: config.payoutJunior,
+    pleno:  config.payoutPleno,
+    senior: config.payoutSenior,
+    sdr:    config.payoutSdr,
+  }), [config.payoutJunior, config.payoutPleno, config.payoutSenior, config.payoutSdr]);
   const tasks = useTasks({ accessToken, period });
   const elapsed = useElapsedTimes({ accessToken, period });
   const capacity = useCapacityData({ accessToken, period });
@@ -658,8 +672,8 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           .map((clientName) => healthByName.get(clientName.trim().toLowerCase()))
           .filter((value): value is number => value != null);
         const healthScore = average(linkedHealth);
-        const onTimeRate = acc.tasksWithDeadlineDone > 0 ? (acc.onTimeCompleted / acc.tasksWithDeadlineDone) * 100 : null;
-        const overdueRate = acc.totalTasks > 0 ? (acc.overdueTasks / acc.totalTasks) * 100 : null;
+        const onTimeRate = acc.tasksWithDeadlineDone > 0 ? (acc.onTimeCompleted / (acc.tasksWithDeadlineDone || 1)) * 100 : null;
+        const overdueRate = acc.totalTasks > 0 ? (acc.overdueTasks / (acc.totalTasks || 1)) * 100 : null;
         const capacityMeta =
           capacityByName.get(acc.consultantName.trim().toLowerCase()) ??
           capacity.topConsultants.find((consultant) => {
@@ -673,8 +687,8 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           overdueRate,
           utilization: capacityMeta?.utilizationPercent ?? null,
           healthScore,
-        });
-        const maxBonus = getBonusCeiling(capacityMeta?.seniority ?? matchedUser.seniority ?? null);
+        }, config);
+        const maxBonus = getBonusCeiling(capacityMeta?.seniority ?? matchedUser.seniority ?? null, configPayoutMap);
         const coordinatorUserId = coordinatorBySubordinateId.get(matchedUser.id) ?? null;
         const coordinatorName = coordinatorUserId ? activeUsersById.get(coordinatorUserId)?.name ?? null : null;
         const baseManualEvaluation = manualEvaluationsByUserId.get(matchedUser.id) ?? {
@@ -692,9 +706,9 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
         };
         const manualEvaluation = {
           ...baseManualEvaluation,
-          hardManualPayout: getBonusCategoryPayoutFromScore("hard_skill_manual", baseManualEvaluation.hardManualScore, capacityMeta?.seniority ?? matchedUser.seniority ?? null),
-          softSkillPayout: getBonusCategoryPayoutFromScore("soft_skill", baseManualEvaluation.softSkillScore, capacityMeta?.seniority ?? matchedUser.seniority ?? null),
-          peopleSkillPayout: getBonusCategoryPayoutFromScore("people_skill", baseManualEvaluation.peopleSkillScore, capacityMeta?.seniority ?? matchedUser.seniority ?? null),
+          hardManualPayout: getBonusCategoryPayoutFromScore("hard_skill_manual", baseManualEvaluation.hardManualScore, capacityMeta?.seniority ?? matchedUser.seniority ?? null, configPayoutMap),
+          softSkillPayout: getBonusCategoryPayoutFromScore("soft_skill", baseManualEvaluation.softSkillScore, capacityMeta?.seniority ?? matchedUser.seniority ?? null, configPayoutMap),
+          peopleSkillPayout: getBonusCategoryPayoutFromScore("people_skill", baseManualEvaluation.peopleSkillScore, capacityMeta?.seniority ?? matchedUser.seniority ?? null, configPayoutMap),
         };
         const coordinatorScore = coordinatorScoreFromEvaluation(manualEvaluation);
         const payout = coordinatorScore != null ? Math.round((coordinatorScore / 100) * maxBonus) : null;
@@ -728,7 +742,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       })
       .filter((value): value is NonNullable<typeof value> => value != null)
       .sort((a, b) => (b.score - a.score) || ((b.payout ?? -1) - (a.payout ?? -1)) || b.hoursTracked - a.hoursTracked);
-  }, [tasks.tasks, elapsed.times, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, coordinatorBySubordinateId, eligibleUserIds]);
+  }, [tasks.tasks, elapsed.times, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, coordinatorBySubordinateId, eligibleUserIds, config, configPayoutMap]);
 
   const projectSpotlights = useMemo<BonusProjectSpotlight[]>(() => {
     const roiProjects = new Map<number, { hoursUsed: number; roi: number | null; name: string }>();
@@ -813,12 +827,12 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
     const clientCount = health.summary?.clients.length ?? 0;
     const healthyClientsRatio = clientCount > 0 ? (healthyClients / clientCount) * 100 : null;
 
-    const marginScore = estimatedMargin != null ? clamp(estimatedMargin / 30) : 0.5;
+    const marginScore = estimatedMargin != null ? clamp(estimatedMargin / config.thresholdMarginPct) : 0.5;
     const roiProjects = projectSpotlights.filter((project) => project.roi != null);
     const roiPositiveRatio = roiProjects.length
       ? roiProjects.filter((project) => (project.roi ?? 0) > 0).length / roiProjects.length
       : 0.4;
-    const healthScore = healthyClientsRatio != null ? clamp(healthyClientsRatio / 80) : 0.5;
+    const healthScore = healthyClientsRatio != null ? clamp(healthyClientsRatio / config.thresholdHealthPts) : 0.5;
     const revopsScore = (marginScore * 0.4) + (roiPositiveRatio * 0.35) + (healthScore * 0.25);
 
     const hasFinancialSource = financials.data.size > 0;
@@ -831,14 +845,14 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       estimatedMargin: estimatedMargin != null ? Math.round(estimatedMargin * 10) / 10 : null,
       averageRoi: average(roiProjects.map((project) => project.roi ?? 0)),
       healthyClientsRatio: healthyClientsRatio != null ? Math.round(healthyClientsRatio) : null,
-      croMonthlyEstimate: Math.round(revopsScore * 1500),
-      croQuarterlyEstimate: (healthyClientsRatio ?? 0) >= 80 && (estimatedMargin ?? 0) >= 30 ? 1000 : (healthyClientsRatio ?? 0) >= 70 ? 500 : 0,
+      croMonthlyEstimate: Math.round(revopsScore * config.payoutCroMonthly),
+      croQuarterlyEstimate: (healthyClientsRatio ?? 0) >= config.thresholdHealthPts && (estimatedMargin ?? 0) >= config.thresholdMarginPct ? 1000 : (healthyClientsRatio ?? 0) >= 70 ? 500 : 0,
       annualStrategicEstimate: revenueTracked >= 300000 && (estimatedMargin ?? 0) >= 30 ? 10000 : 0,
       hasFinancialSource,
       hasTrackedHours,
       financialProjectCount: financials.data.size,
     };
-  }, [financials.data, tasks.tasks, elapsed.times, health.summary?.clients, projectSpotlights]);
+  }, [financials.data, tasks.tasks, elapsed.times, health.summary?.clients, projectSpotlights, config]);
 
   const derivedPersistence = useMemo(() => {
     const nowIso = new Date().toISOString();
@@ -917,10 +931,10 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
         updated_at: nowIso,
       });
 
-      pushBreakdown(snapshotId, "on_time_rate", "Entrega no prazo", "operacional", consultant.onTimeRate, 95, "%", {
+      pushBreakdown(snapshotId, "on_time_rate", "Entrega no prazo", "operacional", consultant.onTimeRate, config.thresholdOntimePct, "%", {
         consultant_name: consultant.name,
       });
-      pushBreakdown(snapshotId, "utilization", "Utilização", "capacidade", consultant.utilization, 70, "%", {
+      pushBreakdown(snapshotId, "utilization", "Utilização", "capacidade", consultant.utilization, config.utilizationMinPct, "%", {
         consultant_name: consultant.name,
       });
       pushBreakdown(snapshotId, "health_score", "Saúde da carteira", "carteira", consultant.healthScore, 70, "pts", {
@@ -939,7 +953,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       const commercialSnapshotKey = `commercial_monthly:${currentMonthKey}:${commercialSubjectKey}`;
       if (!persistedSnapshotKeys.has(commercialSnapshotKey)) {
         const snapshotId = `derived-commercial-${currentMonthKey}`;
-        const revopsScore = Math.round(clamp(revenueSummary.croMonthlyEstimate / 1500) * 100);
+        const revopsScore = Math.round(clamp(revenueSummary.croMonthlyEstimate / config.payoutCroMonthly) * 100);
         derivedSnapshots.push({
           id: snapshotId,
           snapshot_kind: "commercial_monthly",
@@ -950,7 +964,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           subject_role: "cro",
           score: revopsScore,
           payout_amount: revenueSummary.croMonthlyEstimate,
-          max_payout_amount: 1500,
+          max_payout_amount: config.payoutCroMonthly,
           sync_status: "calculated",
           source_provenance: "calculated",
           source_updated_at: nowIso,
@@ -965,8 +979,8 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           updated_at: nowIso,
         });
 
-        pushBreakdown(snapshotId, "estimated_margin", "Margem estimada", "financeiro", revenueSummary.estimatedMargin, 30, "%", {});
-        pushBreakdown(snapshotId, "healthy_clients_ratio", "Carteira saudável", "carteira", revenueSummary.healthyClientsRatio, 80, "%", {});
+        pushBreakdown(snapshotId, "estimated_margin", "Margem estimada", "financeiro", revenueSummary.estimatedMargin, config.thresholdMarginPct, "%", {});
+        pushBreakdown(snapshotId, "healthy_clients_ratio", "Carteira saudável", "carteira", revenueSummary.healthyClientsRatio, config.thresholdHealthPts, "%", {});
         pushBreakdown(snapshotId, "average_roi", "ROI médio", "financeiro", revenueSummary.averageRoi, null, "%", {});
       }
 
@@ -976,8 +990,8 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
         const snapshotId = `derived-revenue-${currentQuarterKey}`;
         const quarterlyScore = Math.round(
           clamp(
-            ((revenueSummary.healthyClientsRatio ?? 0) / 80) * 0.5 +
-            ((revenueSummary.estimatedMargin ?? 0) / 30) * 0.5,
+            ((revenueSummary.healthyClientsRatio ?? 0) / config.thresholdHealthPts) * 0.5 +
+            ((revenueSummary.estimatedMargin ?? 0) / config.thresholdMarginPct) * 0.5,
           ) * 100,
         );
         derivedSnapshots.push({
@@ -1008,8 +1022,8 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
         });
 
         pushBreakdown(snapshotId, "quarterly_bonus_estimate", "Bônus trimestral estimado", "financeiro", revenueSummary.croQuarterlyEstimate, 1000, "BRL", {});
-        pushBreakdown(snapshotId, "estimated_margin", "Margem estimada", "financeiro", revenueSummary.estimatedMargin, 30, "%", {});
-        pushBreakdown(snapshotId, "healthy_clients_ratio", "Carteira saudável", "carteira", revenueSummary.healthyClientsRatio, 80, "%", {});
+        pushBreakdown(snapshotId, "estimated_margin", "Margem estimada", "financeiro", revenueSummary.estimatedMargin, config.thresholdMarginPct, "%", {});
+        pushBreakdown(snapshotId, "healthy_clients_ratio", "Carteira saudável", "carteira", revenueSummary.healthyClientsRatio, config.thresholdHealthPts, "%", {});
       }
     }
 
@@ -1020,7 +1034,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       revenueSnapshots: derivedSnapshots.filter((row) => row.snapshot_kind === "revenue_quarterly"),
       breakdowns: derivedBreakdowns,
     };
-  }, [consultantCards, financials.data.size, health.summary?.clients.length, persistence.snapshots, revenueSummary]);
+  }, [consultantCards, config, financials.data.size, health.summary?.clients.length, persistence.snapshots, revenueSummary]);
 
   const combinedSnapshots = useMemo(
     () => [...persistence.snapshots, ...derivedPersistence.snapshots],

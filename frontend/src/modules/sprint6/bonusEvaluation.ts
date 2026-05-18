@@ -1,5 +1,5 @@
 export type BonusPermissionRole = "admin" | "gestor" | "consultor";
-export type BonusSeniority = "junior" | "pleno" | "senior" | null;
+export type BonusSeniority = "junior" | "pleno" | "senior" | "sdr" | null;
 export type BonusEvaluationCategory = "hard_skill_manual" | "soft_skill" | "people_skill";
 export type BonusEvaluationStatus = "draft" | "submitted";
 
@@ -14,6 +14,7 @@ export const BONUS_PAYOUT_BY_SENIORITY: Record<Exclude<BonusSeniority, null>, nu
   junior: 1000,
   pleno: 2000,
   senior: 3500,
+  sdr: 1200,
 };
 
 export const BONUS_MANUAL_WEIGHTS = {
@@ -115,6 +116,7 @@ export function normalizeBonusSeniority(value?: string | null): BonusSeniority {
   if (seniority === "junior") return "junior";
   if (seniority === "pleno") return "pleno";
   if (seniority === "senior" || seniority === "sênior") return "senior";
+  if (seniority === "sdr") return "sdr";
   return null;
 }
 
@@ -123,26 +125,39 @@ export function isBonusEligibleConsultant(_name?: string | null) {
   return true;
 }
 
-export function getBonusCeiling(seniority?: string | null) {
+export function getBonusCeiling(
+  seniority?: string | null,
+  payoutMap?: Partial<Record<Exclude<BonusSeniority, null>, number>>,
+) {
   const normalized = normalizeBonusSeniority(seniority);
-  return normalized ? BONUS_PAYOUT_BY_SENIORITY[normalized] : 1200;
+  if (!normalized) return 1200;
+  return (payoutMap?.[normalized] ?? BONUS_PAYOUT_BY_SENIORITY[normalized]);
 }
 
-export function getBonusCategoryMaxPayout(category: BonusEvaluationCategory, seniority?: string | null) {
-  return Math.round(getBonusCeiling(seniority) * BONUS_MANUAL_CATEGORY_WEIGHTS[category]);
+export function getBonusCategoryMaxPayout(
+  category: BonusEvaluationCategory,
+  seniority?: string | null,
+  payoutMap?: Partial<Record<Exclude<BonusSeniority, null>, number>>,
+) {
+  return Math.round(getBonusCeiling(seniority, payoutMap) * BONUS_MANUAL_CATEGORY_WEIGHTS[category]);
 }
 
-export function getBonusCategoryPayoutPerPoint(category: BonusEvaluationCategory, seniority?: string | null) {
-  return getBonusCategoryMaxPayout(category, seniority) / 100;
+export function getBonusCategoryPayoutPerPoint(
+  category: BonusEvaluationCategory,
+  seniority?: string | null,
+  payoutMap?: Partial<Record<Exclude<BonusSeniority, null>, number>>,
+) {
+  return getBonusCategoryMaxPayout(category, seniority, payoutMap) / 100;
 }
 
 export function getBonusCategoryPayoutFromScore(
   category: BonusEvaluationCategory,
   score100: number | null | undefined,
   seniority?: string | null,
+  payoutMap?: Partial<Record<Exclude<BonusSeniority, null>, number>>,
 ) {
   if (score100 == null || Number.isNaN(score100)) return null;
-  return Math.round(score100 * getBonusCategoryPayoutPerPoint(category, seniority));
+  return Math.round(score100 * getBonusCategoryPayoutPerPoint(category, seniority, payoutMap));
 }
 
 export function score1To10To100(score: number | null | undefined) {
