@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import PageHeaderCard from "@/components/PageHeaderCard";
 import { motion } from "framer-motion";
-import { Search, Filter, Plus, MoreVertical, Contact, Pencil } from "lucide-react";
+import { Search, Filter, Plus, MoreVertical, Contact, Pencil, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,14 +49,16 @@ const fadeUp = {
   animate: { opacity: 1, y: 0 },
 };
 
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
+
 export default function ClientesPage() {
-  const AUTO_REFRESH_MS = 5 * 60 * 1000;
   usePageSEO("Clientes — Área de Testes");
   const { session, loadingSession } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ativo" | "inativo">("all");
   const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
@@ -64,11 +66,12 @@ export default function ClientesPage() {
   const fetchClientes = useCallback(async () => {
     if (!session?.accessToken) {
       setClientes([]);
-      setLoading(false);
+      setInitialLoading(false);
+      setRefreshing(false);
       setError("Sessão ainda não foi inicializada para consultar clientes e projetos relacionados.");
       return;
     }
-    setLoading(true);
+    setRefreshing(true);
     setError(null);
     try {
       const { data: clientesData, error: err } = await (supabaseExt as any)
@@ -97,7 +100,8 @@ export default function ClientesPage() {
       console.error("Erro ao carregar clientes:", e);
       setError(e.message || "Erro desconhecido");
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setRefreshing(false);
     }
   }, [session?.accessToken]);
 
@@ -166,7 +170,7 @@ export default function ClientesPage() {
 
   const getColor = (id: number) => AVATAR_COLORS[id % AVATAR_COLORS.length];
 
-  if (loadingSession || loading) return <PageSkeleton variant="analiticas" />;
+  if (loadingSession || initialLoading) return <PageSkeleton variant="analiticas" />;
 
   if (!session?.accessToken) {
     return (
@@ -182,8 +186,8 @@ export default function ClientesPage() {
   }
 
   return (
-    <div className="w-full min-h-[calc(100vh-3.5rem)]" style={pageBackground}>
-      <div className="mx-auto w-full max-w-[1900px] space-y-6 p-4 sm:p-5 md:p-8">
+    <div data-client-page className="w-full min-h-[calc(100vh-3.5rem)]" style={pageBackground}>
+      <div data-client-content className="mx-auto w-full max-w-[1900px] space-y-6 p-4 sm:p-5 md:p-8">
 
         <PageHeaderCard
           icon={Contact}
@@ -219,10 +223,16 @@ export default function ClientesPage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05]">
                 <Filter className="h-4 w-4 text-primary" />
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-foreground">Filtros</p>
                 <p className="text-xs text-white/35">Busque e refine a lista de clientes.</p>
               </div>
+              {refreshing && (
+                <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.035] px-2.5 py-1 text-[10px] font-medium text-white/45">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Atualizando
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1fr)_220px]">
@@ -261,6 +271,7 @@ export default function ClientesPage() {
 
         {/* ── Client Cards Grid ── */}
         <motion.div
+          data-client-grid
           {...fadeUp}
           transition={{ duration: 0.35, delay: 0.15 }}
           className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3"
@@ -281,7 +292,10 @@ export default function ClientesPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, delay: Math.min(0.02 * i, 0.3) }}
               >
-                <div className="group relative overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 space-y-4 transition-all duration-200 hover:border-white/[0.12] hover:bg-white/[0.035]">
+                <div
+                  data-client-card
+                  className="group relative overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 space-y-4 transition-all duration-200 hover:border-white/[0.12] hover:bg-white/[0.035]"
+                >
 
                   {/* Identity row */}
                   <div className="flex items-center justify-between gap-3">
@@ -314,9 +328,12 @@ export default function ClientesPage() {
                         </p>
                       </div>
                     </div>
-                    <DropdownMenu>
+                    <DropdownMenu modal={false}>
                       <DropdownMenuTrigger asChild>
-                        <button className="rounded-lg p-1.5 text-white/30 transition-colors outline-none hover:bg-white/[0.06] hover:text-white/60 focus:outline-none">
+                        <button
+                          data-client-menu-trigger
+                          className="rounded-lg p-1.5 text-white/30 transition-colors outline-none hover:bg-white/[0.06] hover:text-white/60 focus:outline-none"
+                        >
                           <MoreVertical className="h-3.5 w-3.5" />
                         </button>
                       </DropdownMenuTrigger>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Crown,
   Search,
@@ -195,6 +195,7 @@ export default function Sprint6BonificacaoPage() {
   const bonusReminder = useMemo(() => {
     if (isFullAccessManager) {
       return {
+        id: "full-cycle-review",
         title: "Lembrete: Revisão de Bonificação",
         message: "Revise o ciclo completo de bonificação, confira avaliações, ranking e relatórios antes do fechamento mensal.",
       };
@@ -202,6 +203,7 @@ export default function Sprint6BonificacaoPage() {
 
     if (pendingTeamEvaluationsCount > 0) {
       return {
+        id: "team-evaluations",
         title: "Lembrete: Avaliação da Minha equipe",
         message: `${pendingTeamEvaluationsCount} membro${pendingTeamEvaluationsCount !== 1 ? "s" : ""} da sua equipe ainda ${pendingTeamEvaluationsCount !== 1 ? "precisam" : "precisa"} de avaliação neste período.`,
       };
@@ -209,6 +211,7 @@ export default function Sprint6BonificacaoPage() {
 
     if (pendingEvaluationNotification) {
       return {
+        id: "own-evaluation",
         title: "Lembrete: Avaliação disponível",
         message: "Você recebeu uma avaliação pendente de leitura. Abra sua avaliação para revisar as notas do coordenador.",
       };
@@ -217,9 +220,23 @@ export default function Sprint6BonificacaoPage() {
     return null;
   }, [isFullAccessManager, pendingEvaluationNotification, pendingTeamEvaluationsCount]);
 
+  const bonusReminderStorageKey = bonusReminder
+    ? `ispconsulte:bonus-notice:${session?.userId ?? session?.email ?? "anon"}:${bonusReminder.id}`
+    : null;
+
   useEffect(() => {
-    if (bonusReminder) setBonusNoticeOpen(true);
-  }, [bonusReminder]);
+    if (!bonusReminder || !bonusReminderStorageKey) return;
+    if (typeof window === "undefined") return;
+    if (window.localStorage.getItem(bonusReminderStorageKey) === "dismissed") return;
+    setBonusNoticeOpen(true);
+  }, [bonusReminder, bonusReminderStorageKey]);
+
+  const dismissBonusNotice = useCallback(() => {
+    if (bonusReminderStorageKey && typeof window !== "undefined") {
+      window.localStorage.setItem(bonusReminderStorageKey, "dismissed");
+    }
+    setBonusNoticeOpen(false);
+  }, [bonusReminderStorageKey]);
 
   const availableTabs = useMemo(() => {
     const tabs: string[] = [];
@@ -558,23 +575,30 @@ export default function Sprint6BonificacaoPage() {
         }}
       />
 
-      <Dialog open={bonusNoticeOpen && Boolean(bonusReminder)} onOpenChange={setBonusNoticeOpen}>
-        <DialogContent className="max-w-md rounded-2xl border-blue-500/20 bg-[linear-gradient(145deg,hsl(222_47%_8%/0.98),hsl(235_42%_11%/0.96),hsl(222_47%_8%/0.98))] p-0 shadow-2xl shadow-black/50">
-          <div className="border-b border-white/[0.06] px-5 py-4">
-            <DialogHeader className="space-y-2 text-left">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-400/20 bg-blue-400/10">
-                <FileText className="h-4.5 w-4.5 text-blue-300" />
+      <Dialog
+        open={bonusNoticeOpen && Boolean(bonusReminder)}
+        onOpenChange={(open) => {
+          if (open) setBonusNoticeOpen(true);
+          else dismissBonusNotice();
+        }}
+      >
+        <DialogContent className="max-w-[26rem] overflow-hidden rounded-3xl border-blue-400/20 bg-[radial-gradient(circle_at_top,hsl(217_91%_60%/0.14),transparent_42%),linear-gradient(145deg,hsl(224_45%_9%/0.98),hsl(237_40%_12%/0.98),hsl(222_47%_8%/0.98))] p-0 text-center shadow-2xl shadow-black/55">
+          <div className="relative px-6 pb-5 pt-6">
+            <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-blue-300/45 to-transparent" />
+            <DialogHeader className="items-center space-y-3 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-300/20 bg-blue-400/10 shadow-[0_0_24px_hsl(217_91%_60%/0.14)]">
+                <FileText className="h-6 w-6 text-blue-200" />
               </div>
-              <DialogTitle className="text-base font-bold text-foreground">
+              <DialogTitle className="text-base font-bold text-foreground sm:text-lg">
                 {bonusReminder?.title}
               </DialogTitle>
-              <DialogDescription className="text-xs leading-relaxed text-blue-100/65">
+              <DialogDescription className="max-w-sm text-center text-sm leading-relaxed text-blue-100/68">
                 {bonusReminder?.message}
               </DialogDescription>
             </DialogHeader>
           </div>
-          <div className="flex justify-end px-5 py-4">
-            <Button size="sm" className="rounded-xl px-4" onClick={() => setBonusNoticeOpen(false)}>
+          <div className="border-t border-white/[0.06] bg-white/[0.025] px-6 py-4">
+            <Button size="sm" className="h-10 w-full rounded-xl px-5 font-semibold sm:w-auto" onClick={dismissBonusNotice}>
               Entendi
             </Button>
           </div>

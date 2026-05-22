@@ -46,8 +46,9 @@ const TIPO_HORAS_OPTIONS = [
   { value: "HP", label: "Hora Projeto (HP)" },
 ];
 
-const inputCls = "h-10 text-sm bg-white/[0.04] border-0 ring-0 focus-visible:ring-1 focus-visible:ring-primary/30 rounded-xl placeholder:text-muted-foreground/40 text-foreground";
-const selectTriggerCls = "h-10 text-sm bg-white/[0.04] border-0 ring-0 focus:ring-1 focus:ring-primary/30 rounded-xl text-foreground [&>svg]:text-muted-foreground";
+const inputCls = "h-10 rounded-xl border border-white/[0.06] bg-white/[0.045] text-sm text-foreground shadow-inner shadow-black/10 ring-0 placeholder:text-muted-foreground/35 transition-colors focus-visible:border-primary/35 focus-visible:ring-1 focus-visible:ring-primary/25";
+const numberInputCls = `${inputCls} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`;
+const selectTriggerCls = "h-10 rounded-xl border border-white/[0.06] bg-white/[0.045] text-sm text-foreground shadow-inner shadow-black/10 ring-0 transition-colors focus:border-primary/35 focus:ring-1 focus:ring-primary/25 [&>svg]:text-muted-foreground";
 
 function normalizeProjectType(project: Pick<ProjectRow, "type" | "project" | "name">) {
   const rawType = String(project.type ?? "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -249,39 +250,43 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
   }, [horasContratadas, horasConsumidas]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1rem)] max-w-[720px] max-h-[92vh] overflow-y-auto bg-[linear-gradient(180deg,hsl(222_40%_8%/0.97),hsl(228_38%_8%/0.94))] backdrop-blur-xl border-white/[0.06] rounded-2xl shadow-2xl shadow-black/40 p-0 sm:w-full">
+    <Dialog modal={false} open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[94vh] w-[calc(100vw-1rem)] max-w-[920px] flex-col gap-0 overflow-hidden rounded-2xl border-white/[0.08] bg-[linear-gradient(180deg,hsl(224_42%_9%/0.98),hsl(228_38%_7%/0.96))] p-0 shadow-2xl shadow-black/50 backdrop-blur-xl sm:w-full">
 
         {/* ── Header: compact, balanced ── */}
-        <div className="flex items-center gap-3.5 border-b border-white/[0.06] px-5 py-4 sm:px-6">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.04]">
+        <div className="relative overflow-hidden border-b border-white/[0.08] bg-[linear-gradient(135deg,hsl(234_42%_14%/0.85),hsl(222_38%_9%/0.92)_48%,hsl(200_52%_10%/0.68))] px-5 py-4 sm:px-6 sm:py-5">
+          <div className="pointer-events-none absolute right-16 top-0 h-24 w-24 rounded-full bg-primary/10 blur-3xl" />
+          <div className="relative flex items-center gap-4 pr-8">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.06] shadow-lg shadow-black/25">
             {logoUrl ? (
               <img src={logoUrl} alt={nome || "Logo"} className="h-full w-full object-cover object-center" />
             ) : (
               <Building2 className="h-5 w-5 text-primary" />
             )}
           </div>
-          <DialogHeader className="flex-1 min-w-0 space-y-0">
-            <DialogTitle className="text-base font-semibold tracking-tight text-foreground truncate">
+          <DialogHeader className="min-w-0 flex-1 space-y-1">
+            <DialogTitle className="truncate text-lg font-bold tracking-tight text-foreground">
               {isEdit ? nome || "Editar Cliente" : "Novo Cliente"}
             </DialogTitle>
-            <p className="text-xs text-muted-foreground/60">
+            <p className="text-xs text-muted-foreground/65">
               {isEdit ? "Editar dados e projetos vinculados" : "Preencha os dados para cadastrar"}
             </p>
           </DialogHeader>
           {isEdit && (
-            <Badge variant="outline" className={`shrink-0 mr-2 text-[10px] border-0 ${ativo ? "bg-emerald-500/12 text-emerald-400" : "bg-red-500/12 text-red-400"}`}>
+            <Badge variant="outline" className={`mr-2 shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold ${ativo ? "border-emerald-500/20 bg-emerald-500/12 text-emerald-300" : "border-red-500/20 bg-red-500/12 text-red-300"}`}>
               {ativo ? "Ativo" : "Inativo"}
             </Badge>
           )}
+          </div>
         </div>
 
-        <div className="space-y-5 px-5 py-5 sm:px-6">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 pt-5 pb-6 sm:px-6 sm:pt-6">
 
           {/* ── Section: Identificação ── */}
+          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4 shadow-sm shadow-black/10">
           <SectionLabel>Identificação</SectionLabel>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <FieldWrap label="Nome" required>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FieldWrap label="Nome" required className="sm:col-span-1">
               <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Info Online" className={inputCls} />
             </FieldWrap>
             <FieldWrap label="Cidade">
@@ -299,10 +304,12 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
               <Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://..." className={inputCls} />
             </FieldWrap>
           </div>
+          </div>
 
           {/* ── Section: Horas ── */}
+          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4 shadow-sm shadow-black/10">
           <SectionLabel>Horas</SectionLabel>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <FieldWrap label="Tipo de Horas" required>
               <Select value={tipoHoras} onValueChange={setTipoHoras}>
                 <SelectTrigger className={selectTriggerCls}><SelectValue /></SelectTrigger>
@@ -312,29 +319,30 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
               </Select>
             </FieldWrap>
             <FieldWrap label="Horas Contratadas">
-              <Input type="number" value={horasContratadas} onChange={(e) => setHorasContratadas(e.target.value)} className={inputCls} />
+              <Input type="number" value={horasContratadas} onChange={(e) => setHorasContratadas(e.target.value)} className={numberInputCls} />
             </FieldWrap>
             <FieldWrap label="Horas Consumidas">
-              <Input type="number" value={horasConsumidas} onChange={(e) => setHorasConsumidas(e.target.value)} className={inputCls} />
+              <Input type="number" value={horasConsumidas} onChange={(e) => setHorasConsumidas(e.target.value)} className={numberInputCls} />
             </FieldWrap>
             <FieldWrap label="Horas HG Contratadas">
-              <Input type="number" value={horasHgContratadas} onChange={(e) => setHorasHgContratadas(e.target.value)} placeholder="Opcional" className={inputCls} />
+              <Input type="number" value={horasHgContratadas} onChange={(e) => setHorasHgContratadas(e.target.value)} placeholder="Opcional" className={numberInputCls} />
             </FieldWrap>
           </div>
 
           {/* Consumption bar — inline, compact */}
           {isEdit && (
-            <div className="flex items-center gap-3 rounded-xl bg-white/[0.03] px-4 py-2.5">
-              <span className="text-xs text-muted-foreground/60 shrink-0">Consumo</span>
+            <div className="mt-4 flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.035] px-4 py-3">
+              <span className="shrink-0 text-xs font-medium text-muted-foreground/70">Consumo</span>
               <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-                <div className="h-full rounded-full bg-primary/70" style={{ width: `${consumedPercent}%` }} />
+                <div className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(200_75%_50%))]" style={{ width: `${consumedPercent}%` }} />
               </div>
               <span className="text-xs font-medium text-foreground tabular-nums">{consumedPercent}%</span>
             </div>
           )}
+          </div>
 
           {/* Ativo toggle — compact inline */}
-          <div className="flex items-center gap-3 rounded-xl bg-white/[0.03] px-4 py-2.5">
+          <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.025] px-4 py-3">
             <Checkbox checked={ativo} onCheckedChange={(v) => setAtivo(!!v)} id="ativo-check" className="border-white/[0.1] data-[state=checked]:bg-primary data-[state=checked]:border-primary" />
             <label htmlFor="ativo-check" className="cursor-pointer select-none text-sm text-foreground flex-1">
               Cliente {ativo ? "ativo" : "inativo"}
@@ -352,9 +360,9 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
             </div>
           </SectionLabel>
 
-          <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="space-y-3 rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4 shadow-sm shadow-black/10">
             {/* Search + actions row */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/40" />
                 <Input
@@ -364,23 +372,25 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
                   className={`${inputCls} pl-9 h-9 text-xs`}
                 />
               </div>
-              <Button
-                type="button" variant="ghost" size="sm"
-                className="h-9 px-3 text-[11px] text-muted-foreground/60 hover:text-foreground shrink-0"
-                onClick={() => {
-                  const ids = suggestedProjects.map((p) => p.id);
-                  setLinkedProjectIds((prev) => { const next = new Set(prev); ids.forEach((id) => next.add(id)); return next; });
-                }}
-              >
-                Todos
-              </Button>
-              <Button
-                type="button" variant="ghost" size="sm"
-                className="h-9 px-3 text-[11px] text-muted-foreground/60 hover:text-foreground shrink-0"
-                onClick={() => setLinkedProjectIds(new Set())}
-              >
-                Limpar
-              </Button>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  type="button" variant="ghost" size="sm"
+                  className="h-9 px-3 text-[11px] text-muted-foreground/60 hover:text-foreground"
+                  onClick={() => {
+                    const ids = suggestedProjects.map((p) => p.id);
+                    setLinkedProjectIds((prev) => { const next = new Set(prev); ids.forEach((id) => next.add(id)); return next; });
+                  }}
+                >
+                  Todos
+                </Button>
+                <Button
+                  type="button" variant="ghost" size="sm"
+                  className="h-9 px-3 text-[11px] text-muted-foreground/60 hover:text-foreground"
+                  onClick={() => setLinkedProjectIds(new Set())}
+                >
+                  Limpar
+                </Button>
+              </div>
             </div>
 
             {loadingProjects ? (
@@ -388,9 +398,9 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando...
               </div>
             ) : (
-              <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px]">
                 {/* Available projects */}
-                <ScrollArea className="h-[220px] rounded-lg border border-white/[0.04] bg-white/[0.02] lg:h-[240px]">
+                <ScrollArea className="h-[250px] rounded-xl border border-white/[0.05] bg-white/[0.02] xl:h-[280px]">
                   {suggestedProjects.length === 0 ? (
                     <p className="text-center text-xs text-muted-foreground py-8">Nenhum projeto encontrado.</p>
                   ) : (
@@ -427,7 +437,7 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
                 </ScrollArea>
 
                 {/* Selected summary */}
-                <ScrollArea className="h-[220px] rounded-lg border border-white/[0.06] bg-white/[0.03] lg:h-[240px]">
+                <ScrollArea className="h-[210px] rounded-xl border border-white/[0.06] bg-white/[0.035] xl:h-[280px]">
                   <div className="p-3">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 mb-2.5">Selecionados</p>
                     {selectedProjects.length === 0 ? (
@@ -455,7 +465,7 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
           </div>
 
           {/* ── Footer actions ── */}
-          <div className="flex flex-col gap-2 border-t border-white/[0.06] pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="-mx-5 mt-6 flex flex-col gap-2 border-t border-white/[0.06] bg-[hsl(228_38%_7%/0.92)] px-5 pt-4 pb-1 backdrop-blur-xl sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             {isEdit ? (
               <Button
                 type="button"
@@ -494,9 +504,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function FieldWrap({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function FieldWrap({ label, required, children, className = "" }: { label: string; required?: boolean; children: React.ReactNode; className?: string }) {
   return (
-    <div className="space-y-1.5">
+    <div className={`space-y-1.5 ${className}`}>
       <Label className="text-[11px] text-muted-foreground/60 font-medium uppercase tracking-wider">
         {label}{required && <span className="text-primary ml-0.5">*</span>}
       </Label>
