@@ -69,7 +69,7 @@ export function Podium({ consultants, hideMonetary = false }: { consultants: Bon
             </p>
             {!hideMonetary && consultant.payout != null && <p className={`mt-0.5 text-xs font-bold ${palette.accent}`}>{money(consultant.payout)}</p>}
             <p className="text-[10px] text-muted-foreground">
-              {consultant.coordinatorScore != null ? `${consultant.score}%` : "Pendente"}
+              {consultant.scoreSource !== "none" ? `${consultant.score}%` : "Pendente"}
             </p>
             <div
               className={`mt-2.5 flex w-20 flex-col items-center rounded-t-2xl border bg-gradient-to-b pt-3 sm:w-28 ${palette.barBg} ${palette.barBorder} ${palette.glow}`}

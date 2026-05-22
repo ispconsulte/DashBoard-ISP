@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { usePageSEO } from "@/hooks/usePageSEO";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
@@ -73,6 +74,7 @@ export default function Sprint6BonificacaoPage() {
   const [evaluationConsultant, setEvaluationConsultant] = useState<BonusConsultantCard | null>(null);
   const [reportConsultant, setReportConsultant] = useState<BonusConsultantCard | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [bonusNoticeOpen, setBonusNoticeOpen] = useState(false);
   const bonus = useBonusRealData(period, session?.accessToken, refreshKey);
   const sharedTasks = useSharedTasks();
   const allTasks = sharedTasks?.tasks ?? [];
@@ -83,8 +85,6 @@ export default function Sprint6BonificacaoPage() {
       setHasLoadedOnce(true);
     }
   }, [bonus.loading, hasLoadedOnce]);
-
-  const permissionRole = session?.bonusRole ?? "consultor";
 
   // Payment manager: configured in bonus_settings table only — no role/name fallback
   const isFullAccessManager = session?.isPaymentManager === true;
@@ -97,8 +97,6 @@ export default function Sprint6BonificacaoPage() {
   const canSeeAllEvaluations = isFullAccessManager;
   // Monetary (payout values): payment manager only — never exposed by role alone
   const hideMonetary = !isFullAccessManager;
-  // PDF reminder: payment manager or anyone who manages a team
-  const showPdfReminder = isFullAccessManager || canManageTeam;
 
   const visibleConsultants = useMemo(() => {
     if (canSeeAllEvaluations) return bonus.consultants;
@@ -139,6 +137,11 @@ export default function Sprint6BonificacaoPage() {
     );
   }, [bonus.consultants, canManageTeam, session?.coordinatorOf]);
 
+  const pendingTeamEvaluationsCount = useMemo(
+    () => subordinateConsultants.filter((consultant) => consultant.manualEvaluation.status !== "submitted").length,
+    [subordinateConsultants],
+  );
+
   const filteredConsultants = useMemo(() => {
     let result = rankingConsultants;
     const term = normalizeName(search);
@@ -158,14 +161,17 @@ export default function Sprint6BonificacaoPage() {
     return result;
   }, [rankingConsultants, search, evaluationFilter]);
 
-  const summaryConsultants = canSeeRanking ? rankingConsultants : myConsultant ? [myConsultant] : [];
-  const topPerformer = rankingConsultants.find((consultant) => consultant.coordinatorScore != null) ?? null;
+  const summaryConsultants = useMemo(
+    () => canSeeRanking ? rankingConsultants : myConsultant ? [myConsultant] : [],
+    [canSeeRanking, myConsultant, rankingConsultants],
+  );
+  const topPerformer = rankingConsultants.find((consultant) => consultant.scoreSource !== "none") ?? null;
   const needsAttention = useMemo(
-    () => rankingConsultants.filter((consultant) => consultant.coordinatorScore != null && consultant.score < 60).slice(0, 3),
+    () => rankingConsultants.filter((consultant) => consultant.scoreSource !== "none" && consultant.score < 60).slice(0, 3),
     [rankingConsultants],
   );
   const trendingUp = useMemo(
-    () => rankingConsultants.filter((consultant) => consultant.coordinatorScore != null && consultant.score >= 75 && (consultant.onTimeRate == null || consultant.onTimeRate >= 60)).slice(0, 3),
+    () => rankingConsultants.filter((consultant) => consultant.scoreSource !== "none" && consultant.score >= 75 && (consultant.onTimeRate == null || consultant.onTimeRate >= 60)).slice(0, 3),
     [rankingConsultants],
   );
 
@@ -184,13 +190,45 @@ export default function Sprint6BonificacaoPage() {
   const completionRate = totalTasks > 0 ? Math.round((totalCompletedTasks / totalTasks) * 100) : 0;
   const hasActiveRankingFilters = search.trim().length > 0 || evaluationFilter !== "all";
 
-  // Tabs are only used for payment manager's global view (ranking + all-evaluations read-only)
+  const hasOwnEvaluationTab = Boolean(myConsultant);
+  const hasTeamTab = subordinateConsultants.length > 0;
+  const bonusReminder = useMemo(() => {
+    if (isFullAccessManager) {
+      return {
+        title: "Lembrete: Revisão de Bonificação",
+        message: "Revise o ciclo completo de bonificação, confira avaliações, ranking e relatórios antes do fechamento mensal.",
+      };
+    }
+
+    if (pendingTeamEvaluationsCount > 0) {
+      return {
+        title: "Lembrete: Avaliação da Minha equipe",
+        message: `${pendingTeamEvaluationsCount} membro${pendingTeamEvaluationsCount !== 1 ? "s" : ""} da sua equipe ainda ${pendingTeamEvaluationsCount !== 1 ? "precisam" : "precisa"} de avaliação neste período.`,
+      };
+    }
+
+    if (pendingEvaluationNotification) {
+      return {
+        title: "Lembrete: Avaliação disponível",
+        message: "Você recebeu uma avaliação pendente de leitura. Abra sua avaliação para revisar as notas do coordenador.",
+      };
+    }
+
+    return null;
+  }, [isFullAccessManager, pendingEvaluationNotification, pendingTeamEvaluationsCount]);
+
+  useEffect(() => {
+    if (bonusReminder) setBonusNoticeOpen(true);
+  }, [bonusReminder]);
+
   const availableTabs = useMemo(() => {
     const tabs: string[] = [];
     if (canSeeRanking) tabs.push("ranking");
     if (canSeeAllEvaluations) tabs.push("all-evaluations");
+    if (hasOwnEvaluationTab) tabs.push("own-evaluation");
+    if (hasTeamTab) tabs.push("my-team");
     return tabs;
-  }, [canSeeAllEvaluations, canSeeRanking]);
+  }, [canSeeAllEvaluations, canSeeRanking, hasOwnEvaluationTab, hasTeamTab]);
 
   useEffect(() => {
     if (availableTabs.length === 0) return;
@@ -237,7 +275,7 @@ export default function Sprint6BonificacaoPage() {
           <div
             className="relative overflow-hidden rounded-2xl border border-white/[0.07]"
             style={{
-              background: "linear-gradient(135deg, hsl(260 30% 11%) 0%, hsl(262 35% 15%) 40%, hsl(270 25% 12%) 100%)",
+              background: "linear-gradient(135deg, hsl(224 48% 10%) 0%, hsl(244 46% 15%) 46%, hsl(38 50% 12%) 100%)",
             }}
           >
             <div className="relative flex flex-col gap-2 p-4 sm:p-5 md:px-6 md:py-5">
@@ -346,21 +384,6 @@ export default function Sprint6BonificacaoPage() {
             </div>
           </div>
 
-          {showPdfReminder && (
-            <div className="rounded-xl border border-blue-500/15 bg-blue-500/[0.04] px-5 py-4 flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 border border-blue-500/15">
-                <FileText className="h-4.5 w-4.5 text-blue-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-blue-200">Lembrete: Revisão de Bonificação</p>
-                <p className="mt-1 text-xs text-blue-200/60 leading-relaxed">
-                  Não esqueça de revisar o sistema de bonificação e enviar os relatórios em PDF ao final deste mês.
-                  Verifique as notas e avaliações de cada membro da equipe antes do fechamento.
-                </p>
-              </div>
-            </div>
-          )}
-
           {bonus.error && !bonus.loading && (
             <div className="rounded-xl border border-amber-500/15 bg-amber-500/[0.04] px-5 py-4 text-sm text-amber-200 space-y-1">
               <p className="font-semibold">Parece que encontramos um problema</p>
@@ -379,14 +402,14 @@ export default function Sprint6BonificacaoPage() {
 
           <div className="space-y-3">
             {summaryConsultants.length > 0 && (
-              <div className={`grid gap-2.5 ${canSeeRanking ? (!hideMonetary ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3") : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3"}`}>
+              <div className={`grid min-w-0 gap-2.5 sm:gap-3 ${canSeeRanking ? (!hideMonetary ? "grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3") : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"}`}>
                 {[
                   canSeeRanking && {
                     label: "Score médio",
-                    value: summaryConsultants.some((consultant) => consultant.coordinatorScore != null)
-                      ? `${Math.round(summaryConsultants.reduce((sum, consultant) => sum + (consultant.coordinatorScore ?? 0), 0) / summaryConsultants.filter((consultant) => consultant.coordinatorScore != null).length)}%`
+                    value: summaryConsultants.some((consultant) => consultant.scoreSource !== "none")
+                      ? `${Math.round(summaryConsultants.reduce((sum, consultant) => sum + (consultant.scoreSource !== "none" ? consultant.score : 0), 0) / summaryConsultants.filter((consultant) => consultant.scoreSource !== "none").length)}%`
                       : "Pendente",
-                    sub: `nota do coordenador · ${periodLabel(period)}`,
+                    sub: `score registrado · ${periodLabel(period)}`,
                     color: "border-primary/12 bg-primary/[0.04]",
                     valueColor: "text-primary",
                   },
@@ -395,7 +418,7 @@ export default function Sprint6BonificacaoPage() {
                     value: summaryConsultants.some((consultant) => consultant.payout != null)
                       ? money(summaryConsultants.reduce((sum, consultant) => sum + (consultant.payout ?? 0), 0))
                       : "Pendente",
-                    sub: `estimativa por nota do coordenador · ${periodLabel(period)}`,
+                    sub: `payout registrado · ${periodLabel(period)}`,
                     color: "border-emerald-500/12 bg-emerald-500/[0.04]",
                     valueColor: "text-emerald-400",
                   },
@@ -415,115 +438,99 @@ export default function Sprint6BonificacaoPage() {
                   },
                   !canSeeRanking && {
                     label: "Meu Score",
-                    value: myConsultant?.coordinatorScore != null ? `${myConsultant.score}%` : "Pendente",
+                    value: myConsultant?.scoreSource !== "none" ? `${myConsultant?.score}%` : "Pendente",
                     sub: periodLabel(period),
                     color: "border-primary/12 bg-primary/[0.04]",
                     valueColor: "text-primary",
                   },
                 ].filter(Boolean).map((item: any) => (
-                  <div key={item.label} className={`rounded-xl border p-3.5 ${item.color}`}>
+                  <div key={item.label} className={`min-w-0 rounded-xl border p-3 sm:p-3.5 ${item.color}`}>
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">{item.label}</p>
-                    <p className={`mt-1.5 text-lg font-bold leading-none ${item.valueColor}`}>{item.value}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground/50">{item.sub}</p>
+                    <p className={`mt-1.5 text-lg font-bold leading-tight break-words ${item.valueColor}`}>{item.value}</p>
+                    <p className="mt-1 text-[11px] leading-snug text-muted-foreground/50">{item.sub}</p>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* ── Minha Avaliação ── always shown when user has own data ── */}
-            {myConsultant && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.07]">
-                    <UserRound className="h-4 w-4 text-primary/70" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-foreground">Minha avaliação</p>
-                    <p className="text-[11px] text-muted-foreground/45 mt-0.5">
-                      {myConsultant.manualEvaluation.status === "submitted"
-                        ? "Nota enviada pelo coordenador"
-                        : myConsultant.manualEvaluation.status === "draft"
-                        ? "Rascunho em andamento"
-                        : "Pendente de nota do coordenador"}
-                    </p>
-                  </div>
-                </div>
-                {renderOwnContent()}
-              </div>
-            )}
+            {availableTabs.length > 0 ? (
+              <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="min-w-0 space-y-4">
+                <TabsList className="grid h-auto w-full grid-cols-1 gap-1 rounded-xl border border-white/[0.08] bg-[linear-gradient(135deg,hsl(224_42%_12%/0.72),hsl(236_38%_13%/0.58))] p-1 shadow-lg shadow-black/10 min-[430px]:grid-cols-2 lg:inline-flex lg:w-auto lg:flex-wrap lg:justify-start">
+                  {canSeeRanking && (
+                    <TabsTrigger
+                      value="ranking"
+                      className="min-w-0 justify-center rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60 sm:px-4"
+                    >
+                      <Crown className="h-3.5 w-3.5 mr-1.5" />
+                      Ranking Geral
+                    </TabsTrigger>
+                  )}
+                  {canSeeAllEvaluations && (
+                    <TabsTrigger
+                      value="all-evaluations"
+                      className="min-w-0 justify-center rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60 sm:px-4"
+                    >
+                      <Users className="h-3.5 w-3.5 mr-1.5" />
+                      Todas as Avaliações
+                    </TabsTrigger>
+                  )}
+                  {hasOwnEvaluationTab && (
+                    <TabsTrigger
+                      value="own-evaluation"
+                      className="min-w-0 justify-center rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60 sm:px-4"
+                    >
+                      <UserRound className="h-3.5 w-3.5 mr-1.5" />
+                      Minha avaliação
+                    </TabsTrigger>
+                  )}
+                  {hasTeamTab && (
+                    <TabsTrigger
+                      value="my-team"
+                      className="min-w-0 justify-center rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60 sm:px-4"
+                    >
+                      <Users className="h-3.5 w-3.5 mr-1.5" />
+                      Minha equipe
+                    </TabsTrigger>
+                  )}
+                </TabsList>
 
-            {/* ── Equipe sob minha responsabilidade ── coordinators only ── */}
-            {canManageTeam && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/[0.07]">
-                    <Users className="h-4 w-4 text-amber-400/70" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-foreground">Equipe sob minha responsabilidade</p>
-                    <p className="text-[11px] text-muted-foreground/45 mt-0.5">
-                      {subordinateConsultants.length} membro{subordinateConsultants.length !== 1 ? "s" : ""} · avalie diretamente nesta seção
-                    </p>
-                  </div>
-                </div>
-                <BonusTeamTab
-                  subordinates={subordinateConsultants}
-                  session={session}
-                  periodLabel={periodLabel(period)}
-                  onEvaluate={setEvaluationConsultant}
-                  onSendReport={setReportConsultant}
-                />
-              </div>
-            )}
-
-            {/* ── Ranking / global view ── payment manager read-only tabs ── */}
-            {canSeeRanking && (
-              availableTabs.length > 1 ? (
-                <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="space-y-4">
-                  <TabsList className="h-auto rounded-xl bg-card/40 border border-border/10 p-1 flex flex-wrap justify-start">
-                    {canSeeRanking && (
-                      <TabsTrigger
-                        value="ranking"
-                        className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60"
-                      >
-                        <Crown className="h-3.5 w-3.5 mr-1.5" />
-                        Ranking Geral
-                      </TabsTrigger>
-                    )}
-                    {canSeeAllEvaluations && (
-                      <TabsTrigger
-                        value="all-evaluations"
-                        className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60"
-                      >
-                        <Users className="h-3.5 w-3.5 mr-1.5" />
-                        Todas as Avaliações
-                      </TabsTrigger>
-                    )}
-                  </TabsList>
-
+                {canSeeRanking && (
                   <TabsContent value="ranking" className="mt-0 space-y-3">
                     {renderRankingContent()}
                   </TabsContent>
+                )}
 
-                  {canSeeAllEvaluations && (
-                    <TabsContent value="all-evaluations" className="mt-0">
-                      <BonusTeamTab
-                        subordinates={bonus.consultants}
-                        session={session}
-                        periodLabel={periodLabel(period)}
-                        onEvaluate={setEvaluationConsultant}
-                        onSendReport={setReportConsultant}
-                      />
-                    </TabsContent>
-                  )}
-                </Tabs>
-              ) : (
-                <div className="space-y-3">{renderRankingContent()}</div>
-              )
-            )}
+                {canSeeAllEvaluations && (
+                  <TabsContent value="all-evaluations" className="mt-0">
+                    <BonusTeamTab
+                      subordinates={bonus.consultants}
+                      session={session}
+                      periodLabel={periodLabel(period)}
+                      onEvaluate={setEvaluationConsultant}
+                      onSendReport={setReportConsultant}
+                    />
+                  </TabsContent>
+                )}
 
-            {/* ── Fallback: no team, no own data ── */}
-            {!myConsultant && !canManageTeam && !canSeeRanking && (
+                {hasOwnEvaluationTab && (
+                  <TabsContent value="own-evaluation" className="mt-0 space-y-3">
+                    {renderOwnContent()}
+                  </TabsContent>
+                )}
+
+                {hasTeamTab && (
+                  <TabsContent value="my-team" className="mt-0">
+                    <BonusTeamTab
+                      subordinates={subordinateConsultants}
+                      session={session}
+                      periodLabel={periodLabel(period)}
+                      onEvaluate={setEvaluationConsultant}
+                      onSendReport={setReportConsultant}
+                    />
+                  </TabsContent>
+                )}
+              </Tabs>
+            ) : (
               <div className="space-y-3">{renderOwnContent()}</div>
             )}
           </div>
@@ -550,6 +557,29 @@ export default function Sprint6BonificacaoPage() {
           if (!open) setReportConsultant(null);
         }}
       />
+
+      <Dialog open={bonusNoticeOpen && Boolean(bonusReminder)} onOpenChange={setBonusNoticeOpen}>
+        <DialogContent className="max-w-md rounded-2xl border-blue-500/20 bg-[linear-gradient(145deg,hsl(222_47%_8%/0.98),hsl(235_42%_11%/0.96),hsl(222_47%_8%/0.98))] p-0 shadow-2xl shadow-black/50">
+          <div className="border-b border-white/[0.06] px-5 py-4">
+            <DialogHeader className="space-y-2 text-left">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-400/20 bg-blue-400/10">
+                <FileText className="h-4.5 w-4.5 text-blue-300" />
+              </div>
+              <DialogTitle className="text-base font-bold text-foreground">
+                {bonusReminder?.title}
+              </DialogTitle>
+              <DialogDescription className="text-xs leading-relaxed text-blue-100/65">
+                {bonusReminder?.message}
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+          <div className="flex justify-end px-5 py-4">
+            <Button size="sm" className="rounded-xl px-4" onClick={() => setBonusNoticeOpen(false)}>
+              Entendi
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
@@ -622,7 +652,7 @@ export default function Sprint6BonificacaoPage() {
               : "Aguardando dados de consultores"
           }
         >
-          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
             <SectionCard title="Quem está mandando bem" icon={TrendingUp} compact badge={trendingUp.length > 0 ? <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 rounded-md px-1.5 py-0.5">{trendingUp.length}</span> : undefined}>
               {trendingUp.length > 0 ? (
                 <div className="space-y-2">
@@ -727,19 +757,19 @@ export default function Sprint6BonificacaoPage() {
             badge={counterBadge ?? (rankingConsultants.length > 0 ? <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-md px-1.5 py-0.5">{rankingConsultants.length}</span> : undefined)}
           >
             <div className="space-y-4">
-              <div className="grid gap-2.5 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-center">
+              <div className="grid min-w-0 gap-2.5 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-center">
                 <div className="relative w-full">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
                   <Input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Buscar consultor..."
-                    className="h-10 rounded-xl border-border/15 bg-card/40 pl-10 text-sm"
+                    className="h-10 min-w-0 rounded-xl border-border/15 bg-card/40 pl-10 text-sm"
                   />
                 </div>
 
                 <Select value={evaluationFilter} onValueChange={(v) => setEvaluationFilter(v as "all" | "evaluated" | "pending")}>
-                  <SelectTrigger className="h-10 rounded-xl border-border/15 bg-card/40 text-sm text-foreground hover:bg-card/55 focus:ring-0 focus:ring-offset-0 focus:border-primary/30">
+                  <SelectTrigger className="h-10 min-w-0 rounded-xl border-border/15 bg-card/40 text-sm text-foreground hover:bg-card/55 focus:ring-0 focus:ring-offset-0 focus:border-primary/30">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border border-border/15 bg-[hsl(222_47%_11%)] shadow-2xl shadow-black/40 z-50">
@@ -756,7 +786,7 @@ export default function Sprint6BonificacaoPage() {
                       setSearch("");
                       setEvaluationFilter("all");
                     }}
-                    className="h-10 rounded-xl border border-border/15 bg-card/30 px-4 text-sm font-semibold text-foreground/80 transition-colors hover:bg-card/50"
+                    className="h-10 rounded-xl border border-border/15 bg-card/30 px-4 text-sm font-semibold text-foreground/80 transition-colors hover:bg-card/50 lg:w-auto"
                   >
                     Limpar filtros
                   </button>

@@ -49,22 +49,22 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* Search */}
       {subordinates.length > 3 && (
-        <div className="relative w-full max-w-xs">
+        <div className="relative w-full sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar na equipe..."
-            className="h-10 rounded-xl border-border/15 bg-card/40 pl-10 text-sm"
+            className="h-10 min-w-0 rounded-xl border-border/15 bg-card/40 pl-10 text-sm"
           />
         </div>
       )}
 
       {/* Summary cards */}
-      <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-3">
+      <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
         <div className="rounded-xl border border-primary/12 bg-primary/[0.04] p-3.5">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">Membros da equipe</p>
           <p className="mt-1.5 text-lg font-bold leading-none text-primary">{subordinates.length}</p>
@@ -94,6 +94,7 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
           const isExpanded = expandedId === consultant.userId;
           const evalStatus = consultant.manualEvaluation.status;
           const hasCoordinatorScore = consultant.coordinatorScore != null;
+          const hasDisplayScore = consultant.scoreSource !== "none";
 
           return (
             <div
@@ -104,14 +105,14 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
               <button
                 type="button"
                 onClick={() => setExpandedId(isExpanded ? null : consultant.userId)}
-                className="flex w-full items-center gap-3 p-4 text-left"
+                className="flex w-full items-center gap-2 p-3 text-left sm:gap-3 sm:p-4"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/15 text-sm font-bold text-primary">
                   {consultant.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="truncate text-sm font-bold text-foreground">{consultant.name}</p>
+                    <p className="min-w-0 truncate text-xs font-bold text-foreground sm:text-sm">{consultant.name}</p>
                     {["senior", "pleno", "junior"].includes(consultant.level) && (
                       <Badge variant="outline" className={`text-[10px] px-1.5 py-0.5 ${levelColor(consultant.level)}`}>
                         {levelLabel(consultant.level)}
@@ -128,17 +129,17 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
                       </Badge>
                     )}
                   </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground/50">
+                  <div className="mt-0.5 hidden items-center gap-2 text-[11px] text-muted-foreground/50 sm:flex">
                     {consultant.completedTasks > 0 && <span>{consultant.completedTasks} de {consultant.totalTasks} tarefas concluídas</span>}
                     {consultant.hoursTracked > 0 && <><span className="text-muted-foreground/20">·</span><span>{formatHoursHuman(consultant.hoursTracked)} registradas</span></>}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className={`rounded-xl border px-3 py-1.5 text-center ${hasCoordinatorScore ? scoreBg(consultant.score) : "border-border/15 bg-card/25"}`}>
-                    <p className={`text-sm font-bold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-muted-foreground/40"}`}>
-                      {hasCoordinatorScore ? `${consultant.score}%` : "—"}
+                <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                  <div className={`max-w-[6.5rem] rounded-xl border px-2 py-1.5 text-center sm:max-w-none sm:px-3 ${hasDisplayScore ? scoreBg(consultant.score) : "border-border/15 bg-card/25"}`}>
+                    <p className={`text-sm font-bold ${hasDisplayScore ? scoreColor(consultant.score) : "text-muted-foreground/40"}`}>
+                      {hasDisplayScore ? `${consultant.score}%` : "—"}
                     </p>
-                    <p className="text-[9px] text-muted-foreground/35 mt-0.5 leading-none">nota coord.</p>
+                    <p className="mt-0.5 hidden text-[9px] leading-none text-muted-foreground/35 min-[430px]:block">{hasCoordinatorScore ? "nota coord." : hasDisplayScore ? "score salvo" : "sem score"}</p>
                   </div>
                   <ChevronDown className={`h-4 w-4 text-muted-foreground/50 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                 </div>
@@ -154,19 +155,20 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
                     transition={{ duration: 0.25 }}
                     className="overflow-hidden"
                   >
-                    <div className="border-t border-border/10 px-4 pb-4 pt-4 space-y-4">
+                    <div className="space-y-4 border-t border-border/10 px-3 pb-4 pt-4 sm:px-4">
                       {/* Metrics */}
-                      <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
+                      <div className="grid min-w-0 grid-cols-1 gap-2 min-[430px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                         {[
                           { label: "Nota do coordenador", value: hasCoordinatorScore ? `${consultant.score}%` : null, placeholder: "Pendente de nota" },
+                          { label: "Score registrado", value: !hasCoordinatorScore && hasDisplayScore ? `${consultant.score}%` : null, placeholder: null },
                           { label: "Score automático", value: `${consultant.automaticScore}%`, placeholder: null },
                           { label: "No Prazo", value: consultant.onTimeRate != null ? `${Math.round(consultant.onTimeRate)}%` : null, placeholder: null },
                           { label: "Utilização", value: consultant.utilization != null ? `${Math.round(consultant.utilization)}%` : null, placeholder: null },
                           { label: "Projetos", value: consultant.projectCount > 0 ? String(consultant.projectCount) : null, placeholder: null },
                         ].filter((m) => m.value != null || m.placeholder != null).map((m) => (
-                          <div key={m.label} className="rounded-xl border border-border/8 bg-card/20 p-3 text-center">
+                          <div key={m.label} className="min-w-0 rounded-xl border border-border/8 bg-card/20 p-3 text-center">
                             <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50">{m.label}</p>
-                            <p className={`mt-1 text-base font-bold ${m.value != null ? "text-foreground" : "text-muted-foreground/35"}`}>
+                            <p className={`mt-1 break-words text-base font-bold leading-tight ${m.value != null ? "text-foreground" : "text-muted-foreground/35"}`}>
                               {m.value ?? m.placeholder}
                             </p>
                           </div>
@@ -175,7 +177,7 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
 
                       {/* Manual eval summary */}
                       {consultant.manualEvaluation.hasManualEvaluation && (
-                        <div className="grid gap-2 grid-cols-1 sm:grid-cols-3">
+                        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                           {[
                             { label: "Hard Skill Manual", value: consultant.manualEvaluation.hardManualScore },
                             { label: "Soft Skills", value: consultant.manualEvaluation.softSkillScore },
@@ -190,11 +192,11 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
                       )}
 
                       {/* Action buttons */}
-                      <div className="flex flex-wrap gap-2.5">
+                      <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
                         <button
                           type="button"
                           onClick={() => onEvaluate(consultant)}
-                          className="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/8 px-5 py-2.5 text-sm font-semibold text-primary transition-all hover:border-primary/35 hover:bg-primary/12"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/8 px-5 py-2.5 text-sm font-semibold text-primary transition-all hover:border-primary/35 hover:bg-primary/12 sm:w-auto"
                         >
                           <ClipboardCheck className="h-4 w-4" />
                           {evalStatus === "submitted" ? "Revisar Avaliação" : evalStatus === "draft" ? "Continuar Avaliação" : "Avaliar"}
@@ -202,7 +204,7 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
                         <button
                           type="button"
                           onClick={() => onSendReport(consultant)}
-                          className="inline-flex items-center gap-2 rounded-xl border border-border/16 bg-card/35 px-5 py-2.5 text-sm font-semibold text-foreground/75 transition-all hover:border-primary/18 hover:bg-card/55"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border/16 bg-card/35 px-5 py-2.5 text-sm font-semibold text-foreground/75 transition-all hover:border-primary/18 hover:bg-card/55 sm:w-auto"
                         >
                           Enviar Relatório
                         </button>

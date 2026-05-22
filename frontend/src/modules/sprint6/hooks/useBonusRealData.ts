@@ -81,6 +81,7 @@ export interface BonusConsultantCard {
   coordinatorScore: number | null;
   automaticScore: number;
   score: number;
+  scoreSource: "coordinator" | "snapshot" | "none";
   payout: number | null;
   maxBonus: number;
   hoursTracked: number;
@@ -168,6 +169,14 @@ const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, v
 function average(values: number[]) {
   if (!values.length) return null;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function quarterKey(date: Date) {
+  return `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}`;
 }
 
 function resolveStatus(statusRaw: string | number | undefined, deadline: Date | null): TaskStatusKey {
@@ -550,6 +559,23 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
     return map;
   }, [persistence.evaluations]);
 
+  const latestConsultantSnapshotByUserId = useMemo(() => {
+    const map = new Map<string, BonusScoreSnapshotRow>();
+    persistence.consultantSnapshots.forEach((snapshot) => {
+      if (!snapshot.user_id) return;
+      const userId = String(snapshot.user_id);
+      const current = map.get(userId);
+      if (
+        !current ||
+        snapshot.period_key.localeCompare(current.period_key) > 0 ||
+        (snapshot.period_key === current.period_key && snapshot.calculated_at.localeCompare(current.calculated_at) > 0)
+      ) {
+        map.set(userId, snapshot);
+      }
+    });
+    return map;
+  }, [persistence.consultantSnapshots]);
+
   const consultantCards = useMemo<BonusConsultantCard[]>(() => {
     const taskMap = new Map<string, {
       consultantKey: string;
@@ -703,7 +729,13 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           peopleSkillPayout: getBonusCategoryPayoutFromScore("people_skill", baseManualEvaluation.peopleSkillScore, capacityMeta?.seniority ?? matchedUser.seniority ?? null, configPayoutMap),
         };
         const coordinatorScore = coordinatorScoreFromEvaluation(manualEvaluation);
-        const payout = coordinatorScore != null ? Math.round((coordinatorScore / 100) * maxBonus) : null;
+        const persistedSnapshot = latestConsultantSnapshotByUserId.get(matchedUser.id) ?? null;
+        const persistedScore = persistedSnapshot?.score != null ? Math.round(Number(persistedSnapshot.score)) : null;
+        const persistedPayout = persistedSnapshot?.payout_amount != null ? Math.round(Number(persistedSnapshot.payout_amount)) : null;
+        const persistedMaxBonus = persistedSnapshot?.max_payout_amount != null ? Math.round(Number(persistedSnapshot.max_payout_amount)) : null;
+        const scoreSource = coordinatorScore != null ? "coordinator" : persistedScore != null ? "snapshot" : "none";
+        const displayScore = coordinatorScore ?? persistedScore ?? 0;
+        const payout = coordinatorScore != null ? Math.round((coordinatorScore / 100) * maxBonus) : persistedPayout;
 
         const card: BonusConsultantCard = {
           userId: matchedUser.id,
@@ -715,9 +747,10 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           coordinatorName,
           coordinatorScore,
           automaticScore: Math.round(automaticScore.score * 100),
-          score: coordinatorScore ?? 0,
+          score: displayScore,
+          scoreSource,
           payout,
-          maxBonus,
+          maxBonus: persistedMaxBonus ?? maxBonus,
           hoursTracked: Math.round(acc.hoursTracked * 10) / 10,
           totalTasks: acc.totalTasks,
           completedTasks: acc.completedTasks,
@@ -734,7 +767,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       })
       .filter((value): value is NonNullable<typeof value> => value != null)
       .sort((a, b) => (b.score - a.score) || ((b.payout ?? -1) - (a.payout ?? -1)) || b.hoursTracked - a.hoursTracked);
-  }, [tasks.tasks, elapsed.times, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, coordinatorBySubordinateId, eligibleUserIds, config, configPayoutMap]);
+  }, [tasks.tasks, elapsed.times, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, latestConsultantSnapshotByUserId, coordinatorBySubordinateId, eligibleUserIds, config, configPayoutMap]);
 
   const projectSpotlights = useMemo<BonusProjectSpotlight[]>(() => {
     const roiProjects = new Map<number, { hoursUsed: number; roi: number | null; name: string }>();

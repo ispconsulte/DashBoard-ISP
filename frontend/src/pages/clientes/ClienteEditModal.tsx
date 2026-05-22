@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabaseExt } from "@/lib/supabase";
 import { toast } from "sonner";
-import { Save, Loader2, Search, FolderOpen, Building2, X } from "lucide-react";
+import { Save, Loader2, Search, FolderOpen, Building2, X, Trash2 } from "lucide-react";
 
 interface Cliente {
   cliente_id: number;
@@ -206,6 +206,36 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
     } catch (e: any) {
       console.error("Erro ao salvar cliente:", e);
       toast.error(e.message || "Erro ao salvar cliente e projetos.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!cliente) return;
+    const confirmed = window.confirm(`Excluir o cliente "${cliente.nome}"? Os projetos vinculados ficarão sem cliente associado.`);
+    if (!confirmed) return;
+    setSaving(true);
+    try {
+      const { data: fnData, error: fnError } = await supabaseExt.functions.invoke(
+        "update-project-cliente",
+        { body: { cliente_id: cliente.cliente_id, project_ids: [] } }
+      );
+      const functionErrorMessage = fnError?.message || fnData?.error;
+      if (functionErrorMessage) throw new Error(functionErrorMessage);
+
+      const { error } = await (supabaseExt as any)
+        .from("clientes")
+        .delete()
+        .eq("cliente_id", cliente.cliente_id);
+      if (error) throw error;
+
+      toast.success("Cliente excluído com sucesso!");
+      await Promise.resolve(onSaved());
+      onOpenChange(false);
+    } catch (e: any) {
+      console.error("Erro ao excluir cliente:", e);
+      toast.error(e.message || "Erro ao excluir cliente.");
     } finally {
       setSaving(false);
     }
@@ -425,7 +455,21 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
           </div>
 
           {/* ── Footer actions ── */}
-          <div className="flex items-center justify-end gap-2 border-t border-white/[0.06] pt-4">
+          <div className="flex flex-col gap-2 border-t border-white/[0.06] pt-4 sm:flex-row sm:items-center sm:justify-between">
+            {isEdit ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleDelete}
+                disabled={saving}
+                className="h-9 gap-2 justify-center rounded-xl text-red-300 hover:bg-red-500/10 hover:text-red-200"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Excluir
+              </Button>
+            ) : <div />}
+            <div className="flex items-center justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={saving}
               className="h-9 text-muted-foreground hover:text-foreground hover:bg-white/[0.04]">
               Cancelar
@@ -434,6 +478,7 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
               {isEdit ? "Salvar" : "Criar"}
             </Button>
+            </div>
           </div>
         </div>
       </DialogContent>

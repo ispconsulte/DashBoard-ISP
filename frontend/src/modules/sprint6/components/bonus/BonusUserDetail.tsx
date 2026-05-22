@@ -398,6 +398,7 @@ export function BonusUserDetail({
 }: BonusUserDetailProps) {
   const [detailTab, setDetailTab] = useState("metricas");
   const hasCoordinatorScore = consultant.coordinatorScore != null;
+  const hasDisplayScore = consultant.scoreSource !== "none";
 
   const userTasks = useMemo(() => {
     if (!consultant.name) return [];
@@ -445,16 +446,16 @@ export function BonusUserDetail({
           </div>
         </div>
         <div className="hidden sm:flex items-center gap-2 md:gap-3 shrink-0">
-          <div className={`rounded-lg sm:rounded-xl border px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center ${hasCoordinatorScore ? scoreBg(consultant.score) : "border-amber-500/15 bg-amber-500/[0.05]"}`}>
-            <p className={`text-sm sm:text-base font-bold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
-              {hasCoordinatorScore ? `${consultant.score}%` : "Pendente"}
+          <div className={`rounded-lg sm:rounded-xl border px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center ${hasDisplayScore ? scoreBg(consultant.score) : "border-amber-500/15 bg-amber-500/[0.05]"}`}>
+            <p className={`text-sm sm:text-base font-bold ${hasDisplayScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
+              {hasDisplayScore ? `${consultant.score}%` : "Pendente"}
             </p>
-            <p className="text-[10px] sm:text-[11px] text-muted-foreground">nota coordenador</p>
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground">{hasCoordinatorScore ? "nota coordenador" : hasDisplayScore ? "score salvo" : "nota coordenador"}</p>
           </div>
         </div>
         <div className="sm:hidden shrink-0 text-right ml-1">
-          <p className={`text-[11px] font-semibold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
-            {hasCoordinatorScore ? `${consultant.score}%` : "Pendente"}
+          <p className={`text-[11px] font-semibold ${hasDisplayScore ? scoreColor(consultant.score) : "text-amber-300"}`}>
+            {hasDisplayScore ? `${consultant.score}%` : "Pendente"}
           </p>
         </div>
         <ChevronDown className={`h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 text-muted-foreground/50 transition-transform ${expanded ? "rotate-180" : ""}`} />

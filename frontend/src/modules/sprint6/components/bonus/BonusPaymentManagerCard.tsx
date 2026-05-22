@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Shield, Pencil, Save, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabaseRest, safeJson } from "@/modules/users/api/supabaseRest";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
+import { supabaseExt } from "@/lib/supabase";
 
 interface UserOption { id: string; name: string; email?: string; }
 
@@ -24,9 +25,9 @@ export function BonusPaymentManagerCard({ users }: { users: UserOption[] }) {
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "ok" | "error"; msg: string } | null>(null);
 
-  useEffect(() => {
-    if (!token) return;
-    supabaseRest("bonus_settings?key=eq.payment_manager_user_id&select=value&limit=1", token)
+  const loadPaymentManager = useCallback(() => {
+    if (!token) return Promise.resolve();
+    return supabaseRest("bonus_settings?key=eq.payment_manager_user_id&select=value&limit=1", token)
       .then(safeJson)
       .then((rows: { value?: string | null }[]) => {
         const val = rows?.[0]?.value ?? null;
@@ -35,6 +36,29 @@ export function BonusPaymentManagerCard({ users }: { users: UserOption[] }) {
       })
       .catch(() => {});
   }, [token]);
+
+  useEffect(() => {
+    void loadPaymentManager();
+  }, [loadPaymentManager]);
+
+  useEffect(() => {
+    if (!token) return;
+    const handleChanged = () => { void loadPaymentManager(); };
+    window.addEventListener("bonus-settings-changed", handleChanged);
+    const channel = supabaseExt
+      .channel("bonus-payment-manager-card")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bonus_settings", filter: "key=eq.payment_manager_user_id" },
+        handleChanged,
+      )
+      .subscribe();
+
+    return () => {
+      window.removeEventListener("bonus-settings-changed", handleChanged);
+      supabaseExt.removeChannel(channel);
+    };
+  }, [token, loadPaymentManager]);
 
   const handleSave = async () => {
     if (!token) return;

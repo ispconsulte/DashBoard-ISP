@@ -351,6 +351,7 @@ export function RankingCard({
 }) {
   const isTopThree = showRank && rank <= 3;
   const hasCoordinatorScore = consultant.coordinatorScore != null;
+  const hasDisplayScore = consultant.scoreSource !== "none";
   const delta = hasCoordinatorScore
     ? Math.round((consultant.coordinatorScore as number) - consultant.automaticScore)
     : null;
@@ -376,9 +377,9 @@ export function RankingCard({
         <div className={`flex h-9 w-9 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-lg sm:rounded-xl border text-xs sm:text-sm font-bold ${badgeColors}`}>
           {showRank ? (isTopThree ? (rank === 1 ? <Crown className="h-4 w-4" /> : <Medal className="h-4 w-4" />) : rank) : <UserRound className="h-4 w-4" />}
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-            <p className="truncate text-xs sm:text-sm font-bold text-foreground">{consultant.name}</p>
+            <p className="min-w-0 truncate text-xs font-bold text-foreground sm:text-sm">{consultant.name}</p>
             {["senior", "pleno", "junior"].includes(consultant.level) && (
               <Badge variant="outline" className={`text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 ${levelColor(consultant.level)}`}>
                 {levelLabel(consultant.level)}
@@ -392,23 +393,23 @@ export function RankingCard({
           </div>
         </div>
         <div className="hidden sm:flex items-center gap-2 md:gap-3 shrink-0">
-          <div className={`rounded-lg sm:rounded-xl border px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center ${hasCoordinatorScore ? scoreBg(consultant.score) : "border-border/10 bg-card/25"}`}>
-            <p className={`text-sm sm:text-base font-bold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-muted-foreground/45"}`}>
-              {hasCoordinatorScore ? `${consultant.score}%` : "—"}
+          <div className={`rounded-lg sm:rounded-xl border px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center ${hasDisplayScore ? scoreBg(consultant.score) : "border-border/10 bg-card/25"}`}>
+            <p className={`text-sm sm:text-base font-bold ${hasDisplayScore ? scoreColor(consultant.score) : "text-muted-foreground/45"}`}>
+              {hasDisplayScore ? `${consultant.score}%` : "—"}
             </p>
-            <p className="text-[10px] sm:text-[11px] text-muted-foreground/50">{hasCoordinatorScore ? "nota coord." : "sem avaliação"}</p>
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground/50">{hasCoordinatorScore ? "nota coord." : hasDisplayScore ? "score salvo" : "sem score"}</p>
           </div>
-          {!hideMonetary && hasCoordinatorScore && consultant.payout != null && (
+          {!hideMonetary && hasDisplayScore && consultant.payout != null && (
             <div className="rounded-lg sm:rounded-xl border border-primary/15 bg-primary/[0.06] px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-center">
               <p className="text-sm sm:text-base font-bold text-primary">{money(consultant.payout)}</p>
               <p className="text-[10px] sm:text-[11px] text-primary/50">de {money(consultant.maxBonus)}</p>
             </div>
           )}
         </div>
-        <div className="sm:hidden shrink-0 text-right ml-1">
+        <div className="ml-1 max-w-[7rem] shrink-0 text-right sm:hidden">
           {!hideMonetary && consultant.payout != null && <p className="text-xs font-bold text-primary">{money(consultant.payout)}</p>}
-          <p className={`text-[11px] font-semibold ${hasCoordinatorScore ? scoreColor(consultant.score) : "text-muted-foreground/45"}`}>
-            {hasCoordinatorScore ? `${consultant.score}%` : "—"}
+          <p className={`text-[11px] font-semibold ${hasDisplayScore ? scoreColor(consultant.score) : "text-muted-foreground/45"}`}>
+            {hasDisplayScore ? `${consultant.score}%` : "—"}
           </p>
         </div>
         <ChevronDown className={`h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0 text-muted-foreground/50 transition-transform ${expanded ? "rotate-180" : ""}`} />
@@ -424,7 +425,7 @@ export function RankingCard({
             className="overflow-hidden"
           >
             <div className="border-t border-border/10 px-3 sm:px-5 pb-4 sm:pb-5 pt-4 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-border/10 bg-white/[0.015] p-3.5 sm:p-4">
+              <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-border/10 bg-white/[0.015] p-3.5 sm:p-4 md:flex-row md:items-center">
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge
@@ -452,12 +453,12 @@ export function RankingCard({
                   </div>
                 </div>
                 {(canEvaluate || canSendReport) && (
-                  <div className="flex flex-wrap gap-2.5 shrink-0">
+                  <div className="flex w-full flex-wrap gap-2.5 shrink-0 sm:w-auto">
                     {canEvaluate && (
                       <button
                         type="button"
                         onClick={() => onEvaluate?.(consultant)}
-                        className="group/btn relative inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/8 px-4 py-2 text-xs font-semibold text-primary shadow-[0_0_12px_hsl(var(--primary)/0.06)] outline-none transition-all duration-200 hover:border-primary/35 hover:bg-primary/12 hover:shadow-[0_0_20px_hsl(var(--primary)/0.1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/35 focus-visible:border-primary/40 active:translate-y-0 active:shadow-[0_0_8px_hsl(var(--primary)/0.08)]"
+                        className="group/btn relative inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/8 px-4 py-2 text-xs font-semibold text-primary shadow-[0_0_12px_hsl(var(--primary)/0.06)] outline-none transition-all duration-200 hover:-translate-y-px hover:border-primary/35 hover:bg-primary/12 hover:shadow-[0_0_20px_hsl(var(--primary)/0.1)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/35 focus-visible:border-primary/40 active:translate-y-0 active:shadow-[0_0_8px_hsl(var(--primary)/0.08)] sm:flex-none"
                       >
                         <ClipboardCheck className="h-3.5 w-3.5 transition-transform duration-200 group-hover/btn:scale-110" />
                         Avaliar
@@ -467,7 +468,7 @@ export function RankingCard({
                       <button
                         type="button"
                         onClick={() => onSendReport?.(consultant)}
-                        className="group/btn relative inline-flex items-center gap-2 rounded-xl border border-border/16 bg-card/35 px-4 py-2 text-xs font-semibold text-foreground/75 shadow-[0_1px_3px_rgba(0,0,0,0.2)] outline-none transition-all duration-200 hover:border-primary/18 hover:bg-card/55 hover:text-foreground/90 hover:shadow-[0_2px_10px_rgba(0,0,0,0.25)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:border-primary/28 active:translate-y-0 active:shadow-[0_1px_2px_rgba(0,0,0,0.15)]"
+                        className="group/btn relative inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-border/16 bg-card/35 px-4 py-2 text-xs font-semibold text-foreground/75 shadow-[0_1px_3px_rgba(0,0,0,0.2)] outline-none transition-all duration-200 hover:-translate-y-px hover:border-primary/18 hover:bg-card/55 hover:text-foreground/90 hover:shadow-[0_2px_10px_rgba(0,0,0,0.25)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:border-primary/28 active:translate-y-0 active:shadow-[0_1px_2px_rgba(0,0,0,0.15)] sm:flex-none"
                       >
                         <Mail className="h-3.5 w-3.5 transition-transform duration-200 group-hover/btn:scale-110" />
                         Enviar Relatório
@@ -503,15 +504,15 @@ export function RankingCard({
                   visibleMetrics.length <= 2
                     ? "grid-cols-1 sm:grid-cols-2"
                     : visibleMetrics.length <= 4
-                    ? "grid-cols-2 sm:grid-cols-4"
-                    : "grid-cols-2 sm:grid-cols-3 xl:grid-cols-5";
+                    ? "grid-cols-1 min-[430px]:grid-cols-2 lg:grid-cols-4"
+                    : "grid-cols-1 min-[430px]:grid-cols-2 md:grid-cols-3 2xl:grid-cols-5";
 
                 return (
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 font-semibold mb-2 px-0.5">
                       Métricas do período{periodLabel ? ` (${periodLabel})` : ""}
                     </p>
-                    <div className={`grid gap-2.5 ${metricsGridClass}`}>
+                    <div className={`grid min-w-0 gap-2.5 ${metricsGridClass}`}>
                       {visibleMetrics.map((metric) => (
                         <MetricTile key={metric.label} icon={metric.icon} label={metric.label} value={metric.value} />
                       ))}

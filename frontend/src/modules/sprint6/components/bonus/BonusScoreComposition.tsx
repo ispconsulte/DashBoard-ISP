@@ -172,7 +172,7 @@ export function BonusScoreComposition({ consultants }: BonusScoreCompositionProp
                 >
                   <span className="truncate">{consultant.name}</span>
                   <span className="ml-2 shrink-0 text-[11px] font-medium">
-                    {consultant.coordinatorScore != null ? `${consultant.score}%` : "Pendente"}
+                    {consultant.scoreSource !== "none" ? `${consultant.score}%` : "Pendente"}
                   </span>
                 </button>
               ))}
@@ -186,7 +186,7 @@ export function BonusScoreComposition({ consultants }: BonusScoreCompositionProp
           <div className="flex items-center gap-4 rounded-xl border border-border/10 bg-white/[0.02] p-3.5">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10">
               <span className="text-xl font-bold text-primary">
-                {selected.coordinatorScore != null ? `${selected.score}%` : "Pendente"}
+                {selected.scoreSource !== "none" ? `${selected.score}%` : "Pendente"}
               </span>
             </div>
             <div className="min-w-0 flex-1">
