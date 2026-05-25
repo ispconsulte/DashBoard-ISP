@@ -117,9 +117,8 @@ export default function AppUpdateManager() {
         className={[
           "w-[92vw] max-w-[460px] p-0 overflow-hidden",
           "border border-white/[0.08]",
-          "bg-[linear-gradient(165deg,hsl(228_33%_14%/0.98),hsl(233_36%_8%/0.99))]",
+          "bg-[linear-gradient(165deg,hsl(228_33%_14%),hsl(233_36%_8%))]",
           "shadow-[0_30px_100px_hsl(240_60%_3%/0.75)]",
-          "backdrop-blur-xl",
           "rounded-2xl sm:rounded-3xl",
           "max-h-[95vh]",
           "[&>button.absolute]:z-50 [&>button.absolute]:text-white/50 [&>button.absolute]:hover:text-white [&>button.absolute]:right-5 [&>button.absolute]:top-5",

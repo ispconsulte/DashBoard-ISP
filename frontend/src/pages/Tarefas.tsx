@@ -41,8 +41,9 @@ import {
   formatHoursHuman,
   formatSecondsHuman,
   isDeadlineSoon,
+  parseLocalDateInput,
   parseDateValue,
-  collectTaskRelevantDates,
+  getTaskPeriodDate,
   normalizeTaskTitle,
   type TaskStatusKey,
 } from "@/modules/tasks/utils";
@@ -54,8 +55,8 @@ import { FormattedDescription } from "@/modules/tasks/ui/FormattedDescription";
 /* ─── Helpers (business logic preserved) ─── */
 
 const isCompletedStatus = (value?: string) => {
-  const n = (value ?? "").toLowerCase();
-  return ["done", "concluido", "concluído", "completed", "finalizado"].includes(n);
+  const n = normalizeComparableText(value);
+  return ["done", "concluido", "completed", "finalizado", "finalizada"].includes(n);
 };
 
 const mapStatusKey = (statusRaw: string | number | undefined, deadline: Date | null): TaskStatusKey => {
@@ -156,8 +157,14 @@ const normalizeTask = (task: TaskRecord, durationSeconds?: number, projectNameBy
   const isDone = statusKey === "done";
   const isOverdue = statusKey === "overdue" || (!isDone && deadline !== null && deadline < new Date());
   const deadlineIsSoon = !isDone && !isOverdue && isDeadlineSoon(deadline, new Date());
+  // Tempo gasto: prioriza o agregado TIME_SPENT_IN_LOGS do Bitrix (mesma fonte do relatório
+  // "Horas trabalhadas"), com fallback para a soma dos apontamentos individuais.
+  const timeSpentInLogs = getNumeric(task, ["time_spent_in_logs"]);
   const durationFromTask = getNumeric(task, ["duration_minutes", "duration", "tempo_total", "minutes"]);
-  const seconds = durationSeconds ?? (durationFromTask ? durationFromTask * 60 : undefined);
+  const seconds =
+    (typeof timeSpentInLogs === "number" && timeSpentInLogs > 0 ? timeSpentInLogs : undefined) ??
+    durationSeconds ??
+    (durationFromTask ? durationFromTask * 60 : undefined);
 
   return {
     title,
@@ -181,8 +188,8 @@ const filterByPeriod = (tasks: TaskView[], period: string) => {
   const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
   const threshold = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   return tasks.filter((task) => {
-    const relevantDates = collectTaskRelevantDates(task.raw);
-    return relevantDates.some((date) => date >= threshold);
+    const date = getTaskPeriodDate(task.raw);
+    return date ? date >= threshold : false;
   });
 };
 
@@ -344,9 +351,7 @@ export default function TarefasPage() {
     lastUpdated: lastUpdatedTimes,
   } = useElapsedTimes({
     accessToken: session?.accessToken,
-    period,
-    dateFrom,
-    dateTo,
+    period: "all",
   });
 
   // Auto-refresh every minute so status/deadline changes appear quickly after sync
@@ -666,19 +671,14 @@ export default function TarefasPage() {
     const byPeriod =
       period === "custom"
         ? scopedTasks.filter((task) => {
-            const from = dateFrom ? parseDateValue(dateFrom) : null;
-            const to = dateTo ? parseDateValue(dateTo) : null;
-            const relevantDates = collectTaskRelevantDates(task.raw);
-            if (relevantDates.length === 0) return false;
-
-            const endOfDay = to ? new Date(to) : null;
-            if (endOfDay) endOfDay.setHours(23, 59, 59, 999);
-
-            return relevantDates.some((date) => {
-              if (from && date < from) return false;
-              if (endOfDay && date > endOfDay) return false;
-              return true;
-            });
+            const from = parseLocalDateInput(dateFrom);
+            const to = parseLocalDateInput(dateTo, true);
+            // Critério Bitrix: filtra pela data de modificação da tarefa (changed_date).
+            const date = getTaskPeriodDate(task.raw);
+            if (!date) return false;
+            if (from && date < from) return false;
+            if (to && date > to) return false;
+            return true;
           })
         : filterByPeriod(scopedTasks, period);
 

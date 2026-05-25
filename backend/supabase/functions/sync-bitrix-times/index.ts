@@ -15,6 +15,7 @@ const SOURCE_ENTITY = 'elapsed_times';
 // 35 min — slightly above one 10-min cron cycle so a legitimately running job
 // is never evicted, but a truly stuck row is cleaned up before the next cycle.
 const RUN_STALE_AFTER_MS = 35 * 60 * 1000;
+const FULL_RECONCILE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const BLOCKING_TASK_DIAGNOSTIC_CODES = new Set([
   'deleted_confirmed',
   'invalid_project',
@@ -61,6 +62,13 @@ function toIso(value: unknown): string | null {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseBooleanFlag(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value !== 'string') return false;
+  return ['1', 'true', 'yes', 'y', 'sim'].includes(value.trim().toLowerCase());
 }
 
 function getBlockingDiagnosticCodes(codes: string[] | null | undefined): string[] {
@@ -530,7 +538,7 @@ async function upsertSourceStatus(
   }
 }
 
-async function getLastSuccessfulCursorId(supabase: any): Promise<number> {
+async function getElapsedSyncState(supabase: any): Promise<{ lastCursorId: number; lastFullSyncAt: string | null }> {
   const { data, error } = await supabase
     .from('bonus_source_statuses')
     .select('details, last_success_at')
@@ -539,11 +547,18 @@ async function getLastSuccessfulCursorId(supabase: any): Promise<number> {
 
   if (error) {
     console.error('Falha ao ler cursor salvo:', error.message);
-    return 0;
+    return { lastCursorId: 0, lastFullSyncAt: null };
   }
 
   const cursor = Number(data?.details?.last_cursor_id ?? 0);
-  return Number.isFinite(cursor) && cursor > 0 ? cursor : 0;
+  const lastFullSyncAt = typeof data?.details?.last_full_reconcile_at === 'string'
+    ? data.details.last_full_reconcile_at
+    : null;
+
+  return {
+    lastCursorId: Number.isFinite(cursor) && cursor > 0 ? cursor : 0,
+    lastFullSyncAt,
+  };
 }
 
 async function relinkOrphanElapsedTimes(supabase: any) {
@@ -557,6 +572,59 @@ async function relinkOrphanElapsedTimes(supabase: any) {
   }
 
   return Number(data ?? 0);
+}
+
+async function fetchActiveElapsedIds(supabase: any): Promise<number[]> {
+  const ids: number[] = [];
+  for (let offset = 0; ; offset += DB_TASK_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('elapsed_times')
+      .select('id')
+      .eq('local_state', 'active')
+      .range(offset, offset + DB_TASK_PAGE_SIZE - 1);
+
+    if (error) {
+      throw new Error(`Erro ao buscar IDs ativos de elapsed_times: ${error.message}`);
+    }
+
+    const rows = (data ?? []) as Array<{ id?: number | string | null }>;
+    for (const row of rows) {
+      const id = toInt(row.id);
+      if (id) ids.push(id);
+    }
+
+    if (rows.length < DB_TASK_PAGE_SIZE) break;
+  }
+  return ids;
+}
+
+async function markMissingElapsedTimesInactive(supabase: any, bitrixElapsedIds: Set<number>, detectedAt: string) {
+  const activeIds = await fetchActiveElapsedIds(supabase);
+  const missingIds = activeIds.filter((id) => !bitrixElapsedIds.has(id));
+  let updated = 0;
+
+  for (let offset = 0; offset < missingIds.length; offset += UPSERT_BATCH_SIZE) {
+    const ids = missingIds.slice(offset, offset + UPSERT_BATCH_SIZE);
+    const { data, error } = await supabase
+      .from('elapsed_times')
+      .update({
+        local_state: 'not_found_or_no_access',
+        orphan_reason: 'not_found_or_no_access',
+        orphan_detail: 'O lancamento nao apareceu na reconciliacao completa do Bitrix e foi removido do consumo operacional.',
+        orphan_detected_at: detectedAt,
+        updated_at: detectedAt,
+      })
+      .in('id', ids)
+      .select('id');
+
+    if (error) {
+      throw new Error(`Erro ao inativar elapsed_times ausentes do Bitrix: ${error.message}`);
+    }
+
+    updated += (data ?? []).length;
+  }
+
+  return { scanned: activeIds.length, missing: missingIds.length, updated };
 }
 
 function json(data: unknown, status = 200) {
@@ -576,15 +644,29 @@ Deno.serve(async (req) => {
   let supabase: any = null;
   let runId: string | null = null;
   let debugTaskId: number | null = null;
+  let requestedFullReconcile = false;
+  let currentStrategy = 'global-cursor-by-id';
 
   try {
     if (req.method !== 'GET') {
       try {
         const body = await req.json();
         debugTaskId = toInt(body?.debug_task_id);
+        requestedFullReconcile =
+          parseBooleanFlag(body?.full_reconcile) ||
+          parseBooleanFlag(body?.full_sync) ||
+          parseBooleanFlag(body?.force_full_sync) ||
+          parseBooleanFlag(body?.reset_cursor);
       } catch {
         debugTaskId = null;
       }
+    } else {
+      const url = new URL(req.url);
+      requestedFullReconcile =
+        parseBooleanFlag(url.searchParams.get('full_reconcile')) ||
+        parseBooleanFlag(url.searchParams.get('full_sync')) ||
+        parseBooleanFlag(url.searchParams.get('force_full_sync')) ||
+        parseBooleanFlag(url.searchParams.get('reset_cursor'));
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
@@ -595,15 +677,26 @@ Deno.serve(async (req) => {
       throw new Error('A BITRIX_BASE_URL não foi configurada nos Secrets.');
     }
 
+    const syncState = await getElapsedSyncState(supabase);
+    const lastFullSyncMs = syncState.lastFullSyncAt ? Date.parse(syncState.lastFullSyncAt) : Number.NaN;
+    const fullReconcileDue = Number.isNaN(lastFullSyncMs)
+      ? true
+      : Date.now() - lastFullSyncMs >= FULL_RECONCILE_INTERVAL_MS;
+    const fullReconcile = requestedFullReconcile || fullReconcileDue;
+    const strategy = fullReconcile ? 'global-full-reconcile' : 'global-cursor-by-id';
+    currentStrategy = strategy;
+
     const runState = await createSyncRun(supabase, {
-      strategy: 'global-cursor-by-id',
+      strategy,
       started_at_iso: syncStartedAtIso,
+      requested_full_reconcile: requestedFullReconcile,
+      full_reconcile_due: fullReconcileDue,
     });
 
     if (runState?.skipped) {
       await logSkippedRun(
         supabase,
-        { strategy: 'global-cursor-by-id', started_at_iso: syncStartedAtIso },
+        { strategy, started_at_iso: syncStartedAtIso },
         runState.skipReason ?? 'Skipped due to overlap.',
       );
       return json({
@@ -614,11 +707,13 @@ Deno.serve(async (req) => {
     }
 
     runId = runState?.runId ?? null;
-    const lastCursorId = await getLastSuccessfulCursorId(supabase);
+    const lastCursorId = fullReconcile ? 0 : syncState.lastCursorId;
     await upsertSourceStatus(supabase, 'running', {
-      strategy: 'global-cursor-by-id',
+      strategy,
       started_at_iso: syncStartedAtIso,
       start_after_id: lastCursorId,
+      requested_full_reconcile: requestedFullReconcile,
+      full_reconcile_due: fullReconcileDue,
     });
 
     console.log('--- INICIANDO SINCRONIZAÇÃO GLOBAL DE ELAPSED TIMES ---');
@@ -654,6 +749,9 @@ Deno.serve(async (req) => {
 
     const { inserted, errors } = await upsertElapsedTimes(supabase, records);
     const relinkedCount = await relinkOrphanElapsedTimes(supabase);
+    const reconcileMissing = fullReconcile && records.length > 0
+      ? await markMissingElapsedTimesInactive(supabase, new Set(records.map((record) => record.id)), syncStartedAtIso)
+      : { scanned: null, missing: null, updated: null };
     const orphanRowsDetected = records.filter((record) => record.orphan_reason !== null).length;
     const deletedHoursDetected = records.filter((record) => record.local_state === 'deleted_confirmed').length;
     const projectArchivedHoursDetected = records.filter((record) => record.local_state === 'project_archived').length;
@@ -672,12 +770,19 @@ Deno.serve(async (req) => {
 
     const responseBody = {
       success: true,
-      strategy: 'global-cursor-by-id',
+      strategy,
       start_after_id: lastCursorId,
       max_cursor_id: maxCursorId,
+      full_reconcile: fullReconcile,
+      requested_full_reconcile: requestedFullReconcile,
+      full_reconcile_due: fullReconcileDue,
+      last_full_reconcile_at: fullReconcile ? syncStartedAtIso : syncState.lastFullSyncAt,
       elapsed_raw_count: rawElapsed.length,
       elapsed_unique_count: records.length,
       elapsed_upserted: inserted,
+      reconciled_active_elapsed_scanned: reconcileMissing.scanned,
+      reconciled_missing_elapsed_detected: reconcileMissing.missing,
+      reconciled_missing_elapsed_deactivated: reconcileMissing.updated,
       distinct_task_ids_found: distinctTaskIds.size,
       db_task_whitelist_count: taskStateById.size,
       deleted_task_tombstones_count: tombstones.size,
@@ -700,6 +805,7 @@ Deno.serve(async (req) => {
     await upsertSourceStatus(supabase, 'success', {
       ...responseBody,
       last_cursor_id: maxCursorId,
+      last_full_reconcile_at: fullReconcile ? syncStartedAtIso : syncState.lastFullSyncAt,
       last_successful_sync_at: new Date().toISOString(),
     });
 
@@ -709,7 +815,7 @@ Deno.serve(async (req) => {
     const responseBody = {
       success: false,
       error: error.message || String(error),
-      strategy: 'global-cursor-by-id',
+      strategy: currentStrategy,
       duration_seconds: ((Date.now() - startedAt) / 1000).toFixed(1),
     };
     if (supabase) {

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { storage } from "@/modules/shared/storage";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 import type { ElapsedTimeRecord } from "../types";
-import { getElapsedEffectiveDate } from "../utils";
+import { getElapsedEffectiveDate, parseLocalDateInput } from "../utils";
 
 type UseElapsedTimesResult = {
   times: ElapsedTimeRecord[];
@@ -21,7 +21,7 @@ type UseElapsedTimesParams = {
   dateTo?: string;
 };
 
-const CACHE_KEY = "cache:elapsed_times:v2";
+const CACHE_KEY = "cache:elapsed_times:v3";
 const RELOAD_COOLDOWN_MS = 12_000; // 5 reloads per minute → 60s / 5 = 12s
 const MAX_RELOADS_PER_MINUTE = 5;
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "25000");
@@ -47,16 +47,15 @@ const buildDateFilter = (period?: string, dateFrom?: string, dateTo?: string): s
   // custom range
   const parts: string[] = [];
   if (dateFrom) {
-    const f = new Date(dateFrom);
-    if (!Number.isNaN(f.getTime())) {
+    const f = parseLocalDateInput(dateFrom);
+    if (f && !Number.isNaN(f.getTime())) {
       const iso = encodeURIComponent(f.toISOString());
       parts.push(`or(date_start.gte.${iso},created_date.gte.${iso},updated_at.gte.${iso})`);
     }
   }
   if (dateTo) {
-    const t = new Date(dateTo);
-    if (!Number.isNaN(t.getTime())) {
-      t.setHours(23, 59, 59, 999);
+    const t = parseLocalDateInput(dateTo, true);
+    if (t && !Number.isNaN(t.getTime())) {
       const iso = encodeURIComponent(t.toISOString());
       parts.push(`or(date_start.lte.${iso},created_date.lte.${iso},updated_at.lte.${iso})`);
     }
@@ -120,13 +119,12 @@ const filterByEffectivePeriod = (rows: ElapsedTimeRecord[], period?: string, dat
     from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
   } else if (period === "custom") {
     if (dateFrom) {
-      const parsedFrom = new Date(dateFrom);
-      if (!Number.isNaN(parsedFrom.getTime())) from = parsedFrom;
+      const parsedFrom = parseLocalDateInput(dateFrom);
+      if (parsedFrom && !Number.isNaN(parsedFrom.getTime())) from = parsedFrom;
     }
     if (dateTo) {
-      const parsedTo = new Date(dateTo);
-      if (!Number.isNaN(parsedTo.getTime())) {
-        parsedTo.setHours(23, 59, 59, 999);
+      const parsedTo = parseLocalDateInput(dateTo, true);
+      if (parsedTo && !Number.isNaN(parsedTo.getTime())) {
         to = parsedTo;
       }
     }

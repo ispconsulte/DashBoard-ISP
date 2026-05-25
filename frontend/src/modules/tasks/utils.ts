@@ -18,6 +18,23 @@ export const todayLocalIso = (): string => {
 export const dateToLocalIso = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+export const parseLocalDateInput = (value?: string | null, endOfDay = false): Date | null => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const [, year, month, day] = match;
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    if (endOfDay) date.setHours(23, 59, 59, 999);
+    else date.setHours(0, 0, 0, 0);
+    return date;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (endOfDay) parsed.setHours(23, 59, 59, 999);
+  return parsed;
+};
+
 /**
  * Formats an ISO date string "YYYY-MM-DD" to "DD/MM" or "DD/MM/YYYY"
  * by parsing the string directly (no Date constructor = no timezone shift).
@@ -57,16 +74,28 @@ export const parseDateValue = (value?: unknown): Date | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+/**
+ * Data canônica da tarefa para filtro de período, alinhada ao relatório
+ * "Horas trabalhadas por projetos" do Bitrix, que filtra por CHANGED_DATE
+ * (data da última modificação). Fallbacks cobrem tarefas sem changed_date.
+ */
+export const getTaskPeriodDate = (task: Record<string, unknown>): Date | null =>
+  parseDateValue(task["changed_date"]) ||
+  parseDateValue(task["closed_date"]) ||
+  parseDateValue(task["deadline"]) ||
+  parseDateValue(task["created_date"]) ||
+  parseDateValue(task["created_at"]);
+
 export const collectTaskRelevantDates = (task: Record<string, unknown>): Date[] => {
   const candidates = [
     task["deadline"],
     task["due_date"],
     task["dueDate"],
     task["closed_date"],
-    task["updated_at"],
+    task["changed_date"],
+    task["created_date"],
     task["created_at"],
     task["createdAt"],
-    task["inserted_at"],
   ];
 
   return candidates
