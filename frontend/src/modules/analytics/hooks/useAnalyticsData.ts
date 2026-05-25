@@ -4,6 +4,7 @@ import type { ProjectHours } from "@/modules/tasks/api/useProjectHours";
 import type { ElapsedTimeRecord } from "@/modules/tasks/types";
 import type { ProjectAnalytics } from "../types";
 import { storage } from "@/modules/shared/storage";
+import { getTaskDurationSeconds } from "@/modules/tasks/utils";
 
 export function classifyTask(task: TaskRecord): "done" | "overdue" | "pending" {
   const status = String(task.status ?? task.situacao ?? "").trim();
@@ -130,6 +131,34 @@ export function useAnalyticsData(
     return map;
   }, [tasks]);
 
+  const elapsedSecondsByTaskId = useMemo(() => {
+    const totals = new Map<string | number, number>();
+    userTimes.forEach((time) => {
+      const taskId = time.task_id;
+      if (!taskId) return;
+      const seconds = Number(time.seconds ?? 0);
+      if (!Number.isFinite(seconds) || seconds <= 0) return;
+      totals.set(taskId, (totals.get(taskId) ?? 0) + seconds);
+      totals.set(String(taskId), (totals.get(String(taskId)) ?? 0) + seconds);
+    });
+    return totals;
+  }, [userTimes]);
+
+  const hoursByProjectFromTasks = useMemo(() => {
+    const totals = new Map<number, number>();
+    tasks.forEach((task) => {
+      const projectId = Number(task.project_id);
+      if (!projectId) return;
+      const taskId = task.task_id ?? task.id;
+      const fallbackSeconds =
+        taskId != null ? elapsedSecondsByTaskId.get(taskId) ?? elapsedSecondsByTaskId.get(String(taskId)) : undefined;
+      const seconds = getTaskDurationSeconds(task, fallbackSeconds);
+      if (!seconds || seconds <= 0) return;
+      totals.set(projectId, (totals.get(projectId) ?? 0) + seconds / 3600);
+    });
+    return totals;
+  }, [tasks, elapsedSecondsByTaskId]);
+
   const hoursByProjectFromTimes = useMemo(() => {
     const taskProjectById = new Map<string | number, number>();
     tasks.forEach((task) => {
@@ -181,7 +210,8 @@ export function useAnalyticsData(
       const performance: "good" | "neutral" | "bad" =
         overdueRate > 0.3 ? "bad" : completionRate > 0.6 ? "good" : "neutral";
       const fallbackHours = hoursByProjectFromTimes.get(ph.projectId) ?? 0;
-      const resolvedHours = isFiltered ? fallbackHours : ph.hours > 0 ? ph.hours : fallbackHours;
+      const taskHours = hoursByProjectFromTasks.get(ph.projectId) ?? 0;
+      const resolvedHours = taskHours > 0 ? taskHours : isFiltered ? fallbackHours : ph.hours > 0 ? ph.hours : fallbackHours;
 
       return {
         projectId: ph.projectId,
@@ -224,13 +254,14 @@ export function useAnalyticsData(
       const performance: "good" | "neutral" | "bad" =
         overdueRate > 0.3 ? "bad" : completionRate > 0.6 ? "good" : "neutral";
       const fallbackHours = hoursByProjectFromTimes.get(pid) ?? 0;
+      const taskHours = hoursByProjectFromTasks.get(pid) ?? 0;
 
       fromTasks.push({
         projectId: pid,
         projectName: String(projectName),
         clientId,
         clientName,
-        hoursUsed: fallbackHours,
+        hoursUsed: taskHours > 0 ? taskHours : fallbackHours,
         hoursContracted: 0,
         isActive: stats.pending > 0 || stats.overdue > 0,
         isFavorite: favorites.has(pid),
@@ -242,7 +273,7 @@ export function useAnalyticsData(
     });
 
     return [...fromHours, ...fromTasks];
-  }, [filteredProjectHours, tasksByProject, favorites, tasks, hoursByProjectFromTimes, isFiltered]);
+  }, [filteredProjectHours, tasksByProject, favorites, tasks, hoursByProjectFromTimes, hoursByProjectFromTasks, isFiltered]);
 
   const uniqueClients = useMemo(() => {
     const set = new Set<number>();
@@ -259,6 +290,23 @@ export function useAnalyticsData(
     () => projects.reduce((sum, project) => sum + (Number.isFinite(project.hoursUsed) ? project.hoursUsed : 0), 0),
     [projects],
   );
+  const taskTimeRecords = useMemo<ElapsedTimeRecord[]>(() => {
+    return tasks
+      .map((task) => {
+        const taskId = task.task_id ?? task.id;
+        const fallbackSeconds =
+          taskId != null ? elapsedSecondsByTaskId.get(taskId) ?? elapsedSecondsByTaskId.get(String(taskId)) : undefined;
+        const seconds = getTaskDurationSeconds(task, fallbackSeconds);
+        if (!taskId || !seconds || seconds <= 0) return null;
+        return {
+          task_id: taskId,
+          seconds,
+          user_id: task.user_id ?? null,
+          date_start: task.changed_date ?? task.closed_date ?? task.deadline ?? task.created_date ?? task.created_at ?? null,
+        };
+      })
+      .filter((value): value is ElapsedTimeRecord => value != null);
+  }, [tasks, elapsedSecondsByTaskId]);
   const userTaskCount = tasks.length;
 
   return {
@@ -270,7 +318,7 @@ export function useAnalyticsData(
     totalHours,
     toggleFavorite,
     userTaskCount,
-    userTimes,
+    userTimes: taskTimeRecords.length ? taskTimeRecords : userTimes,
     userTasks: tasks,
   };
 }

@@ -36,6 +36,10 @@ export type TaskRecord = {
   tempo_total?: number;
   minutes?: number;
   time_spent_in_logs?: number | null;
+  timeSpentInLogs?: number | null;
+  TIME_SPENT_IN_LOGS?: number | null;
+  duration_seconds?: number | null;
+  durationSeconds?: number | null;
   created_at?: string | Date | null;
   createdAt?: string | Date | null;
   user_id?: string | number | null;

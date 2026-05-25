@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { getTaskTimeSpentSeconds } from "@/modules/tasks/utils";
 
 type ProjectHoursRow = {
-  cliente_id: number;
-  cliente_nome: string;
-  projeto_id: number;
-  projeto_nome: string;
-  total_segundos: number;
-  total_horas: number;
+  task_id: string | number;
+  project_id: number | string | null;
+  group_name: string | null;
+  time_spent_in_logs: number | string | null;
+  projects?: {
+    name?: string | null;
+    cliente_id?: number | string | null;
+  } | null;
+};
+
+type ClientRow = {
+  cliente_id: number | string;
+  nome: string | null;
 };
 
 export type ProjectHours = {
@@ -39,7 +47,7 @@ const buildRpcEndpoint = () => {
   if (!url || !key) {
     return { endpoint: null, key: null, error: "Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY." };
   }
-  const endpoint = `${url.replace(/\/$/, "")}/rest/v1/rpc/get_consumo_horas`;
+  const endpoint = `${url.replace(/\/$/, "")}/rest/v1/tasks`;
   return { endpoint, key, error: null };
 };
 
@@ -101,36 +109,106 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            apikey: key,
-            Authorization: `Bearer ${key}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            data_inicio: startIso,
-            data_fim: endIso,
-            filtro_cliente_id: clientId ?? null,
-            filtro_project_id: projectId ?? null,
-          }),
-          signal: controller.signal,
-        });
+        const select = [
+          "task_id",
+          "project_id",
+          "group_name",
+          "time_spent_in_logs",
+          "projects(name,cliente_id)",
+        ].join(",");
+        const pageSize = 1000;
+        const rows: ProjectHoursRow[] = [];
 
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || `Erro ao buscar horas (status ${response.status}).`);
+        for (let offset = 0; offset < 10000; offset += pageSize) {
+          const params = new URLSearchParams({
+            select,
+            local_state: "eq.active",
+            diagnostic_codes: "eq.{}",
+            changed_date: `gte.${startIso}`,
+            order: "project_id.asc.nullslast",
+            limit: String(pageSize),
+            offset: String(offset),
+          });
+          params.append("changed_date", `lte.${endIso}`);
+          if (projectId) params.append("project_id", `eq.${projectId}`);
+
+          const response = await fetch(`${endpoint}?${params.toString()}`, {
+            headers: {
+              apikey: key,
+              Authorization: `Bearer ${key}`,
+            },
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `Erro ao buscar horas (status ${response.status}).`);
+          }
+
+          const pageRows = (await response.json()) as ProjectHoursRow[];
+          rows.push(...pageRows);
+          if (pageRows.length < pageSize) break;
         }
 
-        const rows = (await response.json()) as ProjectHoursRow[];
-        const mapped: ProjectHours[] = rows.map((row) => ({
-          projectId: row.projeto_id,
-          projectName: row.projeto_nome,
-          clientId: row.cliente_id,
-          clientName: row.cliente_nome,
-          hours: Number(row.total_horas ?? 0),
-          seconds: Number(row.total_segundos ?? 0),
-        }));
+        const clientIds = Array.from(
+          new Set(
+            rows
+              .map((row) => Number(row.projects?.cliente_id ?? 0))
+              .filter((value) => Number.isFinite(value) && value > 0),
+          ),
+        );
+        const clientNameById = new Map<number, string>();
+
+        for (let offset = 0; offset < clientIds.length; offset += 200) {
+          const slice = clientIds.slice(offset, offset + 200);
+          if (!slice.length) continue;
+          const clientResponse = await fetch(
+            `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/clientes?select=cliente_id,nome&cliente_id=in.(${slice.join(",")})`,
+            {
+              headers: {
+                apikey: key,
+                Authorization: `Bearer ${key}`,
+              },
+              signal: controller.signal,
+            },
+          );
+          if (!clientResponse.ok) continue;
+          const clientRows = (await clientResponse.json()) as ClientRow[];
+          clientRows.forEach((row) => {
+            const id = Number(row.cliente_id);
+            if (id && row.nome) clientNameById.set(id, row.nome);
+          });
+        }
+
+        const totals = new Map<number, ProjectHours>();
+        rows.forEach((row) => {
+          const seconds = getTaskTimeSpentSeconds(row as unknown as Record<string, unknown>) ?? 0;
+          if (seconds <= 0) return;
+
+          const resolvedProjectId = Number(row.project_id ?? 0);
+          if (!resolvedProjectId) return;
+
+          const resolvedClientId = Number(row.projects?.cliente_id ?? 0);
+          if (clientId && resolvedClientId !== clientId) return;
+
+          const current = totals.get(resolvedProjectId) ?? {
+            projectId: resolvedProjectId,
+            projectName: String(row.projects?.name ?? row.group_name ?? `Projeto #${resolvedProjectId}`),
+            clientId: resolvedClientId,
+            clientName: resolvedClientId ? clientNameById.get(resolvedClientId) ?? "" : "",
+            hours: 0,
+            seconds: 0,
+          };
+
+          current.seconds += seconds;
+          current.hours = Math.round((current.seconds / 3600) * 100) / 100;
+          if (!current.clientName && resolvedClientId) {
+            current.clientName = clientNameById.get(resolvedClientId) ?? "";
+          }
+          totals.set(resolvedProjectId, current);
+        });
+
+        const mapped = Array.from(totals.values()).sort((a, b) => b.seconds - a.seconds);
         setData(mapped);
         cacheRef.current.set(cacheKey, { timestamp: Date.now(), data: mapped });
       } catch (err) {

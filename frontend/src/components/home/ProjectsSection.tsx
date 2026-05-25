@@ -17,7 +17,7 @@ import { useElapsedTimes } from "@/modules/tasks/api/useElapsedTimes";
 import { useProjectHours } from "@/modules/tasks/api/useProjectHours";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import type { TaskRecord } from "@/modules/tasks/types";
-import { getElapsedEffectiveDate } from "@/modules/tasks/utils";
+import { getTaskDurationSeconds, getTaskPeriodDate } from "@/modules/tasks/utils";
 import {
   AreaChart,
   Area,
@@ -301,14 +301,28 @@ function AnalyticsTab({
     return Array.from(set).sort();
   }, [projectHours]);
 
+  const elapsedSecondsByTaskId = useMemo(() => {
+    const map = new Map<string, number>();
+    times.forEach((time) => {
+      const taskId = String(time.task_id ?? "");
+      if (!taskId) return;
+      const seconds = Number(time.seconds ?? 0);
+      if (!Number.isFinite(seconds) || seconds <= 0) return;
+      map.set(taskId, (map.get(taskId) ?? 0) + seconds);
+    });
+    return map;
+  }, [times]);
+
   /* Monthly hours chart data */
   const monthlyData = useMemo(() => {
     const months: Record<string, number> = {};
-    times.forEach((t) => {
-      const d = getElapsedEffectiveDate(t);
+    tasks.forEach((task) => {
+      const d = getTaskPeriodDate(task);
       if (!d) return;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const hours = (t.seconds ?? 0) / 3600;
+      const taskId = String(task.task_id ?? task.id ?? "");
+      const hours = (getTaskDurationSeconds(task, taskId ? elapsedSecondsByTaskId.get(taskId) : undefined) ?? 0) / 3600;
+      if (hours <= 0) return;
       months[key] = (months[key] ?? 0) + hours;
     });
     return Object.entries(months)
@@ -319,7 +333,7 @@ function AnalyticsTab({
         const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
         return { month: monthNames[Number(m) - 1] ?? m, hours: Math.round(hours * 10) / 10 };
       });
-  }, [times]);
+  }, [tasks, elapsedSecondsByTaskId]);
 
   /* Status distribution for pie */
   const statusData = useMemo(() => {
@@ -345,7 +359,7 @@ function AnalyticsTab({
       }));
   }, [projectHours, clientFilter]);
 
-  const totalHours = useMemo(() => times.reduce((s, t) => s + (t.seconds ?? 0), 0) / 3600, [times]);
+  const totalHours = useMemo(() => projectHours.reduce((sum, project) => sum + project.hours, 0), [projectHours]);
 
   if (loading) {
     return (
