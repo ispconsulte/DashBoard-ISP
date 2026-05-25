@@ -576,30 +576,17 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
     return map;
   }, [persistence.consultantSnapshots]);
 
-  const elapsedSecondsByTaskId = useMemo(() => {
-    const totals = new Map<string, number>();
-    elapsed.times.forEach((row) => {
-      const taskId = String(row.task_id ?? "");
-      if (!taskId) return;
-      const seconds = Number(row.seconds ?? 0);
-      if (!Number.isFinite(seconds) || seconds <= 0) return;
-      totals.set(taskId, (totals.get(taskId) ?? 0) + seconds);
-    });
-    return totals;
-  }, [elapsed.times]);
-
   const taskDurationHoursByProject = useMemo(() => {
     const totals = new Map<number, number>();
     tasks.tasks.forEach((task) => {
       const projectId = Number(task.project_id) || 0;
       if (!projectId) return;
-      const taskId = String(task.task_id ?? task.id ?? "");
-      const seconds = getTaskDurationSeconds(task, taskId ? elapsedSecondsByTaskId.get(taskId) : undefined);
+      const seconds = getTaskDurationSeconds(task);
       if (!seconds || seconds <= 0) return;
       totals.set(projectId, (totals.get(projectId) ?? 0) + seconds / 3600);
     });
     return totals;
-  }, [tasks.tasks, elapsedSecondsByTaskId]);
+  }, [tasks.tasks]);
 
   const consultantCards = useMemo<BonusConsultantCard[]>(() => {
     const taskMap = new Map<string, {
@@ -667,9 +654,10 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       consultantAcc.set(consultantKey, current);
     }
 
-    for (const task of tasks.tasks) {
-      const taskId = String(task.task_id ?? task.id ?? "");
-      const hours = (getTaskDurationSeconds(task, taskId ? elapsedSecondsByTaskId.get(taskId) : undefined) ?? 0) / 3600;
+    for (const entry of elapsed.times) {
+      const taskId = String(entry.task_id ?? "");
+      const seconds = Number(entry.seconds ?? 0);
+      const hours = seconds / 3600;
       if (hours <= 0) continue;
       const taskMeta = taskMap.get(taskId);
       if (!taskMeta?.consultantKey) continue;
@@ -793,7 +781,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       })
       .filter((value): value is NonNullable<typeof value> => value != null)
       .sort((a, b) => (b.score - a.score) || ((b.payout ?? -1) - (a.payout ?? -1)) || b.hoursTracked - a.hoursTracked);
-  }, [tasks.tasks, elapsedSecondsByTaskId, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, latestConsultantSnapshotByUserId, coordinatorBySubordinateId, eligibleUserIds, config, configPayoutMap]);
+  }, [tasks.tasks, elapsed.times, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, latestConsultantSnapshotByUserId, coordinatorBySubordinateId, eligibleUserIds, config, configPayoutMap]);
 
   const projectSpotlights = useMemo<BonusProjectSpotlight[]>(() => {
     const roiProjects = new Map<number, { hoursUsed: number; roi: number | null; name: string }>();

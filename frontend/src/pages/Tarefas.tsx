@@ -45,6 +45,7 @@ import {
   parseDateValue,
   getTaskPeriodDate,
   getTaskDurationSeconds,
+  getTaskTimeSpentSeconds,
   normalizeTaskTitle,
   type TaskStatusKey,
 } from "@/modules/tasks/utils";
@@ -118,7 +119,7 @@ const taskBelongsToSession = (
   return !!consultant && !!me && (consultant.includes(me) || me.includes(consultant));
 };
 
-const normalizeTask = (task: TaskRecord, durationSeconds?: number, projectNameById?: Map<string, string>): TaskView => {
+const normalizeTask = (task: TaskRecord, elapsedSeconds?: number, projectNameById?: Map<string, string>): TaskView => {
   const title = normalizeTaskTitle(pickField(task, ["title", "nome", "name"], "Tarefa sem título"));
   const projectId = pickField(task, ["project_id", "projectId"], "").trim();
   const projectFromJoin =
@@ -146,7 +147,13 @@ const normalizeTask = (task: TaskRecord, durationSeconds?: number, projectNameBy
   const isDone = statusKey === "done";
   const isOverdue = statusKey === "overdue" || (!isDone && deadline !== null && deadline < new Date());
   const deadlineIsSoon = !isDone && !isOverdue && isDeadlineSoon(deadline, new Date());
-  const seconds = getTaskDurationSeconds(task, durationSeconds);
+  const timeSpentSeconds = getTaskTimeSpentSeconds(task as Record<string, unknown>);
+  const seconds = getTaskDurationSeconds(task, elapsedSeconds);
+  const diffSeconds =
+    typeof timeSpentSeconds === "number" && typeof elapsedSeconds === "number"
+      ? Math.round(timeSpentSeconds - elapsedSeconds)
+      : undefined;
+  const hasHourMismatch = typeof diffSeconds === "number" && Math.abs(diffSeconds) >= 60;
 
   return {
     title,
@@ -156,6 +163,9 @@ const normalizeTask = (task: TaskRecord, durationSeconds?: number, projectNameBy
     statusKey,
     durationSeconds: seconds,
     durationLabel: formatDurationHHMM(seconds),
+    elapsedSeconds,
+    durationDiffSeconds: diffSeconds,
+    hasHourMismatch,
     deadlineDate: deadline,
     deadlineLabel: formatDatePtBR(deadline),
     deadlineColor: deadlineColor(statusKey, isOverdue),
@@ -724,6 +734,14 @@ export default function TarefasPage() {
     const start = (page - 1) * pageSize;
     return filteredTasks.slice(start, start + pageSize);
   }, [filteredTasks, page]);
+
+  const hourMismatchTasks = useMemo(
+    () =>
+      filteredTasks
+        .filter((task) => task.hasHourMismatch && typeof task.durationDiffSeconds === "number")
+        .sort((a, b) => Math.abs(b.durationDiffSeconds ?? 0) - Math.abs(a.durationDiffSeconds ?? 0)),
+    [filteredTasks],
+  );
 
   // Stats — always use filtered count so numbers match visible tasks
   const stats = useMemo(() => {
@@ -1369,6 +1387,30 @@ export default function TarefasPage() {
           {(error || timesError) && (
             <div className="mb-3 rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5 text-xs text-rose-400">
               {String(error || timesError)}
+            </div>
+          )}
+
+          {isAdmin && hourMismatchTasks.length > 0 && (
+            <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3">
+              <div className="mb-2 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-300" />
+                <p className="text-xs font-bold text-amber-100">
+                  {hourMismatchTasks.length} tarefa{hourMismatchTasks.length > 1 ? "s" : ""} com divergência entre Bitrix e lançamentos
+                </p>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {hourMismatchTasks.slice(0, 6).map((task) => (
+                  <div key={String(task.raw.task_id ?? task.raw.id ?? task.title)} className="rounded-lg border border-white/[0.06] bg-black/10 px-3 py-2">
+                    <p className="truncate text-[11px] font-semibold text-white/85">{task.title}</p>
+                    <p className="mt-0.5 text-[10px] text-white/45">
+                      Bitrix {formatSecondsHuman(task.durationSeconds ?? 0)} · lançamentos {formatSecondsHuman(task.elapsedSeconds ?? 0)} · diferença{" "}
+                      <span className="font-bold text-amber-200">
+                        {(task.durationDiffSeconds ?? 0) > 0 ? "+" : "-"}{formatSecondsHuman(Math.abs(task.durationDiffSeconds ?? 0))}
+                      </span>
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

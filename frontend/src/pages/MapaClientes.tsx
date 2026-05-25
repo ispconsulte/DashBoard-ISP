@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { usePageSEO } from "@/hooks/usePageSEO";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import { useTasks } from "@/modules/tasks/api/useTasks";
+import { getTaskDurationSeconds } from "@/modules/tasks/utils";
 
 // Brazil outline
 const BRAZIL_OUTLINE = "M290,25 L310,20 L330,25 L340,45 L350,60 L370,70 L395,65 L420,70 L430,85 L420,100 L430,120 L420,140 L430,155 L420,170 L415,185 L400,200 L395,220 L400,240 L390,260 L380,280 L375,300 L385,320 L380,340 L370,350 L350,360 L330,370 L300,380 L275,385 L260,420 L250,445 L235,460 L215,455 L200,435 L205,410 L215,395 L210,380 L200,360 L195,340 L190,315 L175,290 L160,265 L155,240 L140,215 L135,195 L120,180 L100,170 L85,155 L90,135 L110,120 L140,100 L155,75 L170,55 L185,40 L210,30 L240,25 L260,22 Z";
@@ -39,7 +40,7 @@ function useClientLocations() {
       const statusRaw = String(t.status ?? "").toLowerCase();
       const isDone = ["5", "done", "concluido", "concluído"].includes(statusRaw);
       const isOverdue = !isDone && t.due_date && new Date(String(t.due_date)) < new Date();
-      const hours = Number(t.estimated_hours ?? t.hours ?? 0);
+      const hours = (getTaskDurationSeconds(t) ?? 0) / 3600;
 
       if (!projectMap.has(project)) {
         projectMap.set(project, { name: project, taskCount: 0, hasOverdue: false, totalHours: 0 });

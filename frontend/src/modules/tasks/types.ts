@@ -82,6 +82,9 @@ export type TaskView = {
   statusKey: TaskStatusKey;
   durationSeconds?: number;
   durationLabel: string;
+  elapsedSeconds?: number;
+  durationDiffSeconds?: number;
+  hasHourMismatch?: boolean;
   deadlineDate: Date | null;
   deadlineLabel: string;
   deadlineColor: string;
