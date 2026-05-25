@@ -6,8 +6,14 @@ import type { ProjectAnalytics } from "../types";
 import { storage } from "@/modules/shared/storage";
 
 export function classifyTask(task: TaskRecord): "done" | "overdue" | "pending" {
-  const status = String(task.status ?? task.situacao ?? "").toLowerCase();
-  if (["5", "done", "concluida", "concluído", "finalizada", "completed"].some((s) => status.includes(s)))
+  const status = String(task.status ?? task.situacao ?? "").trim();
+  const normalizedStatus = normalize(status);
+  if (
+    status === "5" ||
+    ["done", "concluida", "concluido", "finalizada", "finalizado", "completed"].some((s) =>
+      normalizedStatus.includes(s)
+    )
+  )
     return "done";
   const deadline = task.deadline ?? task.due_date ?? task.dueDate ?? task.data;
   if (deadline) {
@@ -79,7 +85,10 @@ export function useAnalyticsData(
     const ids = new Set<string | number>();
     tasks.forEach((t) => {
       const tid = t.task_id ?? t.id;
-      if (tid) ids.add(tid);
+      if (tid) {
+        ids.add(tid);
+        ids.add(String(tid));
+      }
     });
     return ids;
   }, [tasks]);
@@ -89,7 +98,7 @@ export function useAnalyticsData(
     if (!isFiltered) return allTimes;
     return allTimes.filter((t) => {
       const tid = t.task_id;
-      return tid && userTaskIds.has(tid);
+      return tid && (userTaskIds.has(tid) || userTaskIds.has(String(tid)));
     });
   }, [allTimes, userTaskIds, isFiltered]);
 
@@ -172,7 +181,7 @@ export function useAnalyticsData(
       const performance: "good" | "neutral" | "bad" =
         overdueRate > 0.3 ? "bad" : completionRate > 0.6 ? "good" : "neutral";
       const fallbackHours = hoursByProjectFromTimes.get(ph.projectId) ?? 0;
-      const resolvedHours = ph.hours > 0 ? ph.hours : fallbackHours;
+      const resolvedHours = isFiltered ? fallbackHours : ph.hours > 0 ? ph.hours : fallbackHours;
 
       return {
         projectId: ph.projectId,
@@ -233,7 +242,7 @@ export function useAnalyticsData(
     });
 
     return [...fromHours, ...fromTasks];
-  }, [filteredProjectHours, tasksByProject, favorites, tasks, hoursByProjectFromTimes]);
+  }, [filteredProjectHours, tasksByProject, favorites, tasks, hoursByProjectFromTimes, isFiltered]);
 
   const uniqueClients = useMemo(() => {
     const set = new Set<number>();

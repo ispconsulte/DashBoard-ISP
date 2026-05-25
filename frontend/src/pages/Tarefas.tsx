@@ -41,6 +41,7 @@ import {
   formatHoursHuman,
   formatSecondsHuman,
   isDeadlineSoon,
+  parseLocalDateInput,
   parseDateValue,
   collectTaskRelevantDates,
   normalizeTaskTitle,
@@ -54,8 +55,8 @@ import { FormattedDescription } from "@/modules/tasks/ui/FormattedDescription";
 /* ─── Helpers (business logic preserved) ─── */
 
 const isCompletedStatus = (value?: string) => {
-  const n = (value ?? "").toLowerCase();
-  return ["done", "concluido", "concluído", "completed", "finalizado"].includes(n);
+  const n = normalizeComparableText(value);
+  return ["done", "concluido", "completed", "finalizado", "finalizada"].includes(n);
 };
 
 const mapStatusKey = (statusRaw: string | number | undefined, deadline: Date | null): TaskStatusKey => {
@@ -344,9 +345,7 @@ export default function TarefasPage() {
     lastUpdated: lastUpdatedTimes,
   } = useElapsedTimes({
     accessToken: session?.accessToken,
-    period,
-    dateFrom,
-    dateTo,
+    period: "all",
   });
 
   // Auto-refresh every minute so status/deadline changes appear quickly after sync
@@ -666,17 +665,14 @@ export default function TarefasPage() {
     const byPeriod =
       period === "custom"
         ? scopedTasks.filter((task) => {
-            const from = dateFrom ? parseDateValue(dateFrom) : null;
-            const to = dateTo ? parseDateValue(dateTo) : null;
+            const from = parseLocalDateInput(dateFrom);
+            const to = parseLocalDateInput(dateTo, true);
             const relevantDates = collectTaskRelevantDates(task.raw);
             if (relevantDates.length === 0) return false;
 
-            const endOfDay = to ? new Date(to) : null;
-            if (endOfDay) endOfDay.setHours(23, 59, 59, 999);
-
             return relevantDates.some((date) => {
               if (from && date < from) return false;
-              if (endOfDay && date > endOfDay) return false;
+              if (to && date > to) return false;
               return true;
             });
           })

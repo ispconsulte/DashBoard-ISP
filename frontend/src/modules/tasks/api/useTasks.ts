@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { storage } from "@/modules/shared/storage";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 import type { TaskRecord } from "../types";
+import { parseLocalDateInput } from "../utils";
 
 type UseTasksResult = {
   tasks: TaskRecord[];
@@ -25,7 +26,7 @@ type UseTasksParams = {
   skip?: boolean;
 };
 
-const CACHE_KEY = "cache:tasks:v4";
+const CACHE_KEY = "cache:tasks:v6";
 const RELOAD_COOLDOWN_MS = 12_000; // 5 reloads per minute → 60s / 5 = 12s between
 const MAX_RELOADS_PER_MINUTE = 5;
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "25000");
@@ -39,23 +40,22 @@ const buildDateFilter = (period?: string, dateFrom?: string, dateTo?: string) =>
     const days = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : 180;
     const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const iso = encodeURIComponent(from.toISOString());
-    // Considera criacao, atualizacao e prazo para nao esconder tarefas antigas ainda relevantes.
-    return `or=(inserted_at.gte.${iso},updated_at.gte.${iso},deadline.gte.${iso})`;
+    return `or=(changed_date.gte.${iso},closed_date.gte.${iso},deadline.gte.${iso})`;
   }
   if (period === "custom") {
     const parts: string[] = [];
     if (dateFrom) {
-      const from = new Date(dateFrom);
-      if (!Number.isNaN(from.getTime())) {
+      const from = parseLocalDateInput(dateFrom);
+      if (from && !Number.isNaN(from.getTime())) {
         const iso = encodeURIComponent(from.toISOString());
-        parts.push(`or(inserted_at.gte.${iso},updated_at.gte.${iso},deadline.gte.${iso})`);
+        parts.push(`or(changed_date.gte.${iso},closed_date.gte.${iso},deadline.gte.${iso})`);
       }
     }
     if (dateTo) {
-      const to = new Date(dateTo);
-      if (!Number.isNaN(to.getTime())) {
+      const to = parseLocalDateInput(dateTo, true);
+      if (to && !Number.isNaN(to.getTime())) {
         const iso = encodeURIComponent(to.toISOString());
-        parts.push(`or(inserted_at.lte.${iso},updated_at.lte.${iso},deadline.lte.${iso})`);
+        parts.push(`or(changed_date.lte.${iso},closed_date.lte.${iso},deadline.lte.${iso})`);
       }
     }
     if (parts.length === 2) return `and=(${parts.join(",")})`;
@@ -85,6 +85,7 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
     "status",
     "deadline",
     "closed_date",
+    "changed_date",
     "group_id",
     "group_name",
     "responsible_id",

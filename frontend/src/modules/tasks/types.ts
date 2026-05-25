@@ -26,6 +26,9 @@ export type TaskRecord = {
   due_date?: string | Date | null;
   dueDate?: string | Date | null;
   deadline?: string | Date | null;
+  closed_date?: string | Date | null;
+  changed_date?: string | Date | null;
+  created_date?: string | Date | null;
   data?: string | Date | null;
   projects?: { name?: string; cliente_id?: number | string | null; closed?: boolean | null } | null;
   duration_minutes?: number;

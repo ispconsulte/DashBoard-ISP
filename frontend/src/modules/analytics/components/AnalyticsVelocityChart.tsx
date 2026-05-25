@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Zap, Info, X } from "lucide-react";
 import type { TaskRecord } from "@/modules/tasks/types";
@@ -12,6 +12,7 @@ const WEEKS = 12;
 
 export default function AnalyticsVelocityChart({ tasks, classifyTask }: Props) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [svgWidth, setSvgWidth] = useState(380);
   const [showInfo, setShowInfo] = useState(false);
 
   const { weekData, avgVelocity, trend } = useMemo(() => {
@@ -93,6 +94,10 @@ export default function AnalyticsVelocityChart({ tasks, classifyTask }: Props) {
   const tc = trendConfig[trend];
   const hoveredData = hoveredIdx !== null ? weekData[hoveredIdx] : null;
   const chartKey = useMemo(() => weekData.map((w) => w.count).join("|"), [weekData]);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const measureSvgWidth = useCallback(() => {
+    if (svgRef.current) setSvgWidth(svgRef.current.getBoundingClientRect().width);
+  }, []);
 
   return (
     <motion.div
@@ -208,34 +213,47 @@ export default function AnalyticsVelocityChart({ tasks, classifyTask }: Props) {
         )}
       </AnimatePresence>
 
-      {/* Chart */}
-      <div className="relative">
-        {/* Floating tooltip */}
-        <AnimatePresence>
-          {hoveredData && hoveredIdx !== null && (
+      {/* Floating tooltip — outside overflow-hidden div, relative to card root */}
+      <AnimatePresence>
+        {hoveredData && hoveredIdx !== null && (() => {
+          const scale = svgWidth / chartW;
+          const rawPx = points[hoveredIdx].x * scale;
+          const fromRight = hoveredIdx >= WEEKS / 2;
+          const posStyle = fromRight
+            ? { right: svgWidth - rawPx + 8 }
+            : { left: rawPx + 8 };
+          return (
             <motion.div
+              key={hoveredIdx}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 4 }}
-              transition={{ duration: 0.15 }}
-              className="absolute z-10 pointer-events-none rounded-xl border border-white/[0.08] px-3 py-2 shadow-xl"
+              transition={{ duration: 0.12 }}
+              className="absolute z-10 pointer-events-none rounded-xl border border-white/[0.1] px-3 py-2 shadow-xl whitespace-nowrap"
               style={{
-                background: "hsl(260 30% 12% / 0.95)",
-                backdropFilter: "blur(8px)",
-                left: hoveredIdx > WEEKS * 0.7
-                  ? `${Math.max((hoveredIdx / (WEEKS - 1)) * 100 - 2, 5)}%`
-                  : `${Math.min((hoveredIdx / (WEEKS - 1)) * 100 + 2, 95)}%`,
-                top: -8,
-                transform: hoveredIdx > WEEKS * 0.7 ? "translateX(-100%)" : "translateX(0%)",
+                background: "hsl(260 30% 10% / 0.97)",
+                bottom: 56,
+                ...posStyle,
               }}
             >
-              <p className="text-[11px] font-bold text-white/80 mb-0.5">{hoveredData.label}</p>
-              <span className="text-[10px] text-white/60">{hoveredData.count} tarefa{hoveredData.count !== 1 ? "s" : ""} concluída{hoveredData.count !== 1 ? "s" : ""}</span>
+              <p className="text-[11px] font-bold text-white/85 mb-0.5">{hoveredData.label}</p>
+              <p className="text-[10px] text-white/55">{hoveredData.count} tarefa{hoveredData.count !== 1 ? "s" : ""} concluída{hoveredData.count !== 1 ? "s" : ""}</p>
             </motion.div>
-          )}
-        </AnimatePresence>
+          );
+        })()}
+      </AnimatePresence>
 
-        <svg key={chartKey} width="100%" viewBox={`0 0 ${chartW} ${chartH + 24}`} preserveAspectRatio="xMidYMid meet" className="overflow-visible">
+      {/* Chart */}
+      <div className="relative overflow-hidden">
+        <svg
+          ref={svgRef}
+          key={chartKey}
+          width="100%"
+          viewBox={`0 0 ${chartW} ${chartH + 24}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="overflow-visible"
+          onMouseEnter={measureSvgWidth}
+        >
           {/* Area fill */}
           <motion.path
             d={areaPath}
@@ -311,9 +329,9 @@ export default function AnalyticsVelocityChart({ tasks, classifyTask }: Props) {
                     strokeWidth={1}
                   />
                 )}
-                {/* Value label on recent */}
-                {w.count > 0 && i >= WEEKS - 3 && !isHovered && (
-                  <text x={p.x} y={p.y - 10} textAnchor="middle" className="fill-white/50 font-bold" style={{ fontSize: "9px" }}>
+                {/* Value label — only on last point when nothing is hovered */}
+                {isLast && hoveredIdx === null && w.count > 0 && (
+                  <text x={p.x} y={p.y - 10} textAnchor="middle" className="fill-white/55 font-bold" style={{ fontSize: "9px" }}>
                     {w.count}
                   </text>
                 )}
@@ -321,16 +339,21 @@ export default function AnalyticsVelocityChart({ tasks, classifyTask }: Props) {
             );
           })}
 
-          {/* Week labels — every 3rd to avoid overlap */}
+          {/* Week labels — spaced to avoid overlap with the forced last tick */}
           {weekData.map((w, i) => {
-            if (i % 3 !== 0 && i !== WEEKS - 1) return null;
+            const isFirst = i === 0;
+            const isLast = i === WEEKS - 1;
+            // Show every 4th tick; always show first and last; skip if within 3 of last
+            const isRegular = i % 4 === 0;
+            if (!isFirst && !isLast && !isRegular) return null;
+            if (!isLast && WEEKS - 1 - i < 3) return null; // too close to last
             const x = points[i].x;
             return (
               <text
                 key={i}
-                x={i === 0 ? Math.max(x, padX + 5) : i === WEEKS - 1 ? Math.min(x, chartW - padX - 5) : x}
+                x={isFirst ? Math.max(x, padX + 5) : isLast ? Math.min(x, chartW - padX - 5) : x}
                 y={chartH + 18}
-                textAnchor={i === 0 ? "start" : i === WEEKS - 1 ? "end" : "middle"}
+                textAnchor={isFirst ? "start" : isLast ? "end" : "middle"}
                 className="fill-white/45 font-medium"
                 style={{ fontSize: "9px" }}
               >
