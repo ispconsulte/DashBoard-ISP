@@ -26,7 +26,7 @@ type UseTasksParams = {
   skip?: boolean;
 };
 
-const CACHE_KEY = "cache:tasks:v6";
+const CACHE_KEY = "cache:tasks:v7";
 const RELOAD_COOLDOWN_MS = 12_000; // 5 reloads per minute → 60s / 5 = 12s between
 const MAX_RELOADS_PER_MINUTE = 5;
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "25000");
@@ -86,6 +86,7 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
     "deadline",
     "closed_date",
     "changed_date",
+    "time_spent_in_logs",
     "group_id",
     "group_name",
     "responsible_id",

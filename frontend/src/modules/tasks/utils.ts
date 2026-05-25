@@ -74,6 +74,18 @@ export const parseDateValue = (value?: unknown): Date | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+/**
+ * Data canônica da tarefa para filtro de período, alinhada ao relatório
+ * "Horas trabalhadas por projetos" do Bitrix, que filtra por CHANGED_DATE
+ * (data da última modificação). Fallbacks cobrem tarefas sem changed_date.
+ */
+export const getTaskPeriodDate = (task: Record<string, unknown>): Date | null =>
+  parseDateValue(task["changed_date"]) ||
+  parseDateValue(task["closed_date"]) ||
+  parseDateValue(task["deadline"]) ||
+  parseDateValue(task["created_date"]) ||
+  parseDateValue(task["created_at"]);
+
 export const collectTaskRelevantDates = (task: Record<string, unknown>): Date[] => {
   const candidates = [
     task["deadline"],

@@ -384,6 +384,7 @@ async function fetchIncrementalTaskPages(sinceIso: string | null) {
         'CREATED_BY',
         'CREATED_DATE',
         'CHANGED_DATE',
+        'TIME_SPENT_IN_LOGS',
       ].forEach((field) => taskUrl.searchParams.append('select[]', field));
 
       const data = await fetchJsonWithRetry(taskUrl.toString());
@@ -426,6 +427,7 @@ async function fetchIncrementalTaskPages(sinceIso: string | null) {
         'CREATED_BY',
         'CREATED_DATE',
         'CHANGED_DATE',
+        'TIME_SPENT_IN_LOGS',
       ].forEach((field) => taskUrl.searchParams.append('select[]', field));
 
       const data = await fetchJsonWithRetry(taskUrl.toString());
@@ -461,6 +463,7 @@ async function fetchBitrixTaskById(taskId: number) {
       'RESPONSIBLE_ID',
       'CREATED_DATE',
       'CHANGED_DATE',
+      'TIME_SPENT_IN_LOGS',
     ],
   });
 
@@ -479,7 +482,7 @@ async function fetchExistingTasksMap(supabase: any, taskIds: number[]) {
     const slice = taskIds.slice(offset, offset + 500);
     const { data, error } = await supabase
       .from('tasks')
-      .select('task_id,title,description,status,real_status,deadline,closed_date,changed_date,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,diagnostic_codes')
+      .select('task_id,title,description,status,real_status,deadline,closed_date,changed_date,time_spent_in_logs,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,diagnostic_codes')
       .in('task_id', slice);
 
     if (error) throw new Error(`Erro ao carregar tarefas existentes: ${error.message}`);
@@ -513,6 +516,7 @@ function mergeTaskRecord(incoming: any, existing?: any) {
     deadline: keepBest(incoming.deadline, existing.deadline),
     closed_date: keepBest(incoming.closed_date, existing.closed_date),
     changed_date: keepBest(incoming.changed_date, existing.changed_date),
+    time_spent_in_logs: incoming.time_spent_in_logs ?? existing.time_spent_in_logs ?? 0,
     group_id: keepBest(incoming.group_id, existing.group_id),
     group_name: keepBest(incoming.group_name, existing.group_name),
     responsible_id: keepBest(incoming.responsible_id, existing.responsible_id),
@@ -1886,6 +1890,7 @@ Deno.serve(async (req) => {
         const rawDeadline = getField(t, 'deadline', 'DEADLINE');
         const rawClosedDate = getField(t, 'closedDate', 'CLOSED_DATE');
         const rawChangedDate = getField(t, 'changedDate', 'CHANGED_DATE');
+        const rawTimeSpent = getField(t, 'timeSpentInLogs', 'TIME_SPENT_IN_LOGS');
         const rawGroupId = getField(t, 'groupId', 'GROUP_ID');
         const rawRespId = getField(t, 'responsibleId', 'RESPONSIBLE_ID');
 
@@ -1931,6 +1936,7 @@ Deno.serve(async (req) => {
           deadline,
           closed_date: closedDate,
           changed_date: changedDate,
+          time_spent_in_logs: toInt(rawTimeSpent) ?? 0,
           group_id: originalGroupId,
           group_name: nonEmptyString(groupName),
           responsible_id: toInt(rawRespId),
@@ -2061,6 +2067,7 @@ Deno.serve(async (req) => {
         deadline: liveDeadline,
         closed_date: toIso(getField(liveTask, 'closedDate', 'CLOSED_DATE')),
         changed_date: toIso(getField(liveTask, 'changedDate', 'CHANGED_DATE')),
+        time_spent_in_logs: toInt(getField(liveTask, 'timeSpentInLogs', 'TIME_SPENT_IN_LOGS')) ?? 0,
         group_id: liveGroupId,
         group_name: nonEmptyString(liveGroupName),
         responsible_id: liveResponsibleId,
