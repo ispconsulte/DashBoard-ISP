@@ -134,7 +134,7 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
         setData(mapped);
         cacheRef.current.set(cacheKey, { timestamp: Date.now(), data: mapped });
       } catch (err) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) return;
         const message = (err as Error).message || "Não foi possível carregar as horas.";
         console.error("[useProjectHours] fetch error", message);
         setError(message);
@@ -145,7 +145,7 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
       }
     };
 
-    fetchData();
+    fetchData().catch(() => {});
     return () => controller.abort();
   }, [endpoint, key, envError, startIso, endIso, clientId, projectId, refreshFlag]);
 

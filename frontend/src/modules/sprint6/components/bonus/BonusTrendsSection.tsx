@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   XAxis,
@@ -53,7 +53,7 @@ function formatPeriodLabel(key: string) {
 
 /* ── Trend Indicator ──────────────────────────────────────────────── */
 function TrendIndicator({ current, previous, suffix = "" }: { current: number; previous: number | null; suffix?: string }) {
-  if (previous == null) return <span className="text-[11px] text-muted-foreground/40 italic">primeiro registro</span>;
+  if (previous == null) return <span className="text-[11px] text-white/35 italic">primeiro registro</span>;
   const diff = current - previous;
   const pct = previous > 0 ? Math.round((diff / previous) * 100) : 0;
   const isUp = diff > 0;
@@ -61,14 +61,14 @@ function TrendIndicator({ current, previous, suffix = "" }: { current: number; p
 
   if (isFlat) {
     return (
-      <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
+      <span className="flex items-center gap-1 text-[11px] text-white/45">
         <Minus className="h-3 w-3" /> Estável
       </span>
     );
   }
 
   return (
-    <span className={`flex items-center gap-1 text-[11px] font-medium ${isUp ? "text-emerald-400" : "text-red-400"}`}>
+    <span className={`flex items-center gap-1 text-[11px] font-semibold ${isUp ? "text-emerald-400" : "text-red-400"}`}>
       {isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
       {isUp ? "+" : ""}{pct}%{suffix}
     </span>
@@ -79,11 +79,10 @@ function TrendIndicator({ current, previous, suffix = "" }: { current: number; p
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-border/15 bg-card/95 px-3 py-2 shadow-lg backdrop-blur-sm">
-      <p className="text-xs font-semibold text-foreground mb-1">{label}</p>
+    <div className="rounded-xl border border-white/[0.1] bg-[hsl(224_40%_10%/0.98)] px-3.5 py-2.5 shadow-xl backdrop-blur-sm">
+      <p className="text-[11px] font-semibold text-white/70 mb-1.5">{label}</p>
       {payload.map((entry: any) => (
-        <p key={entry.dataKey} className="text-[11px] text-muted-foreground">
-          <span className="font-medium text-foreground">{entry.name}: </span>
+        <p key={entry.dataKey} className="text-[12px] font-bold text-white">
           {entry.dataKey === "totalPayout" ? money(entry.value) : `${Math.round(entry.value)}%`}
         </p>
       ))}
@@ -98,15 +97,15 @@ function SinglePeriodCard({ label, value, periodLabel, color }: { label: string;
       <div className="flex items-center justify-between">
         <div>
           <p className={`text-2xl font-bold ${color}`}>{value}</p>
-          <p className="text-[11px] text-muted-foreground/60">{label}</p>
+          <p className="text-[11px] text-white/40">{label}</p>
         </div>
         <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] px-2.5 py-1">
-          <Calendar className="h-3 w-3 text-muted-foreground/40" />
-          <span className="text-[10px] font-medium text-muted-foreground/50">{periodLabel}</span>
+          <Calendar className="h-3 w-3 text-white/30" />
+          <span className="text-[10px] font-medium text-white/40">{periodLabel}</span>
         </div>
       </div>
-      <div className="rounded-xl border border-border/8 bg-white/[0.015] p-4 text-center">
-        <p className="text-xs text-muted-foreground/50 leading-relaxed">
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 text-center">
+        <p className="text-xs text-white/40 leading-relaxed">
           Este é o primeiro período com dados registrados. A partir do próximo ciclo, será possível acompanhar a evolução ao longo do tempo.
         </p>
       </div>
@@ -114,6 +113,7 @@ function SinglePeriodCard({ label, value, periodLabel, color }: { label: string;
   );
 }
 
+/* ── Consultant Trend List ─────────────────────────────────────────── */
 function ConsultantTrendList({
   title,
   items,
@@ -125,32 +125,46 @@ function ConsultantTrendList({
   emptyText: string;
   positive: boolean;
 }) {
+  const accent = positive ? "text-emerald-400" : "text-red-400";
+  const accentBorder = positive ? "border-emerald-500/15" : "border-red-500/15";
+  const accentBg = positive ? "bg-emerald-500/[0.04]" : "bg-red-500/[0.04]";
+  const accentDot = positive ? "bg-emerald-400" : "bg-red-400";
+
   return (
-    <div className="rounded-xl border border-border/8 bg-white/[0.015] p-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground/45">{title}</p>
-        <span className={`text-[11px] font-medium ${positive ? "text-emerald-400" : "text-red-400"}`}>
+    <div className={`rounded-xl border ${accentBorder} ${accentBg} p-3.5`}>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-white/40">{title}</p>
+        <span className={`text-[11px] font-semibold ${accent}`}>
           {items.length > 0 ? `${positive ? "+" : ""}${items[0]?.delta ?? 0} pts` : "sem variação"}
         </span>
       </div>
       {items.length > 0 ? (
-        <div className="mt-3 space-y-2.5">
-          {items.map((item) => (
-            <div key={`${item.userId}-${item.currentLabel}`} className="flex items-center justify-between gap-3 rounded-lg border border-border/8 bg-card/20 px-3 py-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
-                <p className="text-[11px] text-muted-foreground/45">
-                  {item.previousLabel}: {item.previousScore}% {"->"} {item.currentLabel}: {item.currentScore}%
-                </p>
+        <div className="space-y-2">
+          {items.map((item, i) => (
+            <motion.div
+              key={`${item.userId}-${item.currentLabel}`}
+              initial={{ opacity: 0, x: positive ? -8 : 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.25, delay: i * 0.06 }}
+              className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.05] bg-white/[0.025] px-3 py-2.5"
+            >
+              <div className="min-w-0 flex items-center gap-2">
+                <span className={`shrink-0 h-1.5 w-1.5 rounded-full ${accentDot}`} />
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-semibold text-white/85">{item.name}</p>
+                  <p className="text-[10px] text-white/35">
+                    {item.previousLabel}: {item.previousScore}% → {item.currentLabel}: {item.currentScore}%
+                  </p>
+                </div>
               </div>
-              <span className={`shrink-0 text-sm font-semibold ${positive ? "text-emerald-400" : "text-red-400"}`}>
+              <span className={`shrink-0 text-sm font-bold tabular-nums ${accent}`}>
                 {positive ? "+" : ""}{item.delta}
               </span>
-            </div>
+            </motion.div>
           ))}
         </div>
       ) : (
-        <p className="mt-3 text-xs text-muted-foreground/55">{emptyText}</p>
+        <p className="text-[11px] text-white/35 leading-relaxed">{emptyText}</p>
       )}
     </div>
   );
@@ -158,6 +172,9 @@ function ConsultantTrendList({
 
 /* ── Main Component ────────────────────────────────────────────────── */
 export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTrendsSectionProps) {
+  const [scoreAnimated, setScoreAnimated] = useState(false);
+  const [payoutAnimated, setPayoutAnimated] = useState(false);
+
   const trendData = useMemo(() => {
     const periodMap = new Map<string, { scores: number[]; payouts: number[]; count: number }>();
 
@@ -170,7 +187,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTr
       periodMap.set(snap.period_key, existing);
     });
 
-    const points: TrendPoint[] = Array.from(periodMap.entries())
+    return Array.from(periodMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([key, data]) => ({
         period: key,
@@ -179,8 +196,6 @@ export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTr
         totalPayout: Math.round(data.payouts.reduce((s, v) => s + v, 0)),
         consultantCount: data.count,
       }));
-
-    return points;
   }, [consultants, consultantSnapshots]);
 
   const consultantChanges = useMemo(() => {
@@ -233,55 +248,91 @@ export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTr
   const currentPoint = trendData[trendData.length - 1] ?? null;
   const previousPoint = trendData.length >= 2 ? trendData[trendData.length - 2] : null;
 
+  const axisStyle = { fontSize: 10, fill: "rgba(255,255,255,0.3)" };
+
+  // Dynamic Y domain: pad ±10 around actual range so the line fills the chart area
+  const scoreDomain = useMemo((): [number, number] => {
+    if (trendData.length === 0) return [0, 100];
+    const vals = trendData.map((d) => d.avgScore);
+    const lo = Math.max(0, Math.min(...vals) - 10);
+    const hi = Math.min(100, Math.max(...vals) + 10);
+    return [Math.floor(lo / 5) * 5, Math.ceil(hi / 5) * 5];
+  }, [trendData]);
+
+  const payoutDomain = useMemo((): [number, number] => {
+    if (trendData.length === 0) return [0, 1];
+    const vals = trendData.map((d) => d.totalPayout);
+    const lo = Math.max(0, Math.min(...vals) * 0.85);
+    const hi = Math.max(...vals) * 1.15;
+    return [Math.floor(lo), Math.ceil(hi)];
+  }, [trendData]);
+
   return (
     <motion.div {...fadeUp} transition={{ duration: 0.35 }} className="grid gap-4 xl:grid-cols-2">
-      {/* Score Evolution */}
+
+      {/* ── Score Evolution ── */}
       <SectionCard title="Evolução do Score" icon={BarChart3}>
         {hasHistory ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
+          <div className="space-y-4">
+            {/* KPI row */}
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-2xl font-bold text-foreground">{currentPoint?.avgScore ?? 0}%</p>
-                <p className="text-[11px] text-muted-foreground/60">Score médio atual</p>
+                <p className="text-3xl font-extrabold text-white/90 tabular-nums leading-none">
+                  {currentPoint?.avgScore ?? 0}%
+                </p>
+                <p className="mt-1 text-[11px] text-white/40">Score médio atual</p>
               </div>
               <div className="text-right">
                 <TrendIndicator current={currentPoint?.avgScore ?? 0} previous={previousPoint?.avgScore ?? null} />
                 {previousPoint && (
-                  <p className="text-[10px] text-muted-foreground/40 mt-0.5">vs {previousPoint.label}</p>
+                  <p className="text-[10px] text-white/30 mt-0.5">vs {previousPoint.label}</p>
                 )}
               </div>
             </div>
-            <div className="h-48">
+
+            {/* Chart */}
+            <motion.div
+              className="h-44"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              onAnimationComplete={() => setScoreAnimated(true)}
+            >
               <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                <AreaChart data={trendData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                <AreaChart data={trendData} margin={{ top: 8, right: 4, left: -22, bottom: 0 }}>
                   <defs>
                     <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                      <stop offset="85%" stopColor="hsl(var(--primary))" stopOpacity={0.03} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.1)" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground) / 0.5)" }} axisLine={false} tickLine={false} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground) / 0.5)" }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<ChartTooltip />} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis dataKey="label" tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis domain={scoreDomain} tick={axisStyle} axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: "rgba(255,255,255,0.08)", strokeWidth: 1 }} />
                   <Area
                     type="monotone"
                     dataKey="avgScore"
                     name="Score médio"
                     stroke="hsl(var(--primary))"
-                    strokeWidth={2}
+                    strokeWidth={2.5}
                     fill="url(#scoreGradient)"
-                    dot={{ r: 3, fill: "hsl(var(--primary))", strokeWidth: 0 }}
+                    dot={{ r: 3.5, fill: "hsl(var(--primary))", strokeWidth: 0 }}
                     activeDot={{ r: 5, fill: "hsl(var(--primary))", strokeWidth: 2, stroke: "hsl(var(--background))" }}
+                    isAnimationActive={!scoreAnimated}
+                    animationDuration={900}
+                    animationEasing="ease-out"
                   />
                 </AreaChart>
               </ResponsiveContainer>
-            </div>
+            </motion.div>
+
+            {/* Lists */}
             <div className="grid gap-3 lg:grid-cols-2">
               <ConsultantTrendList
                 title="Consultores em alta"
                 items={improvingConsultants}
-                emptyText="Ainda não há crescimento individual comparável entre os períodos registrados."
+                emptyText="Nenhum consultor evoluiu entre os últimos dois períodos."
                 positive
               />
               <ConsultantTrendList
@@ -297,54 +348,123 @@ export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTr
             label="Score médio atual"
             value={`${currentPoint?.avgScore ?? 0}%`}
             periodLabel={currentPoint?.label ?? ""}
-            color="text-foreground"
+            color="text-white/90"
           />
         ) : (
           <EmptyInsight text="Os scores são registrados automaticamente a cada ciclo. Quando o primeiro período for concluído, a evolução vai aparecer aqui." />
         )}
       </SectionCard>
 
-      {/* Payout Evolution */}
+      {/* ── Payout Evolution ── */}
       <SectionCard title="Evolução do Payout" icon={Wallet}>
         {hasHistory ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
+          <div className="space-y-4">
+            {/* KPI row */}
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-2xl font-bold text-primary">{money(currentPoint?.totalPayout ?? 0)}</p>
-                <p className="text-[11px] text-muted-foreground/60">Payout total atual</p>
+                <p className="text-3xl font-extrabold text-emerald-400 tabular-nums leading-none">
+                  {money(currentPoint?.totalPayout ?? 0)}
+                </p>
+                <p className="mt-1 text-[11px] text-white/40">Payout total atual</p>
               </div>
               <div className="text-right">
                 <TrendIndicator current={currentPoint?.totalPayout ?? 0} previous={previousPoint?.totalPayout ?? null} />
                 {previousPoint && (
-                  <p className="text-[10px] text-muted-foreground/40 mt-0.5">vs {previousPoint.label}: {money(previousPoint.totalPayout)}</p>
+                  <p className="text-[10px] text-white/30 mt-0.5">vs {previousPoint.label}: {money(previousPoint.totalPayout)}</p>
                 )}
               </div>
             </div>
-            <div className="h-48">
+
+            {/* Chart */}
+            <motion.div
+              className="h-44"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.15 }}
+              onAnimationComplete={() => setPayoutAnimated(true)}
+            >
               <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                <AreaChart data={trendData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                <AreaChart data={trendData} margin={{ top: 8, right: 4, left: -8, bottom: 0 }}>
                   <defs>
                     <linearGradient id="payoutGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0} />
+                      <stop offset="0%" stopColor="hsl(142,71%,45%)" stopOpacity={0.35} />
+                      <stop offset="85%" stopColor="hsl(142,71%,45%)" stopOpacity={0.03} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.1)" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground) / 0.5)" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground) / 0.5)" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-                  <Tooltip content={<ChartTooltip />} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis dataKey="label" tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis domain={payoutDomain} tick={axisStyle} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: "rgba(255,255,255,0.08)", strokeWidth: 1 }} />
                   <Area
                     type="monotone"
                     dataKey="totalPayout"
                     name="Payout total"
-                    stroke="hsl(142, 71%, 45%)"
-                    strokeWidth={2}
+                    stroke="hsl(142,71%,45%)"
+                    strokeWidth={2.5}
                     fill="url(#payoutGradient)"
-                    dot={{ r: 3, fill: "hsl(142, 71%, 45%)", strokeWidth: 0 }}
-                    activeDot={{ r: 5, fill: "hsl(142, 71%, 45%)", strokeWidth: 2, stroke: "hsl(var(--background))" }}
+                    dot={{ r: 3.5, fill: "hsl(142,71%,45%)", strokeWidth: 0 }}
+                    activeDot={{ r: 5, fill: "hsl(142,71%,45%)", strokeWidth: 2, stroke: "hsl(var(--background))" }}
+                    isAnimationActive={!payoutAnimated}
+                    animationDuration={900}
+                    animationEasing="ease-out"
                   />
                 </AreaChart>
               </ResponsiveContainer>
+            </motion.div>
+
+            {/* Payout summary tiles */}
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {[
+                {
+                  label: "Maior payout",
+                  value: money(Math.max(...trendData.map((d) => d.totalPayout))),
+                  sub: trendData.find((d) => d.totalPayout === Math.max(...trendData.map((x) => x.totalPayout)))?.label ?? "—",
+                  color: "text-emerald-400",
+                  border: "border-emerald-500/15",
+                  bg: "bg-emerald-500/[0.04]",
+                },
+                {
+                  label: "Menor payout",
+                  value: money(Math.min(...trendData.map((d) => d.totalPayout))),
+                  sub: trendData.find((d) => d.totalPayout === Math.min(...trendData.map((x) => x.totalPayout)))?.label ?? "—",
+                  color: "text-white/70",
+                  border: "border-white/[0.06]",
+                  bg: "bg-white/[0.02]",
+                },
+                {
+                  label: "Variação total",
+                  value: (() => {
+                    const first = trendData[0]?.totalPayout ?? 0;
+                    const last = trendData[trendData.length - 1]?.totalPayout ?? 0;
+                    const diff = last - first;
+                    return `${diff >= 0 ? "+" : ""}${money(diff)}`;
+                  })(),
+                  sub: `${trendData[0]?.label ?? "—"} → ${trendData[trendData.length - 1]?.label ?? "—"}`,
+                  color: (() => { const d = (trendData[trendData.length - 1]?.totalPayout ?? 0) - (trendData[0]?.totalPayout ?? 0); return d >= 0 ? "text-emerald-400" : "text-red-400"; })(),
+                  border: "border-white/[0.06]",
+                  bg: "bg-white/[0.02]",
+                },
+                {
+                  label: "Períodos",
+                  value: String(trendData.length),
+                  sub: "meses com dados",
+                  color: "text-white/70",
+                  border: "border-white/[0.06]",
+                  bg: "bg-white/[0.02]",
+                },
+              ].map((tile, i) => (
+                <motion.div
+                  key={tile.label}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: 0.1 + i * 0.06 }}
+                  className={`rounded-xl border ${tile.border} ${tile.bg} px-3 py-3`}
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35 mb-1">{tile.label}</p>
+                  <p className={`text-sm font-bold tabular-nums leading-tight ${tile.color}`}>{tile.value}</p>
+                  <p className="text-[10px] text-white/30 mt-0.5">{tile.sub}</p>
+                </motion.div>
+              ))}
             </div>
           </div>
         ) : trendData.length === 1 ? (
@@ -352,12 +472,13 @@ export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTr
             label="Payout total atual"
             value={money(currentPoint?.totalPayout ?? 0)}
             periodLabel={currentPoint?.label ?? ""}
-            color="text-primary"
+            color="text-emerald-400"
           />
         ) : (
           <EmptyInsight text="Os valores de payout são gravados automaticamente. A partir do segundo período registrado, o gráfico de evolução vai aparecer aqui." />
         )}
       </SectionCard>
+
     </motion.div>
   );
 }

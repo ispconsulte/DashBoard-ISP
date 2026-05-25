@@ -290,7 +290,7 @@ export default function Sprint6BonificacaoPage() {
         <div className="space-y-5">
           {/* Header */}
           <div
-            className="relative overflow-hidden rounded-2xl border border-white/[0.07]"
+            className="relative overflow-hidden rounded-2xl ring-1 ring-inset ring-white/[0.06]"
             style={{
               background: "linear-gradient(135deg, hsl(224 48% 10%) 0%, hsl(244 46% 15%) 46%, hsl(38 50% 12%) 100%)",
             }}
@@ -472,7 +472,7 @@ export default function Sprint6BonificacaoPage() {
 
             {availableTabs.length > 0 ? (
               <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="min-w-0 space-y-4">
-                <TabsList className="grid h-auto w-full grid-cols-1 gap-1 rounded-xl border border-white/[0.08] bg-[linear-gradient(135deg,hsl(224_42%_12%/0.72),hsl(236_38%_13%/0.58))] p-1 shadow-lg shadow-black/10 min-[430px]:grid-cols-2 lg:inline-flex lg:w-auto lg:flex-wrap lg:justify-start">
+                <TabsList className="grid h-auto w-full grid-cols-1 gap-1 rounded-xl border border-white/[0.08] bg-[linear-gradient(135deg,hsl(224_42%_12%/0.72),hsl(236_38%_13%/0.58))] p-1 shadow-lg shadow-black/10 min-[430px]:grid-cols-2 lg:flex lg:w-full lg:flex-wrap lg:justify-center">
                   {canSeeRanking && (
                     <TabsTrigger
                       value="ranking"
@@ -686,8 +686,24 @@ export default function Sprint6BonificacaoPage() {
                     </div>
                   ))}
                 </div>
+              ) : rankingConsultants.length > 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-amber-500/10 bg-amber-500/[0.04] px-4 py-5 text-center">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10">
+                    <TrendingUp className="h-4 w-4 text-amber-400" />
+                  </div>
+                  <p className="text-xs font-semibold text-amber-400">Ninguém no destaque ainda</p>
+                  <p className="text-[11px] text-muted-foreground/55 leading-relaxed">
+                    {(() => {
+                      const withScore = rankingConsultants.filter(c => c.scoreSource !== "none");
+                      const max = withScore.length > 0 ? Math.max(...withScore.map(c => c.score)) : null;
+                      return max !== null
+                        ? `Score mais alto: ${max}%. Para entrar aqui precisa de ≥75%.`
+                        : "Nenhum consultor atingiu ≥75% com entregas em dia.";
+                    })()}
+                  </p>
+                </div>
               ) : (
-                <EmptyInsight text="Ainda não há consultores com score acima de 75% e entregas em dia." />
+                <EmptyInsight text="Sem dados neste período." />
               )}
             </SectionCard>
 
@@ -701,7 +717,20 @@ export default function Sprint6BonificacaoPage() {
                   ))}
                 </div>
               ) : rankingConsultants.length > 0 ? (
-                <EmptyInsight text="Todos acima de 60%." />
+                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-emerald-500/10 bg-emerald-500/[0.04] px-4 py-5 text-center">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
+                    <TrendingUp className="h-4 w-4 text-emerald-400" />
+                  </div>
+                  <p className="text-xs font-semibold text-emerald-400">Equipe saudável</p>
+                  <p className="text-[11px] text-muted-foreground/55 leading-relaxed">
+                    Todos os {rankingConsultants.filter(c => c.scoreSource !== "none").length} consultores estão acima de 60%.
+                    {(() => {
+                      const withScore = rankingConsultants.filter(c => c.scoreSource !== "none");
+                      const min = withScore.length > 0 ? Math.min(...withScore.map(c => c.score)) : null;
+                      return min !== null ? ` Score mais baixo: ${min}%.` : "";
+                    })()}
+                  </p>
+                </div>
               ) : (
                 <EmptyInsight text="Sem dados neste período." />
               )}

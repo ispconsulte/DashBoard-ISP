@@ -12,7 +12,16 @@ const SYNC_JOB_NAME = 'sync-bitrix-times';
 const SOURCE_CODE = 'bitrix_elapsed_times';
 const SOURCE_NAME = 'Bitrix Elapsed Times';
 const SOURCE_ENTITY = 'elapsed_times';
-const RUN_STALE_AFTER_MS = 3 * 60 * 60 * 1000;
+// 35 min — slightly above one 10-min cron cycle so a legitimately running job
+// is never evicted, but a truly stuck row is cleaned up before the next cycle.
+const RUN_STALE_AFTER_MS = 35 * 60 * 1000;
+const BLOCKING_TASK_DIAGNOSTIC_CODES = new Set([
+  'deleted_confirmed',
+  'invalid_project',
+  'missing_title',
+  'not_found_or_no_access',
+  'stale_not_seen',
+]);
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -52,6 +61,10 @@ function toIso(value: unknown): string | null {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getBlockingDiagnosticCodes(codes: string[] | null | undefined): string[] {
+  return (codes ?? []).filter((code) => BLOCKING_TASK_DIAGNOSTIC_CODES.has(code));
 }
 
 async function bitrixPost(url: string, body: unknown): Promise<any> {
@@ -184,6 +197,7 @@ function parseElapsed(
   const rawTaskId = toInt(getField(raw, 'taskId', 'TASK_ID', 'task_id'));
   const taskSnapshot = rawTaskId ? taskStateById.get(rawTaskId) ?? null : null;
   const hasLinkedTask = !!taskSnapshot;
+  const blockingDiagnostics = getBlockingDiagnosticCodes(taskSnapshot?.diagnostic_codes);
   const deletedConfirmed = !!(rawTaskId && tombstones.has(rawTaskId));
   const seconds = toInt(getField(raw, 'seconds', 'SECONDS')) ?? 0;
   const minutes = toInt(getField(raw, 'minutes', 'MINUTES')) ?? 0;
@@ -191,6 +205,9 @@ function parseElapsed(
   const dateStop = toIso(getField(raw, 'dateStop', 'DATE_STOP', 'date_stop'));
   const createdDate = toIso(getField(raw, 'createdDate', 'CREATED_DATE', 'created_date'));
   const isManualBackdated = !!(dateStart && dateStop && dateStart === dateStop && seconds > 0);
+  const referenceDate = isManualBackdated
+    ? createdDate
+    : (dateStart ?? createdDate ?? dateStop);
 
   let localState = 'active';
   let orphanReason: string | null = null;
@@ -211,6 +228,10 @@ function parseElapsed(
     orphanReason = 'deleted_confirmed';
     orphanDetail = 'A hora esta ligada a uma tarefa excluida com confirmacao oficial.';
     taskId = null;
+  } else if (taskSnapshot?.local_state === 'not_found_or_no_access' || taskSnapshot?.local_state === 'stale_not_seen') {
+    localState = taskSnapshot.local_state;
+    orphanReason = taskSnapshot.local_state;
+    orphanDetail = 'A hora esta ligada a uma tarefa fora do estado operacional.';
   } else if (!rawTaskId) {
     localState = 'orphan_time_entry';
     orphanReason = 'missing_task_reference';
@@ -219,10 +240,16 @@ function parseElapsed(
     localState = 'orphan_time_entry';
     orphanReason = 'missing_task_in_local_snapshot';
     orphanDetail = 'O lancamento chegou com TASK_ID, mas a tarefa ainda nao foi consolidada localmente.';
-  } else if ((taskSnapshot?.diagnostic_codes?.length ?? 0) > 0) {
+  } else if (blockingDiagnostics.length > 0) {
     localState = 'task_integrity_blocked';
     orphanReason = 'task_integrity_blocked';
-    orphanDetail = `A hora esta ligada a uma tarefa bloqueada na Central de Integridade: ${taskSnapshot?.diagnostic_codes?.join(', ')}.`;
+    orphanDetail = `A hora esta ligada a uma tarefa com diagnostico critico na Central de Integridade: ${blockingDiagnostics.join(', ')}.`;
+  } else if ((taskSnapshot?.diagnostic_codes?.length ?? 0) > 0) {
+    console.warn('Hora permitida com diagnosticos nao criticos da tarefa.', {
+      elapsed_id: id,
+      task_id: rawTaskId,
+      diagnostic_codes: taskSnapshot?.diagnostic_codes,
+    });
   }
 
   return {
@@ -245,7 +272,7 @@ function parseElapsed(
     })(),
     local_state: localState,
     is_manual_backdated: isManualBackdated,
-    reference_date: createdDate ?? dateStart ?? dateStop ?? new Date().toISOString(),
+    reference_date: referenceDate ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 }

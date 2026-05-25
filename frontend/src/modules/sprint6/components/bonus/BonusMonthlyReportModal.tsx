@@ -164,6 +164,7 @@ export function BonusMonthlyReportModal({
   const [previewRows, setPreviewRows] = useState<Array<{ label: string; score: number; justificativa: string; pontos: string }>>([]);
   const [previewSummary, setPreviewSummary] = useState<{
     score: number;
+    systemScore?: number;
     payout: number;
     onTimeRate: number;
     hard: number;
@@ -259,10 +260,12 @@ export function BonusMonthlyReportModal({
         const peopleRows = rows.filter((row) => row.label.startsWith("people_skill"));
         const avg = (items: typeof rows) => items.length ? Math.round((items.reduce((sum, item) => sum + item.score, 0) / items.length) * 10) : 0;
 
+        const snapshot = snapshotRows?.[0] ?? null;
         if (!cancelled) {
           setPreviewRows(rows);
           setPreviewSummary({
             score: Number(consultant.coordinatorScore ?? 0),
+            systemScore: snapshot ? Number(snapshot.score) : undefined,
             payout: Number(consultant.payout ?? 0),
             onTimeRate: Number(consultant.onTimeRate ?? 0),
             hard: avg(hardRows),
@@ -356,6 +359,7 @@ export function BonusMonthlyReportModal({
       evaluatorName: session?.name ?? session?.email ?? "Coordenador",
       monthLabel: `${String(month).padStart(2, "0")}/${year}`,
       overallScore: scoreValue,
+      systemScore: previewSummary?.systemScore,
       payoutAmount: payoutValue,
       hideMonetary,
       metrics: {

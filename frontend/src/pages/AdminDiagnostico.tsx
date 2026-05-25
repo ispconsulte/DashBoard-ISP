@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Children, isValidElement, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -7,6 +7,7 @@ import {
   Bug,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Eye,
   EyeOff,
@@ -15,6 +16,8 @@ import {
   Hash,
   Info,
   Link2Off,
+  Minus,
+  Plus,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -258,23 +261,64 @@ function periodCutoff(period: PeriodFilter): Date | null {
 
 const CARD = "rounded-2xl border border-border/12 bg-card/35";
 const INNER = "rounded-xl border border-border/8 bg-card/20";
-const SEL = "w-full h-10 rounded-xl border border-border/15 bg-card/40 px-3 pr-8 text-sm text-foreground outline-none appearance-none cursor-pointer transition-colors hover:bg-card/55 focus:border-primary/30 [color-scheme:dark]";
+const ITEM_CARD = "rounded-2xl border border-border/20 bg-card/60 transition-colors hover:border-border/30 hover:bg-card/75";
+const SEL = "w-full h-10 rounded-xl border border-border/15 bg-card/40 px-3 pr-9 text-sm text-foreground outline-none appearance-none cursor-pointer transition-colors hover:bg-card/55 focus:border-primary/30 [color-scheme:dark]";
 
-function NativeSelect({ value, onChange, children, className = "" }: { value: string; onChange: (v: string) => void; children: React.ReactNode; className?: string }) {
+function NativeSelect({ value, onChange, children, className = "" }: { value: string; onChange: (v: string) => void; children: ReactNode; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const options = Children.toArray(children)
+    .filter((child): child is ReactElement<{ value: string; children: ReactNode }> =>
+      isValidElement(child) && child.type === "option",
+    )
+    .map((child) => ({ value: child.props.value, label: child.props.children }));
+  const selected = options.find((option) => option.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
   return (
-    <div className="relative w-full">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`${SEL} ${className}`}
+    <div ref={ref} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={`${SEL} flex items-center justify-between text-left ${open ? "border-primary/50 bg-card/55" : ""} ${className}`}
+        aria-expanded={open}
       >
-        {children}
-      </select>
-      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground/40">
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </span>
+        <span className="min-w-0 truncate">{selected?.label}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground/45 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border/15 bg-[#161922] p-1 shadow-xl shadow-black/35">
+          {options.map((option) => {
+            const active = option.value === value;
+            return (
+              <button
+                key={option.value || "__empty__"}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                  active
+                    ? "bg-primary/12 text-primary"
+                    : "text-foreground/90 hover:bg-card/70 hover:text-foreground"
+                }`}
+              >
+                <span className="min-w-0 truncate">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -309,10 +353,10 @@ function EmptyPanel({ title, description }: { title: string; description: string
 function MetaField({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Hash }) {
   return (
     <div className="flex items-start gap-2 min-w-0">
-      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/35" />
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/55" />
       <div className="min-w-0">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/45">{label}</p>
-        <p className="mt-0.5 truncate text-sm text-foreground/80">{value}</p>
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">{label}</p>
+        <p className="mt-0.5 truncate text-sm text-foreground/95">{value}</p>
       </div>
     </div>
   );
@@ -349,7 +393,40 @@ function PaginationBar({ page, totalPages, onPrev, onNext, label }: { page: numb
   );
 }
 
-function Pill({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function BatchStepper({ value, max, onChange }: { value: number; max: number; onChange: (v: number) => void }) {
+  const clamp = (v: number) => Math.min(Math.max(1, v), Math.max(1, max));
+  return (
+    <div className="flex h-8 items-stretch overflow-hidden rounded-lg border border-red-500/25 bg-red-500/[0.04]">
+      <button
+        type="button"
+        onClick={() => onChange(clamp(value - 1))}
+        disabled={value <= 1}
+        className="flex w-7 items-center justify-center text-red-300/70 transition-colors hover:bg-red-500/15 hover:text-red-200 disabled:opacity-30 disabled:hover:bg-transparent"
+        aria-label="Diminuir"
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={value}
+        onChange={(e) => onChange(clamp(Number(e.target.value.replace(/\D/g, "")) || 1))}
+        className="w-9 border-x border-red-500/15 bg-transparent text-center text-xs font-semibold text-foreground outline-none"
+      />
+      <button
+        type="button"
+        onClick={() => onChange(clamp(value + 1))}
+        disabled={value >= Math.max(1, max)}
+        className="flex w-7 items-center justify-center text-red-300/70 transition-colors hover:bg-red-500/15 hover:text-red-200 disabled:opacity-30 disabled:hover:bg-transparent"
+        aria-label="Aumentar"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function Pill({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium leading-5 ${className}`}>
       {children}
@@ -414,6 +491,8 @@ export default function AdminDiagnostico() {
 
   const [showTaskFilters, setShowTaskFilters] = useState(false);
   const [showElapsedFilters, setShowElapsedFilters] = useState(false);
+  const [showTaskLegend, setShowTaskLegend] = useState(false);
+  const [showElapsedLegend, setShowElapsedLegend] = useState(false);
 
   const loadDashboard = async () => {
     if (!session?.accessToken) return;
@@ -554,7 +633,6 @@ export default function AdminDiagnostico() {
     try {
       const result = await triggerIntegritySync(session.accessToken, ["all"]);
       setPayload(result.dashboard);
-      setActiveTab("sync");
       const failed = result.jobs.filter((job) => !job.ok);
       if (failed.length) {
         setError(`Sincronização concluída com falha em: ${failed.map((job) => job.job_name).join(", ")}.`);
@@ -634,7 +712,7 @@ export default function AdminDiagnostico() {
   if (!isManager) return <Navigate to="/" replace />;
 
   return (
-    <div className="page-gradient w-full">
+    <div className="page-gradient w-full overflow-x-hidden">
       <div className="mx-auto w-full max-w-[1800px] space-y-5 p-4 sm:p-5 md:p-6 lg:p-8">
 
         {/* Header */}
@@ -659,12 +737,8 @@ export default function AdminDiagnostico() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 shrink-0">
-                <Button type="button" variant="outline" onClick={() => void loadDashboard()} disabled={loading || syncing} className="rounded-xl border-border/15 bg-card/40 text-muted-foreground hover:bg-card/60 hover:text-foreground gap-2 text-xs">
-                  <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-                  {loading ? "Atualizando..." : "Atualizar"}
-                </Button>
                 <Button type="button" onClick={() => void runSyncNow()} disabled={loading || syncing} className="rounded-xl gap-2 text-xs">
-                  <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`h-3.5 w-3.5 ${loading || syncing ? "animate-spin" : ""}`} />
                   {syncing ? "Sincronizando..." : "Sincronizar agora"}
                 </Button>
               </div>
@@ -766,50 +840,11 @@ export default function AdminDiagnostico() {
           <TabsContent value="tasks" className="space-y-4">
             {/* Header + search + filters */}
             <div className={`${CARD} p-5 space-y-4`}>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-[15px] font-semibold text-foreground">Tarefas para revisão</p>
-                  <p className="mt-0.5 text-[13px] text-muted-foreground/60">
-                    {filteredTasks.length} tarefa(s) encontrada(s) · {deletableTasks.length} excluível(is)
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-3 py-2">
-                    <span className="whitespace-nowrap text-[11px] font-medium text-red-300/80">Excluir lote</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={Math.max(1, deletableTasks.length)}
-                      value={batchTaskCount}
-                      onChange={(e) => setBatchTaskCount(Math.min(Math.max(1, Number(e.target.value) || 1), Math.max(1, deletableTasks.length)))}
-                      className="h-8 w-14 rounded-md border border-border/15 bg-card/40 px-2 text-center text-xs text-foreground outline-none"
-                    />
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      disabled={saving || deletableTasks.length === 0}
-                      onClick={() => openBatchDelete("task")}
-                      className="h-8 gap-1.5 text-[12px]"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Excluir
-                    </Button>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowTaskFilters((v) => !v)}
-                    className={`h-8 gap-1.5 border-border/15 text-muted-foreground hover:text-foreground hover:bg-card/60 shrink-0 ${showTaskFilters ? "bg-card/50" : "bg-card/30"}`}
-                  >
-                    <Filter className="h-3.5 w-3.5" />
-                    Filtros
-                    {taskActiveFilterCount > 0 && (
-                      <span className="ml-0.5 rounded-full bg-sky-400/20 px-1.5 text-[10px] text-sky-200">{taskActiveFilterCount}</span>
-                    )}
-                  </Button>
-                </div>
+              <div className="min-w-0">
+                <p className="text-[15px] font-semibold text-foreground">Tarefas para revisão</p>
+                <p className="mt-0.5 text-[13px] text-muted-foreground/60">
+                  {filteredTasks.length} tarefa(s) encontrada(s) · {deletableTasks.length} excluível(is)
+                </p>
               </div>
 
               <input
@@ -819,6 +854,71 @@ export default function AdminDiagnostico() {
                 placeholder="Buscar por nome, responsável ou ID…"
                 className="w-full rounded-lg border border-border/15 bg-card/30 px-3.5 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/35 focus:border-primary/30 [color-scheme:dark]"
               />
+
+              {/* Barra de controles centralizada */}
+              <div className="flex flex-wrap items-center justify-center gap-2 border-t border-border/12 pt-4">
+                <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-3 py-2">
+                  <span className="whitespace-nowrap text-[11px] font-medium text-red-300/80">Excluir lote</span>
+                  <BatchStepper value={batchTaskCount} max={deletableTasks.length} onChange={setBatchTaskCount} />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={saving || deletableTasks.length === 0}
+                    onClick={() => openBatchDelete("task")}
+                    className="h-8 gap-1.5 text-[12px]"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Excluir
+                  </Button>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTaskFilters((v) => !v)}
+                  className={`h-8 gap-1.5 border-border/15 text-muted-foreground hover:text-foreground hover:bg-card/60 ${showTaskFilters ? "bg-card/50" : "bg-card/30"}`}
+                >
+                  <Filter className="h-3.5 w-3.5" />
+                  Filtros
+                  {taskActiveFilterCount > 0 && (
+                    <span className="ml-0.5 rounded-full bg-sky-400/20 px-1.5 text-[10px] text-sky-200">{taskActiveFilterCount}</span>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTaskLegend((v) => !v)}
+                  className={`h-8 gap-1.5 border-border/15 text-muted-foreground hover:text-foreground hover:bg-card/60 ${showTaskLegend ? "bg-card/50" : "bg-card/30"}`}
+                >
+                  <Info className="h-3.5 w-3.5" />
+                  Entenda as categorias
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showTaskLegend ? "rotate-180" : ""}`} />
+                </Button>
+              </div>
+
+              {/* Legenda das categorias (expansível) */}
+              {showTaskLegend && (
+                <div className={`${INNER} p-4`}>
+                  <div className="grid gap-2.5 sm:grid-cols-2">
+                    {[
+                      { title: "Não encontrada / sem acesso", desc: "Não houve exclusão confirmada por evento oficial.", dot: "bg-sky-400/70" },
+                      { title: "Projeto arquivado", desc: "A tarefa existe, mas o grupo/projeto está fechado no Bitrix.", dot: "bg-purple-400/70" },
+                      { title: "Dados incompletos", desc: "Sem projeto, responsável ou prazo.", dot: "bg-amber-400/70" },
+                      { title: "Sem atualização recente", desc: "A tarefa ficou tempo demais sem ser vista novamente.", dot: "bg-rose-400/70" },
+                    ].map((item) => (
+                      <div key={item.title} className="flex items-start gap-2.5 rounded-lg border border-border/10 bg-card/30 px-3.5 py-2.5">
+                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.dot}`} />
+                        <div className="min-w-0">
+                          <p className="text-[12.5px] font-semibold leading-tight text-foreground/90">{item.title}</p>
+                          <p className="mt-0.5 text-[12px] leading-[1.5] text-muted-foreground/65">{item.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Filter panel */}
               {showTaskFilters && (
@@ -862,19 +962,6 @@ export default function AdminDiagnostico() {
               )}
             </div>
 
-            {/* Global explanation */}
-            {filteredTasks.length > 0 && (
-              <div className={`${CARD} flex items-start gap-3 px-5 py-3.5`}>
-                <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary/50" />
-                <div className="flex flex-wrap gap-x-6 gap-y-1 text-[12px] leading-[1.6] text-muted-foreground/55">
-                  <span><span className="font-medium text-muted-foreground/80">Não encontrada / sem acesso</span> — não houve exclusão confirmada por evento oficial</span>
-                  <span><span className="font-medium text-muted-foreground/80">Projeto arquivado</span> — a tarefa existe, mas o grupo/projeto está fechado no Bitrix</span>
-                  <span><span className="font-medium text-muted-foreground/80">Dados incompletos</span> — sem projeto, responsável ou prazo</span>
-                  <span><span className="font-medium text-muted-foreground/80">Sem atualização recente</span> — a tarefa ficou tempo demais sem ser vista novamente</span>
-                </div>
-              </div>
-            )}
-
             {!filteredTasks.length ? (
               <EmptyPanel
                 title="Nenhuma tarefa pendente de revisão"
@@ -884,7 +971,7 @@ export default function AdminDiagnostico() {
               <>
                 <div className="grid gap-3 xl:grid-cols-2">
                   {pagedTasks.map((task) => (
-                    <div key={task.task_id} className={`${CARD} p-4`}>
+                    <div key={task.task_id} className={`${ITEM_CARD} p-4`}>
                       <div className="flex flex-col gap-3">
                         {/* Title + actions */}
                         <div className="flex items-start justify-between gap-3">
@@ -940,7 +1027,7 @@ export default function AdminDiagnostico() {
                         </div>
 
                         {/* Reason */}
-                        <p className="text-[12px] leading-[1.55] text-amber-400/60">
+                        <p className="rounded-lg border border-amber-400/15 bg-amber-400/[0.06] px-3 py-2 text-[12px] leading-[1.55] text-amber-300/90">
                           {getReasonSummary(task)}
                         </p>
 
@@ -969,50 +1056,11 @@ export default function AdminDiagnostico() {
           {/* ═══════ HORAS SEM VÍNCULO ═══════ */}
           <TabsContent value="elapsed" className="space-y-4">
             <div className={`${CARD} p-5 space-y-4`}>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-[15px] font-semibold text-foreground">Horas sem vínculo</p>
-                  <p className="mt-0.5 text-[13px] text-muted-foreground/60">
-                    {filteredElapsed.length} lançamento(s) encontrado(s) · {deletableElapsed.length} excluível(is)
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-3 py-2">
-                    <span className="whitespace-nowrap text-[11px] font-medium text-red-300/80">Excluir lote</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={Math.max(1, deletableElapsed.length)}
-                      value={batchElapsedCount}
-                      onChange={(e) => setBatchElapsedCount(Math.min(Math.max(1, Number(e.target.value) || 1), Math.max(1, deletableElapsed.length)))}
-                      className="h-8 w-14 rounded-md border border-border/15 bg-card/40 px-2 text-center text-xs text-foreground outline-none"
-                    />
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      disabled={saving || deletableElapsed.length === 0}
-                      onClick={() => openBatchDelete("elapsed")}
-                      className="h-8 gap-1.5 text-[12px]"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Excluir
-                    </Button>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowElapsedFilters((v) => !v)}
-                    className={`h-8 gap-1.5 border-border/15 text-muted-foreground hover:text-foreground hover:bg-card/60 shrink-0 ${showElapsedFilters ? "bg-card/50" : "bg-card/30"}`}
-                  >
-                    <Filter className="h-3.5 w-3.5" />
-                    Filtros
-                    {elapsedActiveFilterCount > 0 && (
-                      <span className="ml-0.5 rounded-full bg-sky-400/20 px-1.5 text-[10px] text-sky-200">{elapsedActiveFilterCount}</span>
-                    )}
-                  </Button>
-                </div>
+              <div className="min-w-0">
+                <p className="text-[15px] font-semibold text-foreground">Horas sem vínculo</p>
+                <p className="mt-0.5 text-[13px] text-muted-foreground/60">
+                  {filteredElapsed.length} lançamento(s) encontrado(s) · {deletableElapsed.length} excluível(is)
+                </p>
               </div>
 
               <input
@@ -1022,6 +1070,59 @@ export default function AdminDiagnostico() {
                 placeholder="Buscar por tarefa, responsável ou ID…"
                 className="w-full rounded-lg border border-border/15 bg-card/30 px-3.5 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/35 focus:border-primary/30 [color-scheme:dark]"
               />
+
+              {/* Barra de controles centralizada */}
+              <div className="flex flex-wrap items-center justify-center gap-2 border-t border-border/12 pt-4">
+                <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-3 py-2">
+                  <span className="whitespace-nowrap text-[11px] font-medium text-red-300/80">Excluir lote</span>
+                  <BatchStepper value={batchElapsedCount} max={deletableElapsed.length} onChange={setBatchElapsedCount} />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={saving || deletableElapsed.length === 0}
+                    onClick={() => openBatchDelete("elapsed")}
+                    className="h-8 gap-1.5 text-[12px]"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Excluir
+                  </Button>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowElapsedFilters((v) => !v)}
+                  className={`h-8 gap-1.5 border-border/15 text-muted-foreground hover:text-foreground hover:bg-card/60 ${showElapsedFilters ? "bg-card/50" : "bg-card/30"}`}
+                >
+                  <Filter className="h-3.5 w-3.5" />
+                  Filtros
+                  {elapsedActiveFilterCount > 0 && (
+                    <span className="ml-0.5 rounded-full bg-sky-400/20 px-1.5 text-[10px] text-sky-200">{elapsedActiveFilterCount}</span>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowElapsedLegend((v) => !v)}
+                  className={`h-8 gap-1.5 border-border/15 text-muted-foreground hover:text-foreground hover:bg-card/60 ${showElapsedLegend ? "bg-card/50" : "bg-card/30"}`}
+                >
+                  <Info className="h-3.5 w-3.5" />
+                  Sobre a duração
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showElapsedLegend ? "rotate-180" : ""}`} />
+                </Button>
+              </div>
+
+              {/* Explicação sobre a duração (expansível) */}
+              {showElapsedLegend && (
+                <div className={`${INNER} flex items-start gap-3 px-5 py-3.5`}>
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary/70" />
+                  <p className="text-[12px] leading-[1.6] text-muted-foreground/75">
+                    A duração exibida é calculada a partir dos minutos e segundos informados pelo Bitrix. Em lançamentos manuais sem intervalo de tempo definido, a central usa a data de criação como referência de período para evitar valores incorretos.
+                  </p>
+                </div>
+              )}
 
               {showElapsedFilters && (
                 <div className="border-t border-border/12 pt-4 space-y-3">
@@ -1058,15 +1159,6 @@ export default function AdminDiagnostico() {
               )}
             </div>
 
-            {/* Global explanation */}
-            {filteredElapsed.length > 0 && (
-              <div className={`${CARD} flex items-start gap-3 px-5 py-3.5`}>
-                <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary/50" />
-                <p className="text-[12px] leading-[1.6] text-muted-foreground/55">
-                  A duração exibida é calculada a partir dos minutos e segundos informados pelo Bitrix. Em lançamentos manuais sem intervalo de tempo definido, a central usa a data de criação como referência de período para evitar valores incorretos.
-                </p>
-              </div>
-            )}
 
             {!filteredElapsed.length ? (
               <EmptyPanel
@@ -1077,7 +1169,7 @@ export default function AdminDiagnostico() {
               <>
                 <div className="grid gap-3 xl:grid-cols-2">
                   {pagedElapsed.map((entry) => (
-                    <div key={entry.id} className={`${CARD} p-4`}>
+                    <div key={entry.id} className={`${ITEM_CARD} p-4`}>
                       <div className="flex flex-col gap-3">
                         <div className="flex items-start justify-between gap-3">
                           <h3 className="text-[14px] font-semibold leading-snug text-foreground line-clamp-2 min-w-0">{entry.label}</h3>

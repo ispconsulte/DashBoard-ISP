@@ -10,7 +10,24 @@
 html, body {
   overflow-x: clip;
   max-width: 100vw;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
+}
+
+html {
+  overflow-y: scroll;
+}
+
+/* O scrollbar-gutter acima já reserva o espaço da barra de rolagem.
+   O react-remove-scroll (Radix Select/Dialog) injeta margin/padding no body
+   ao abrir, com !important, empurrando a página. Como o gutter já está
+   reservado, anulamos esses deslocamentos. Usamos "html body" para vencer a
+   especificidade da regra do Radix. */
+html body[data-scroll-locked] {
+  margin-right: 0 !important;
+  margin-left: 0 !important;
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+  padding-top: 0 !important;
 }
 
 

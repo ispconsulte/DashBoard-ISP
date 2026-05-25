@@ -28,12 +28,12 @@ export function SectionCard({
 }) {
   return (
     <div className="rounded-2xl border border-border/12 bg-card/40 backdrop-blur-sm overflow-hidden h-full">
-      <div className="flex items-center justify-between gap-2 border-b border-border/8 px-4 py-3">
+      <div className="flex items-center justify-between gap-2 border-b border-primary/10 bg-primary/[0.025] px-4 py-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-primary/15 bg-primary/12">
             <Icon className="h-3.5 w-3.5 text-primary" />
           </div>
-          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <h3 className="text-sm font-semibold text-foreground/90">{title}</h3>
         </div>
         {badge}
       </div>

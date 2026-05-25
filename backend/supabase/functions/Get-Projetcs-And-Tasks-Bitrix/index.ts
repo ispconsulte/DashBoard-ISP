@@ -7,7 +7,9 @@ const SYNC_JOB_NAME = 'Get-Projetcs-And-Tasks-Bitrix';
 const SOURCE_CODE = 'bitrix_tasks';
 const SOURCE_NAME = 'Bitrix Tasks + Projects';
 const SOURCE_ENTITY = 'tasks';
-const RUN_STALE_AFTER_MS = 3 * 60 * 60 * 1000;
+// 35 min — slightly above one 30-min cron cycle so a legitimately running job
+// is never evicted, but a truly stuck row is cleaned up before the next cycle.
+const RUN_STALE_AFTER_MS = 35 * 60 * 1000;
 const TASK_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const BONUS_CALCULATION_VERSION = 'edge-bonus-writer-v1';
 const corsHeaders = {
@@ -52,6 +54,14 @@ function nonEmptyString(value: any): string | null {
   if (value === undefined || value === null) return null;
   const str = String(value).trim();
   return str === '' ? null : str;
+}
+
+function getTaskTitle(item: any): string | null {
+  return (
+    nonEmptyString(getField(item, 'title', 'TITLE')) ||
+    nonEmptyString(getField(item, 'name', 'NAME')) ||
+    nonEmptyString(getField(item, 'subject', 'SUBJECT'))
+  );
 }
 
 function toNumber(value: any): number | null {
@@ -483,11 +493,20 @@ async function fetchExistingTasksMap(supabase: any, taskIds: number[]) {
 }
 
 function mergeTaskRecord(incoming: any, existing?: any) {
-  if (!existing) return incoming;
+  const normalizedTaskId = toInt(incoming?.task_id) ?? toInt(existing?.task_id);
+
+  if (!existing) {
+    const safeTitle =
+      nonEmptyString(incoming?.title) ??
+      (normalizedTaskId != null ? `Tarefa ${normalizedTaskId}` : 'Tarefa sem título');
+    return { ...incoming, task_id: normalizedTaskId ?? incoming?.task_id, title: safeTitle };
+  }
 
   return {
-    task_id: incoming.task_id,
-    title: keepBest(incoming.title, existing.title) ?? `Tarefa ${incoming.task_id}`,
+    task_id: normalizedTaskId ?? incoming.task_id,
+    title:
+      nonEmptyString(keepBest(incoming.title, existing.title)) ??
+      (normalizedTaskId != null ? `Tarefa ${normalizedTaskId}` : 'Tarefa sem título'),
     description: keepBest(incoming.description, existing.description) ?? '',
     status: keepBest(incoming.status, existing.status),
     real_status: keepBest(incoming.real_status, existing.real_status ?? existing.status),
@@ -508,6 +527,48 @@ function mergeTaskRecord(incoming: any, existing?: any) {
     local_state: keepBest(incoming.local_state, existing.local_state ?? 'active'),
     diagnostic_codes: incoming.diagnostic_codes ?? [],
   };
+}
+
+function dedupeTaskUpsertRecords(records: any[], existingByTaskId: Map<number, any>, context: string) {
+  const byTaskId = new Map<number, any>();
+  let duplicates = 0;
+  let skippedMissingTitle = 0;
+
+  for (const record of records) {
+    const taskId = toInt(record?.task_id);
+    if (!taskId) {
+      skippedMissingTitle += 1;
+      console.warn(`Registro ignorado sem task_id antes do upsert (${context}).`, {
+        external_id: record?.task_id ?? null,
+      });
+      continue;
+    }
+
+    const previous = byTaskId.get(taskId) ?? existingByTaskId.get(taskId);
+    if (byTaskId.has(taskId)) duplicates += 1;
+    const merged = mergeTaskRecord({ ...record, task_id: taskId }, previous);
+
+    if (!nonEmptyString(merged?.title)) {
+      skippedMissingTitle += 1;
+      console.warn(`Registro ignorado sem título seguro antes do upsert (${context}).`, {
+        task_id: taskId,
+      });
+      continue;
+    }
+
+    byTaskId.set(taskId, merged);
+  }
+
+  const finalRows = Array.from(byTaskId.values());
+  if (duplicates > 0 || skippedMissingTitle > 0) {
+    console.warn(`Normalização do upsert de tarefas (${context}).`, {
+      deduplicated_rows: duplicates,
+      skipped_missing_title: skippedMissingTitle,
+      final_upsert_rows: finalRows.length,
+    });
+  }
+
+  return finalRows;
 }
 
 async function fetchAllDbTaskIds(supabase: any) {
@@ -1805,14 +1866,21 @@ Deno.serve(async (req) => {
       fetched_tasks: sourceTasks.length,
     });
 
-    const tasksToUpsert = sourceTasks
+    const parsedTasks = sourceTasks
       .map((t: any) => {
         const rawId = getField(t, 'id', 'ID');
         if (!rawId) return null;
         const numericId = toInt(rawId);
         if (!numericId) return null;
 
-        const rawTitle = getField(t, 'title', 'TITLE');
+        const safeTitle = getTaskTitle(t);
+        if (!safeTitle) {
+          console.warn('Tarefa ignorada sem titulo no payload Bitrix.', {
+            task_id: numericId,
+            keys: Object.keys(t).sort(),
+          });
+          return null;
+        }
         const rawDesc = getField(t, 'description', 'DESCRIPTION');
         const rawStatus = getField(t, 'status', 'STATUS');
         const rawDeadline = getField(t, 'deadline', 'DEADLINE');
@@ -1843,7 +1911,7 @@ Deno.serve(async (req) => {
         const projectClosed = Boolean((projectRow as any)?.closed ?? false);
         const localState = 'active';
         const diagnosticCodes = computeTaskDiagnostics({
-          title: nonEmptyString(rawTitle) || `Tarefa ${rawId}`,
+          title: safeTitle,
           projectId,
           projectExists: projectId ? Boolean(projectRow) : true,
           projectClosed,
@@ -1856,7 +1924,7 @@ Deno.serve(async (req) => {
         seenTaskIds.add(numericId);
         return {
           task_id: numericId,
-          title: nonEmptyString(rawTitle) || `Tarefa ${rawId}`,
+          title: safeTitle,
           description: nonEmptyString(rawDesc) || '',
           status: toInt(rawStatus),
           real_status: toInt(rawStatus),
@@ -1878,8 +1946,10 @@ Deno.serve(async (req) => {
           missing_from_bitrix_since: null,
         };
       })
-      .filter((task: any) => task !== null)
-      .map((task: any) => {
+      .filter((task: any): task is Record<string, any> => task !== null);
+
+    for (const task of parsedTasks) {
+        if (!task) continue;
         const previous = existingTasksMap.get(task.task_id) ?? canonicalTasks.get(task.task_id);
         const merged = mergeTaskRecord(task, previous);
         canonicalTasks.set(task.task_id, merged);
@@ -1905,9 +1975,13 @@ Deno.serve(async (req) => {
             });
           }
         }
+    }
 
-        return merged;
-      });
+    const tasksToUpsert = dedupeTaskUpsertRecords(
+      Array.from(canonicalTasks.values()),
+      existingTasksMap,
+      'snapshot incremental',
+    );
 
     if (tasksToUpsert.length > 0) {
       const { error: taskError } = await supabase
@@ -1938,6 +2012,7 @@ Deno.serve(async (req) => {
       if (tombstones.has(taskId)) {
         reconciledUpdates.push({
           task_id: taskId,
+          title: nonEmptyString(row.title) ?? `Tarefa ${taskId}`,
           bitrix_visible: false,
           local_state: 'deleted_confirmed',
           diagnostic_codes: uniqueCodes([...(row.diagnostic_codes ?? []), 'deleted_confirmed']),
@@ -1951,6 +2026,7 @@ Deno.serve(async (req) => {
       if (!liveTask) {
         reconciledUpdates.push({
           task_id: taskId,
+          title: nonEmptyString(row.title) ?? `Tarefa ${taskId}`,
           bitrix_visible: false,
           local_state: 'not_found_or_no_access',
           diagnostic_codes: uniqueCodes([...(row.diagnostic_codes ?? []), 'not_found_or_no_access']),
@@ -1971,7 +2047,7 @@ Deno.serve(async (req) => {
       const projectRow = liveProjectId ? (dbProjects ?? []).find((item: any) => Number(item.id) === liveProjectId) : null;
       const projectClosed = Boolean((projectRow as any)?.closed ?? false);
       const liveLocalState = 'active';
-      const liveTitle = nonEmptyString(getField(liveTask, 'title', 'TITLE')) ?? row.title ?? `Tarefa ${taskId}`;
+      const liveTitle = getTaskTitle(liveTask) ?? nonEmptyString(row.title) ?? `Tarefa ${taskId}`;
       const liveDeadline = toIso(getField(liveTask, 'deadline', 'DEADLINE'));
       const liveResponsibleId = toInt(getField(liveTask, 'responsibleId', 'RESPONSIBLE_ID'));
       const liveResponsibleName = nonEmptyString(liveTask.responsible?.name || liveTask.RESPONSIBLE?.NAME);
@@ -2019,6 +2095,7 @@ Deno.serve(async (req) => {
       })
       .map((row: any) => ({
         task_id: Number(row.task_id),
+        title: nonEmptyString(row.title) ?? `Tarefa ${Number(row.task_id)}`,
         local_state: 'stale_not_seen',
         diagnostic_codes: uniqueCodes([...(row.diagnostic_codes ?? []), 'stale_not_seen']),
         bitrix_visible: true,
@@ -2026,7 +2103,11 @@ Deno.serve(async (req) => {
         missing_from_bitrix_since: row.missing_from_bitrix_since ?? syncStartedAtIso,
       }));
 
-    const allStateUpdates = [...reconciledUpdates, ...staleUpdates];
+    const allStateUpdates = dedupeTaskUpsertRecords(
+      [...reconciledUpdates, ...staleUpdates],
+      existingTasksMap,
+      'reconciliacao de estados',
+    );
     if (allStateUpdates.length > 0) {
       const { error: reconcileError } = await supabase
         .from('tasks')
@@ -2071,6 +2152,8 @@ Deno.serve(async (req) => {
       incremental_since: incrementalSince,
       reconciled_tasks: reconciledUpdates.length,
       stale_tasks_marked: staleUpdates.length,
+      reconcile_final_upsert_rows: allStateUpdates.length,
+      snapshot_final_upsert_rows: tasksToUpsert.length,
       task_integrity_backfill: taskIntegrityBackfill,
       deleted_tombstones_loaded: tombstones.size,
       relinked_orphan_rows: relinkedOrphans,

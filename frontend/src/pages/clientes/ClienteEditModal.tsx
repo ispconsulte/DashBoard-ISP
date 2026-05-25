@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -268,9 +268,9 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
             <DialogTitle className="truncate text-lg font-bold tracking-tight text-foreground">
               {isEdit ? nome || "Editar Cliente" : "Novo Cliente"}
             </DialogTitle>
-            <p className="text-xs text-muted-foreground/65">
+            <DialogDescription className="text-xs text-muted-foreground/60">
               {isEdit ? "Editar dados e projetos vinculados" : "Preencha os dados para cadastrar"}
-            </p>
+            </DialogDescription>
           </DialogHeader>
           {isEdit && (
             <Badge variant="outline" className={`mr-2 shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold ${ativo ? "border-emerald-500/20 bg-emerald-500/12 text-emerald-300" : "border-red-500/20 bg-red-500/12 text-red-300"}`}>
