@@ -13,7 +13,7 @@ import {
   type BonusScoreSnapshotRow,
   type BonusSourceStatusRow,
 } from "@/modules/sprint6/hooks/useBonusPersistenceData";
-import { parseDateValue, type TaskStatusKey } from "@/modules/tasks/utils";
+import { getTaskDurationSeconds, parseDateValue, type TaskStatusKey } from "@/modules/tasks/utils";
 import type { RoiPeriod } from "@/modules/sprint6/types";
 import {
   averageNumbers,
@@ -576,6 +576,31 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
     return map;
   }, [persistence.consultantSnapshots]);
 
+  const elapsedSecondsByTaskId = useMemo(() => {
+    const totals = new Map<string, number>();
+    elapsed.times.forEach((row) => {
+      const taskId = String(row.task_id ?? "");
+      if (!taskId) return;
+      const seconds = Number(row.seconds ?? 0);
+      if (!Number.isFinite(seconds) || seconds <= 0) return;
+      totals.set(taskId, (totals.get(taskId) ?? 0) + seconds);
+    });
+    return totals;
+  }, [elapsed.times]);
+
+  const taskDurationHoursByProject = useMemo(() => {
+    const totals = new Map<number, number>();
+    tasks.tasks.forEach((task) => {
+      const projectId = Number(task.project_id) || 0;
+      if (!projectId) return;
+      const taskId = String(task.task_id ?? task.id ?? "");
+      const seconds = getTaskDurationSeconds(task, taskId ? elapsedSecondsByTaskId.get(taskId) : undefined);
+      if (!seconds || seconds <= 0) return;
+      totals.set(projectId, (totals.get(projectId) ?? 0) + seconds / 3600);
+    });
+    return totals;
+  }, [tasks.tasks, elapsedSecondsByTaskId]);
+
   const consultantCards = useMemo<BonusConsultantCard[]>(() => {
     const taskMap = new Map<string, {
       consultantKey: string;
@@ -642,10 +667,11 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       consultantAcc.set(consultantKey, current);
     }
 
-    for (const entry of elapsed.times) {
-      const hours = (Number(entry.seconds) || 0) / 3600;
+    for (const task of tasks.tasks) {
+      const taskId = String(task.task_id ?? task.id ?? "");
+      const hours = (getTaskDurationSeconds(task, taskId ? elapsedSecondsByTaskId.get(taskId) : undefined) ?? 0) / 3600;
       if (hours <= 0) continue;
-      const taskMeta = taskMap.get(String(entry.task_id ?? ""));
+      const taskMeta = taskMap.get(taskId);
       if (!taskMeta?.consultantKey) continue;
       const current = consultantAcc.get(taskMeta.consultantKey);
       if (!current) continue;
@@ -767,7 +793,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       })
       .filter((value): value is NonNullable<typeof value> => value != null)
       .sort((a, b) => (b.score - a.score) || ((b.payout ?? -1) - (a.payout ?? -1)) || b.hoursTracked - a.hoursTracked);
-  }, [tasks.tasks, elapsed.times, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, latestConsultantSnapshotByUserId, coordinatorBySubordinateId, eligibleUserIds, config, configPayoutMap]);
+  }, [tasks.tasks, elapsedSecondsByTaskId, health.summary?.clients, capacity.topConsultants, clientNameById, activeUsers, manualEvaluationsByUserId, latestConsultantSnapshotByUserId, coordinatorBySubordinateId, eligibleUserIds, config, configPayoutMap]);
 
   const projectSpotlights = useMemo<BonusProjectSpotlight[]>(() => {
     const roiProjects = new Map<number, { hoursUsed: number; roi: number | null; name: string }>();
@@ -792,22 +818,9 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       }
     });
 
-    const hoursByProject = new Map<number, number>();
-    const taskToProject = new Map<string, number>();
-    tasks.tasks.forEach((task) => {
-      const taskId = String(task.task_id ?? task.id ?? "");
-      const projectId = Number(task.project_id) || 0;
-      if (taskId && projectId > 0) taskToProject.set(taskId, projectId);
-    });
-    elapsed.times.forEach((row) => {
-      const projectId = taskToProject.get(String(row.task_id ?? ""));
-      if (!projectId) return;
-      hoursByProject.set(projectId, (hoursByProject.get(projectId) ?? 0) + (Number(row.seconds) || 0) / 3600);
-    });
-
     return Array.from(financialMap.entries())
       .map(([projectId, fin]) => {
-        const hoursUsed = hoursByProject.get(projectId) ?? 0;
+        const hoursUsed = taskDurationHoursByProject.get(projectId) ?? 0;
         const estimatedCost = fin.custo_hora > 0 ? fin.custo_hora * hoursUsed : fin.custo_total_estimado;
         const margin = fin.receita_projeto > 0 ? ((fin.receita_projeto - estimatedCost) / fin.receita_projeto) * 100 : null;
         const roi = estimatedCost > 0 ? ((fin.receita_projeto - estimatedCost) / estimatedCost) * 100 : null;
@@ -822,28 +835,15 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       })
       .sort((a, b) => b.receita - a.receita)
       .slice(0, 6);
-  }, [financials, tasks.tasks, elapsed.times]);
+  }, [financials, tasks.tasks, taskDurationHoursByProject]);
 
   const revenueSummary = useMemo<BonusRevenueSummary>(() => {
     let revenueTracked = 0;
     let estimatedCost = 0;
 
-    const hoursByProject = new Map<number, number>();
-    const taskToProject = new Map<string, number>();
-    tasks.tasks.forEach((task) => {
-      const taskId = String(task.task_id ?? task.id ?? "");
-      const projectId = Number(task.project_id) || 0;
-      if (taskId && projectId > 0) taskToProject.set(taskId, projectId);
-    });
-    elapsed.times.forEach((row) => {
-      const projectId = taskToProject.get(String(row.task_id ?? ""));
-      if (!projectId) return;
-      hoursByProject.set(projectId, (hoursByProject.get(projectId) ?? 0) + (Number(row.seconds) || 0) / 3600);
-    });
-
     for (const [projectId, fin] of financials.data.entries()) {
       revenueTracked += fin.receita_projeto;
-      const hoursUsed = hoursByProject.get(projectId) ?? 0;
+      const hoursUsed = taskDurationHoursByProject.get(projectId) ?? 0;
       estimatedCost += fin.custo_hora > 0 ? fin.custo_hora * hoursUsed : fin.custo_total_estimado;
     }
 
@@ -861,7 +861,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
     const revopsScore = (marginScore * 0.4) + (roiPositiveRatio * 0.35) + (healthScore * 0.25);
 
     const hasFinancialSource = financials.data.size > 0;
-    const totalHours = Array.from(hoursByProject.values()).reduce((s, v) => s + v, 0);
+    const totalHours = Array.from(taskDurationHoursByProject.values()).reduce((s, v) => s + v, 0);
     const hasTrackedHours = totalHours > 0;
 
     return {
@@ -877,7 +877,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
       hasTrackedHours,
       financialProjectCount: financials.data.size,
     };
-  }, [financials.data, tasks.tasks, elapsed.times, health.summary?.clients, projectSpotlights, config]);
+  }, [financials.data, taskDurationHoursByProject, health.summary?.clients, projectSpotlights, config]);
 
   const derivedPersistence = useMemo(() => {
     const nowIso = new Date().toISOString();

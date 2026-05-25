@@ -137,6 +137,46 @@ export const formatDurationHHMM = (seconds?: number) => {
   return parts.join(" ") || "0s";
 };
 
+const parseNumericValue = (value: unknown): number | null => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(",", ".");
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const firstPositiveNumber = (record: Record<string, unknown>, keys: string[]): number | null => {
+  for (const key of keys) {
+    const parsed = parseNumericValue(record[key]);
+    if (parsed != null && parsed > 0) return parsed;
+  }
+  return null;
+};
+
+export const getTaskTimeSpentSeconds = (task: Record<string, unknown>): number | null =>
+  firstPositiveNumber(task, ["time_spent_in_logs", "timeSpentInLogs", "TIME_SPENT_IN_LOGS"]);
+
+export const getTaskDurationSeconds = (
+  task: Record<string, unknown>,
+  elapsedFallbackSeconds?: number | null,
+): number | undefined => {
+  const bitrixSeconds = getTaskTimeSpentSeconds(task);
+  if (bitrixSeconds != null) return bitrixSeconds;
+
+  if (typeof elapsedFallbackSeconds === "number" && Number.isFinite(elapsedFallbackSeconds) && elapsedFallbackSeconds > 0) {
+    return elapsedFallbackSeconds;
+  }
+
+  const explicitSeconds = firstPositiveNumber(task, ["duration_seconds", "durationSeconds", "seconds"]);
+  if (explicitSeconds != null) return explicitSeconds;
+
+  const minutes = firstPositiveNumber(task, ["duration_minutes", "duration", "tempo_total", "minutes"]);
+  return minutes != null ? minutes * 60 : undefined;
+};
+
 /**
  * Formats a decimal hours value into a human-readable string.
  * Examples: 0.5 → "30min", 1.33 → "1h 20min", 2 → "2h", 0.016 → "1min"

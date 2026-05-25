@@ -44,6 +44,7 @@ import {
   parseLocalDateInput,
   parseDateValue,
   getTaskPeriodDate,
+  getTaskDurationSeconds,
   normalizeTaskTitle,
   type TaskStatusKey,
 } from "@/modules/tasks/utils";
@@ -72,18 +73,6 @@ const mapStatusKey = (statusRaw: string | number | undefined, deadline: Date | n
   if (deadline && deadline < new Date()) return "overdue";
   if (["em andamento", "in progress", "pendente", "pending"].includes(asString)) return "pending";
   return "unknown";
-};
-
-const getNumeric = (task: TaskRecord, keys: string[]): number | undefined => {
-  for (const key of keys) {
-    const value = task[key];
-    if (typeof value === "number") return value;
-    if (typeof value === "string") {
-      const parsed = Number(value);
-      if (!Number.isNaN(parsed)) return parsed;
-    }
-  }
-  return undefined;
 };
 
 const pickField = (task: TaskRecord, keys: string[], fallback = ""): string => {
@@ -157,14 +146,7 @@ const normalizeTask = (task: TaskRecord, durationSeconds?: number, projectNameBy
   const isDone = statusKey === "done";
   const isOverdue = statusKey === "overdue" || (!isDone && deadline !== null && deadline < new Date());
   const deadlineIsSoon = !isDone && !isOverdue && isDeadlineSoon(deadline, new Date());
-  // Tempo gasto: prioriza o agregado TIME_SPENT_IN_LOGS do Bitrix (mesma fonte do relatório
-  // "Horas trabalhadas"), com fallback para a soma dos apontamentos individuais.
-  const timeSpentInLogs = getNumeric(task, ["time_spent_in_logs"]);
-  const durationFromTask = getNumeric(task, ["duration_minutes", "duration", "tempo_total", "minutes"]);
-  const seconds =
-    (typeof timeSpentInLogs === "number" && timeSpentInLogs > 0 ? timeSpentInLogs : undefined) ??
-    durationSeconds ??
-    (durationFromTask ? durationFromTask * 60 : undefined);
+  const seconds = getTaskDurationSeconds(task, durationSeconds);
 
   return {
     title,

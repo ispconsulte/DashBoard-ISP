@@ -1,5 +1,5 @@
 // ── Sprint 6.0 — Capacity data hook ────────────────────────────────
-// Reads elapsed_times + tasks for project load & top consultants.
+// Reads tasks with Bitrix time totals for project load & top consultants.
 // Reads user_capacity for available hours and utilization %.
 // Reads users for department & seniority filters.
 
@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabaseExt as supabase } from "@/lib/supabase";
 import { useElapsedTimes } from "@/modules/tasks/api/useElapsedTimes";
 import { useTasks } from "@/modules/tasks/api/useTasks";
-import { getElapsedEffectiveDate } from "@/modules/tasks/utils";
+import { getTaskDurationSeconds } from "@/modules/tasks/utils";
 import type { RoiPeriod, SeniorityLevel } from "@/modules/sprint6/types";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -128,42 +128,36 @@ export function useCapacityData(opts: UseCapacityDataOptions = {}): CapacityData
 
   const hasSeniority = useMemo(() => userMeta.some((u) => !!u.seniority_level), [userMeta]);
 
-  // Build task_id → info map
-  const taskMap = useMemo(() => {
-    const map = new Map<string | number, {
-      projectId: number;
-      projectName: string;
-      consultantName: string;
-      userId: string | number | null;
-    }>();
-    for (const t of tasks) {
-      const id = t.task_id ?? t.id;
-      if (!id) continue;
-      const projectName = String(t.project_name ?? t.project ?? t.projeto ?? t.group_name ?? "Sem projeto").trim();
-      const projectId = Number(t.project_id) || 0;
-      const consultantName = String(t.responsible_name ?? t.consultant ?? t.responsavel ?? "").trim();
-      const userId = t.user_id ?? null;
-      map.set(id, { projectId, projectName, consultantName, userId });
+  const elapsedSecondsByTaskId = useMemo(() => {
+    const totals = new Map<string | number, number>();
+    for (const entry of elapsed.times) {
+      const taskId = entry.task_id;
+      if (!taskId) continue;
+      const seconds = Number(entry.seconds ?? 0);
+      if (!Number.isFinite(seconds) || seconds <= 0) continue;
+      totals.set(taskId, (totals.get(taskId) ?? 0) + seconds);
+      totals.set(String(taskId), (totals.get(String(taskId)) ?? 0) + seconds);
     }
-    return map;
-  }, [tasks]);
+    return totals;
+  }, [elapsed.times]);
 
   // Aggregate hours by project
   const projectLoad = useMemo<CapacityProjectLoadItem[]>(() => {
-    if (!elapsed.times.length) return [];
-
     const byProject = new Map<number, { name: string; hours: number }>();
     let total = 0;
 
-    for (const t of elapsed.times) {
-      const hours = (Number(t.seconds) || 0) / 3600;
+    for (const task of tasks) {
+      const taskId = task.task_id ?? task.id;
+      const fallbackSeconds =
+        taskId != null ? elapsedSecondsByTaskId.get(taskId) ?? elapsedSecondsByTaskId.get(String(taskId)) : undefined;
+      const hours = (getTaskDurationSeconds(task, fallbackSeconds) ?? 0) / 3600;
       if (hours <= 0) continue;
-
-      const taskInfo = taskMap.get(t.task_id ?? "");
+      const projectName = String(task.project_name ?? task.project ?? task.projeto ?? task.group_name ?? "Sem projeto").trim();
+      const projectId = Number(task.project_id) || 0;
+      const userId = task.user_id ?? null;
 
       // Apply department/seniority filter
       if (department || seniorityLevel) {
-        const userId = taskInfo?.userId ?? t.user_id;
         if (userId) {
           const meta = userMetaMap.get(String(userId));
           if (department && meta?.department !== department) continue;
@@ -172,8 +166,6 @@ export function useCapacityData(opts: UseCapacityDataOptions = {}): CapacityData
       }
 
       total += hours;
-      const projectId = taskInfo?.projectId ?? 0;
-      const projectName = taskInfo?.projectName ?? "Sem projeto";
       const existing = byProject.get(projectId) ?? { name: projectName, hours: 0 };
       existing.hours += hours;
       byProject.set(projectId, existing);
@@ -189,25 +181,25 @@ export function useCapacityData(opts: UseCapacityDataOptions = {}): CapacityData
         percentOfTotal: Math.round((hours / total) * 1000) / 10,
       }))
       .sort((a, b) => b.totalHours - a.totalHours);
-  }, [elapsed.times, taskMap, department, seniorityLevel, userMetaMap]);
+  }, [tasks, elapsedSecondsByTaskId, department, seniorityLevel, userMetaMap]);
 
   // Aggregate hours by consultant + utilization
   const topConsultants = useMemo<CapacityConsultantItem[]>(() => {
-    if (!elapsed.times.length) return [];
-
     const byConsultant = new Map<string, {
       userId: string | number | null;
       hours: number;
       tasks: Set<string | number>;
     }>();
 
-    for (const t of elapsed.times) {
-      const hours = (Number(t.seconds) || 0) / 3600;
+    for (const task of tasks) {
+      const taskId = task.task_id ?? task.id;
+      const fallbackSeconds =
+        taskId != null ? elapsedSecondsByTaskId.get(taskId) ?? elapsedSecondsByTaskId.get(String(taskId)) : undefined;
+      const hours = (getTaskDurationSeconds(task, fallbackSeconds) ?? 0) / 3600;
       if (hours <= 0) continue;
 
-      const taskInfo = taskMap.get(t.task_id ?? "");
-      const name = taskInfo?.consultantName || "Desconhecido";
-      const userId = taskInfo?.userId ?? t.user_id ?? null;
+      const name = String(task.responsible_name ?? task.consultant ?? task.responsavel ?? "").trim() || "Desconhecido";
+      const userId = task.user_id ?? null;
 
       // Apply department/seniority filter
       if (department || seniorityLevel) {
@@ -220,7 +212,7 @@ export function useCapacityData(opts: UseCapacityDataOptions = {}): CapacityData
 
       const existing = byConsultant.get(name) ?? { userId, hours: 0, tasks: new Set() };
       existing.hours += hours;
-      if (t.task_id) existing.tasks.add(t.task_id);
+      if (taskId) existing.tasks.add(taskId);
       byConsultant.set(name, existing);
     }
 
@@ -245,7 +237,7 @@ export function useCapacityData(opts: UseCapacityDataOptions = {}): CapacityData
         };
       })
       .sort((a, b) => b.totalHours - a.totalHours);
-  }, [elapsed.times, taskMap, capacityMap, userMetaMap, department, seniorityLevel]);
+  }, [tasks, elapsedSecondsByTaskId, capacityMap, userMetaMap, department, seniorityLevel]);
 
   const totalHours = useMemo(
     () => projectLoad.reduce((sum, p) => sum + p.totalHours, 0),
