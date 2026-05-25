@@ -60,7 +60,13 @@ serve(async (req) => {
     const hideMonetary = !senderIsPaymentManager && !senderIsAdmin;
 
     const snapshot = snapshotRows?.[0] ?? null;
-    const evaluationBlocks = (evaluationRows ?? []).map((row: Record<string, unknown>) => `
+    const evalList = evaluationRows ?? [];
+    const evalWithScores = evalList.filter((r: Record<string, unknown>) => r.score_1_10 !== null && r.score_1_10 !== undefined);
+    const coordinatorScore = evalWithScores.length > 0
+      ? Math.round(evalWithScores.reduce((sum: number, r: Record<string, unknown>) => sum + Number(r.score_1_10 ?? 0), 0) / evalWithScores.length * 10)
+      : null;
+
+    const evaluationBlocks = evalList.map((row: Record<string, unknown>) => `
       <li style="margin-bottom:12px;">
         <strong>${String(row.category ?? "categoria")} · ${String(row.subtopic ?? "subtópico")}</strong><br />
         Nota: ${Number(row.score_1_10 ?? 0)}/10<br />
@@ -72,7 +78,8 @@ serve(async (req) => {
     const html = `
       <div style="font-family:Arial,sans-serif;line-height:1.6;color:#142033;">
         <h2>Relatório de Bonificação — ${consultant?.name ?? "Consultor"} — ${monthLabel(Number(month), Number(year))}</h2>
-        <p><strong>Score do mês:</strong> ${snapshot?.score ?? 0}%</p>
+        <p><strong>Score do Sistema:</strong> ${snapshot?.score ?? 0}%</p>
+        ${coordinatorScore !== null ? `<p><strong>Score do Coordenador:</strong> ${coordinatorScore}%</p>` : ""}
         ${hideMonetary ? "" : `<p><strong>Payout calculado:</strong> ${money(snapshot?.payout_amount)}</p>`}
         <p><strong>Avaliações registradas:</strong></p>
         <ul>${evaluationBlocks || "<li>Sem avaliações submetidas neste período.</li>"}</ul>

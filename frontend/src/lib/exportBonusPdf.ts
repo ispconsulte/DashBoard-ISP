@@ -6,6 +6,7 @@ export type BonusPdfData = {
   evaluatorName: string;
   monthLabel: string; // e.g. "03/2026"
   overallScore: number;
+  systemScore?: number;
   payoutAmount: number;
   hideMonetary?: boolean;
   metrics: {
@@ -165,33 +166,64 @@ function drawCover(doc: jsPDF, data: BonusPdfData, logo: string | null, now: str
   doc.setTextColor(...TEXT_DIM);
   doc.text(san(`Avaliado por: ${data.evaluatorName}`), cardX + 10, cardY + 28);
 
-  // ── Hero score ──
-  const heroY = cardY + cardH + 16;
-  const scoreClr = scoreRgb(data.overallScore);
+  // ── Hero scores ──
+  const heroY = cardY + cardH + 14;
+  const circleR = 16;
+  const hasBoth = data.systemScore !== undefined;
 
-  // Score circle
-  const circleR = 18;
-  doc.setFillColor(scoreClr[0], scoreClr[1], scoreClr[2]);
-  doc.circle(cx, heroY + circleR, circleR, "F");
-  doc.setFontSize(22);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(255, 255, 255);
-  doc.text(`${data.overallScore}%`, cx, heroY + circleR + 5, { align: "center" });
+  if (hasBoth) {
+    // Two circles side by side: Sistema (left) | Coordenador (right)
+    const gap = 20;
+    const leftCx = cx - circleR - gap / 2;
+    const rightCx = cx + circleR + gap / 2;
 
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(...TEXT_DIM);
-  doc.text("Nota Geral", cx, heroY + circleR * 2 + 8, { align: "center" });
+    const sysClr = scoreRgb(data.systemScore!);
+    doc.setFillColor(sysClr[0], sysClr[1], sysClr[2]);
+    doc.circle(leftCx, heroY + circleR, circleR, "F");
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(255, 255, 255);
+    doc.text(`${data.systemScore}%`, leftCx, heroY + circleR + 4, { align: "center" });
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...TEXT_DIM);
+    doc.text("Score do Sistema", leftCx, heroY + circleR * 2 + 7, { align: "center" });
+
+    const coordClr = scoreRgb(data.overallScore);
+    doc.setFillColor(coordClr[0], coordClr[1], coordClr[2]);
+    doc.circle(rightCx, heroY + circleR, circleR, "F");
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(255, 255, 255);
+    doc.text(`${data.overallScore}%`, rightCx, heroY + circleR + 4, { align: "center" });
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...TEXT_DIM);
+    doc.text("Score do Coordenador", rightCx, heroY + circleR * 2 + 7, { align: "center" });
+  } else {
+    // Single circle (legacy / no system score available)
+    const scoreClr = scoreRgb(data.overallScore);
+    doc.setFillColor(scoreClr[0], scoreClr[1], scoreClr[2]);
+    doc.circle(cx, heroY + circleR, circleR, "F");
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(255, 255, 255);
+    doc.text(`${data.overallScore}%`, cx, heroY + circleR + 4, { align: "center" });
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...TEXT_DIM);
+    doc.text("Nota Geral", cx, heroY + circleR * 2 + 7, { align: "center" });
+  }
 
   if (!data.hideMonetary) {
     doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...TEXT_BRIGHT);
-    doc.text(san(money(data.payoutAmount)), cx, heroY + circleR * 2 + 17, { align: "center" });
+    doc.text(san(money(data.payoutAmount)), cx, heroY + circleR * 2 + 16, { align: "center" });
   }
 
   // ── Metric cards ──
-  const metricsY = heroY + circleR * 2 + (data.hideMonetary ? 18 : 26);
+  const metricsY = heroY + circleR * 2 + (data.hideMonetary ? 16 : 24);
   const metrics = [
     { label: "Entregas no prazo", value: `${data.metrics.onTimeRate}%`, color: [59, 130, 246] as number[] },
     { label: "Tecnicas", value: `${data.metrics.hardSkill}/100`, color: [250, 204, 21] as number[] },

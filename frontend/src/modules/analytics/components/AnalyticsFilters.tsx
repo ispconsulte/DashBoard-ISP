@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { Search, X, Filter, ChevronDown, User, FolderKanban, Calendar } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { ProjectAnalytics } from "../types";
+import { CustomSelect, MultiSelectProjects } from "../../shared/FilterDropdowns";
 
 export type AnalyticsFilterState = {
   period: "30d" | "90d" | "180d" | "all";
@@ -26,7 +26,7 @@ const PERIODS: { value: string; label: string }[] = [
   { value: "30d", label: "30 dias" },
   { value: "90d", label: "90 dias" },
   { value: "180d", label: "180 dias" },
-  { value: "all", label: "Tudo" },
+  { value: "all", label: "Todos os períodos" },
 ];
 
 const STATUSES: { key: AnalyticsFilterState["status"]; label: string }[] = [
@@ -36,339 +36,6 @@ const STATUSES: { key: AnalyticsFilterState["status"]; label: string }[] = [
   { key: "overdue", label: "Atrasadas" },
 ];
 
-/* ── Custom dropdown with search/autocomplete ── */
-function CustomSelect({
-  value,
-  onChange,
-  options,
-  placeholder,
-  icon: Icon,
-  mineIds,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  placeholder: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  mineIds?: Set<string>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  useEffect(() => {
-    if (open && inputRef.current) inputRef.current.focus();
-  }, [open]);
-
-  const selected = options.find((o) => o.value === value);
-
-  const filtered = search.trim()
-    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
-    : options;
-
-  const sortedOptions = mineIds
-    ? [...filtered].sort((a, b) => {
-        const aM = mineIds.has(a.value) ? 0 : 1;
-        const bM = mineIds.has(b.value) ? 0 : 1;
-        return aM - bM || a.label.localeCompare(b.label);
-      })
-    : filtered;
-
-  return (
-    <div ref={ref} className="relative w-full sm:w-auto">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={`flex h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
-          value
-            ? "border-[hsl(262_83%_58%/0.4)] bg-[hsl(262_83%_58%/0.1)] text-white/80"
-            : "border-white/[0.08] bg-[hsl(260_30%_12%)] text-white/50"
-        } hover:border-white/[0.15]`}
-      >
-        {Icon && <Icon className="h-3.5 w-3.5 shrink-0 opacity-50" />}
-        <span className="flex-1 truncate text-left">{selected?.label || placeholder}</span>
-        <ChevronDown className={`h-3 w-3 shrink-0 opacity-40 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ duration: 0.15 }}
-            className="absolute left-0 sm:right-0 sm:left-auto top-full z-[200] mt-1 w-[min(240px,calc(100vw-1.5rem))] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
-            style={{ background: "hsl(260 30% 12%)", maxHeight: "min(260px,70vh)" }}
-          >
-            {/* Search input — always visible, not scrollable */}
-            {options.length > 5 && (
-              <div className="shrink-0 px-1.5 pt-1.5 pb-1 border-b border-white/[0.06]" style={{ background: "hsl(260 30% 12%)" }}>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-white/30" />
-                  <input
-                    ref={inputRef}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar..."
-                    className="h-8 w-full rounded-full border border-white/[0.08] bg-white/[0.04] pl-7 pr-3 text-[11px] text-white/70 outline-none focus:border-[hsl(262_83%_58%/0.4)] placeholder:text-white/25"
-                  />
-                </div>
-              </div>
-            )}
-            {/* Scrollable list area */}
-            <div className="overflow-y-auto flex-1 p-1.5">
-              {/* "All" option */}
-              <button
-                onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
-                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition ${
-                  !value ? "bg-[hsl(262_83%_58%/0.15)] text-white/90" : "text-white/40 hover:bg-white/[0.05] hover:text-white/60"
-                }`}
-              >
-                {placeholder}
-              </button>
-              {/* Mine first if provided */}
-              {mineIds && sortedOptions.length > 0 && (
-                <>
-                  {sortedOptions.some(o => mineIds.has(o.value)) && (
-                    <div className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-widest text-[hsl(262_83%_58%/0.6)]">Projetos que faço parte</div>
-                  )}
-                  {sortedOptions.filter(o => mineIds.has(o.value)).map((o) => (
-                    <button
-                      key={o.value}
-                      onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
-                      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition ${
-                        value === o.value
-                          ? "bg-[hsl(262_83%_58%/0.15)] text-white/90"
-                          : "text-white/50 hover:bg-white/[0.05] hover:text-white/70"
-                      }`}
-                    >
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(262_83%_58%)]" />
-                      <span className="truncate">{o.label}</span>
-                    </button>
-                  ))}
-                  {sortedOptions.some(o => !mineIds.has(o.value)) && (
-                    <div className="px-3 pt-3 pb-1 text-[9px] font-bold uppercase tracking-widest text-white/20">Outros</div>
-                  )}
-                  {sortedOptions.filter(o => !mineIds.has(o.value)).map((o) => (
-                    <button
-                      key={o.value}
-                      onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
-                      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition ${
-                        value === o.value
-                          ? "bg-[hsl(262_83%_58%/0.15)] text-white/90"
-                          : "text-white/40 hover:bg-white/[0.05] hover:text-white/60"
-                      }`}
-                    >
-                      <span className="truncate">{o.label}</span>
-                    </button>
-                  ))}
-                </>
-              )}
-              {/* Normal list when no mineIds */}
-              {!mineIds && sortedOptions.map((o) => (
-                <button
-                  key={o.value}
-                  onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
-                  className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition ${
-                    value === o.value
-                      ? "bg-[hsl(262_83%_58%/0.15)] text-white/90"
-                      : "text-white/40 hover:bg-white/[0.05] hover:text-white/60"
-                  }`}
-                >
-                  <span className="truncate">{o.label}</span>
-                </button>
-              ))}
-
-              {sortedOptions.length === 0 && search.trim() && (
-                <p className="px-3 py-4 text-center text-[11px] text-white/30">Nenhum resultado</p>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* ── Multi-select dropdown for projects ── */
-function MultiSelectProjects({
-  value,
-  onChange,
-  options,
-  placeholder,
-  icon: Icon,
-  mineIds,
-}: {
-  value: string[];
-  onChange: (v: string[]) => void;
-  options: { value: string; label: string }[];
-  placeholder: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  mineIds?: Set<string>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  useEffect(() => {
-    if (open && inputRef.current) inputRef.current.focus();
-  }, [open]);
-
-  const isAll = value.length === 0;
-
-  const filtered = search.trim()
-    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
-    : options;
-
-  const sortedOptions = mineIds
-    ? [...filtered].sort((a, b) => {
-        const aM = mineIds.has(a.value) ? 0 : 1;
-        const bM = mineIds.has(b.value) ? 0 : 1;
-        return aM - bM || a.label.localeCompare(b.label);
-      })
-    : filtered;
-
-  const toggleOption = (v: string) => {
-    if (value.includes(v)) {
-      onChange(value.filter((x) => x !== v));
-    } else {
-      onChange([...value, v]);
-    }
-  };
-
-  const displayLabel = isAll
-    ? placeholder
-    : value.length === 1
-      ? options.find((o) => o.value === value[0])?.label ?? placeholder
-      : `${value.length} projetos`;
-
-  const renderOption = (o: { value: string; label: string }, showDot?: boolean) => {
-    const isSelected = value.includes(o.value);
-    return (
-      <button
-        key={o.value}
-        onClick={(e) => { e.preventDefault(); toggleOption(o.value); }}
-        className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-semibold transition mb-0.5 ${
-          isSelected
-            ? "bg-[hsl(262_83%_58%/0.12)] border border-[hsl(262_83%_58%/0.25)] text-white/90"
-            : "border border-transparent text-white/40 hover:bg-white/[0.05] hover:text-white/60"
-        }`}
-      >
-        <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition ${
-          isSelected
-            ? "border-[hsl(262_83%_58%)] bg-[hsl(262_83%_58%)]"
-            : "border-white/20 bg-transparent"
-        }`}>
-          {isSelected && (
-            <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 12 12" fill="none"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          )}
-        </span>
-        {showDot && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(262_83%_58%)]" />}
-        <span className="truncate">{o.label}</span>
-      </button>
-    );
-  };
-
-  return (
-    <div ref={ref} className="relative w-full sm:w-auto">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={`flex h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
-          !isAll
-            ? "border-[hsl(262_83%_58%/0.4)] bg-[hsl(262_83%_58%/0.1)] text-white/80"
-            : "border-white/[0.08] bg-[hsl(260_30%_12%)] text-white/50"
-        } hover:border-white/[0.15]`}
-      >
-        {Icon && <Icon className="h-3.5 w-3.5 shrink-0 opacity-50" />}
-        <span className="flex-1 truncate text-left">{displayLabel}</span>
-        {!isAll && (
-          <span className="rounded-full bg-[hsl(262_83%_58%)] px-1.5 py-0.5 text-[10px] font-bold text-white">{value.length}</span>
-        )}
-        <ChevronDown className={`h-3 w-3 shrink-0 opacity-40 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ duration: 0.15 }}
-            className="absolute left-0 sm:right-0 sm:left-auto top-full z-[200] mt-1 w-[min(260px,calc(100vw-1.5rem))] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
-            style={{ background: "hsl(260 30% 12%)", maxHeight: "min(300px,70vh)" }}
-          >
-            {options.length > 5 && (
-              <div className="shrink-0 px-1.5 pt-1.5 pb-1 border-b border-white/[0.06]" style={{ background: "hsl(260 30% 12%)" }}>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-white/30" />
-                  <input
-                    ref={inputRef}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar..."
-                    className="h-8 w-full rounded-full border border-white/[0.08] bg-white/[0.04] pl-7 pr-3 text-[11px] text-white/70 outline-none focus:border-[hsl(262_83%_58%/0.4)] placeholder:text-white/25"
-                  />
-                </div>
-              </div>
-            )}
-            <div className="overflow-y-auto flex-1 p-1.5">
-              <button
-                onClick={() => { onChange([]); setSearch(""); }}
-                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition ${
-                  isAll ? "bg-[hsl(262_83%_58%/0.15)] text-white/90" : "text-white/40 hover:bg-white/[0.05] hover:text-white/60"
-                }`}
-              >
-                {placeholder}
-              </button>
-
-              {mineIds && sortedOptions.length > 0 && (
-                <>
-                  {sortedOptions.some(o => mineIds.has(o.value)) && (
-                    <div className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-widest text-[hsl(262_83%_58%/0.6)]">Projetos que faço parte</div>
-                  )}
-                  {sortedOptions.filter(o => mineIds.has(o.value)).map((o) => renderOption(o, true))}
-                  {sortedOptions.some(o => !mineIds.has(o.value)) && (
-                    <div className="px-3 pt-3 pb-1 text-[9px] font-bold uppercase tracking-widest text-white/20">Outros</div>
-                  )}
-                  {sortedOptions.filter(o => !mineIds.has(o.value)).map((o) => renderOption(o))}
-                </>
-              )}
-
-              {!mineIds && sortedOptions.map((o) => renderOption(o))}
-
-              {sortedOptions.length === 0 && search.trim() && (
-                <p className="px-3 py-4 text-center text-[11px] text-white/30">Nenhum resultado</p>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
 
 export default function AnalyticsFilters({ filters, onChange, projects, consultants, isAdmin, myProjectIds, hideFilters = false }: Props) {
   const [expanded, setExpanded] = useState(false);
@@ -420,7 +87,7 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
           {searchQuery.trim() && searchResults.length > 0 && (
             <div
               className="absolute left-0 top-full z-[100] mt-1 max-h-60 w-full overflow-auto rounded-2xl border border-white/[0.08] p-1.5 shadow-xl shadow-black/40"
-              style={{ background: "hsl(260 30% 12%)" }}
+              style={{ background: "hsl(var(--ana-surface))" }}
             >
               {searchResults.slice(0, 10).map((p) => (
                 <button
@@ -439,17 +106,18 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
         {/* Filter toggle — hidden for non-admin users */}
         {!hideFilters && (
           <button
+            type="button"
             onClick={() => setExpanded((v) => !v)}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-4 py-[9px] text-[13px] font-semibold transition ${
+            className={`flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-xl border px-4 py-[9px] text-[13px] font-semibold transition ${
               expanded
-                ? "border-[hsl(262_83%_58%/0.4)] bg-[hsl(262_83%_58%/0.1)] text-[hsl(262_83%_58%)]"
+                ? "border-[hsl(var(--ana-purple)/0.4)] bg-[hsl(var(--ana-purple)/0.1)] text-[hsl(var(--ana-purple))]"
                 : "border-white/[0.06] bg-white/[0.03] text-white/50 hover:border-white/[0.12] hover:text-white/70"
             }`}
           >
             <Filter className="h-3.5 w-3.5" />
             Filtros
             {activeCount > 0 && (
-              <span className="rounded-full bg-[hsl(262_83%_58%)] px-1.5 py-0.5 text-[10px] font-bold text-white">
+              <span className="rounded-full bg-[hsl(var(--ana-purple))] px-1.5 py-0.5 text-[10px] font-bold text-white">
                 {activeCount}
               </span>
             )}
@@ -487,9 +155,9 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
                     <button
                       key={s.key}
                       onClick={() => onChange({ ...filters, status: s.key })}
-                      className={`rounded-xl px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-[12px] font-semibold transition-all whitespace-nowrap ${
+                      className={`rounded-xl px-2.5 sm:px-3 py-1.5 min-h-[44px] sm:min-h-0 text-[11px] sm:text-[12px] font-semibold transition-all whitespace-nowrap ${
                         filters.status === s.key
-                          ? "bg-[hsl(262_83%_58%)] text-white shadow"
+                          ? "bg-[hsl(var(--ana-purple))] text-white shadow"
                           : "text-white/30 hover:text-white/50"
                       }`}
                     >
@@ -506,8 +174,10 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
                   value={filters.period}
                   onChange={(v) => onChange({ ...filters, period: (v || "all") as AnalyticsFilterState["period"] })}
                   options={PERIODS}
-                  placeholder="Todos períodos"
+                  placeholder="Todos os períodos"
                   icon={Calendar}
+                  accentVar="--ana-purple"
+                  surfaceVar="--ana-surface"
                 />
               </div>
 
@@ -521,7 +191,9 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
                     options={projects.map((p) => ({ value: String(p.id), label: p.name }))}
                     placeholder="Todos os projetos"
                     icon={FolderKanban}
-                    mineIds={myProjectIds ? new Set([...myProjectIds].map(String)) : undefined}
+                    mineSet={myProjectIds ? new Set([...myProjectIds].map(String)) : undefined}
+                    accentVar="--ana-purple"
+                    surfaceVar="--ana-surface"
                   />
                 </div>
               )}
@@ -534,9 +206,10 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
                     value={filters.consultant}
                     onChange={(v) => onChange({ ...filters, consultant: v })}
                     options={consultants.map((c) => ({ value: c, label: c }))}
-                    
                     placeholder="Todos os consultores"
                     icon={User}
+                    accentVar="--ana-purple"
+                    surfaceVar="--ana-surface"
                   />
                 </div>
               )}

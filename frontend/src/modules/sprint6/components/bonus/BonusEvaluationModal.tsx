@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { ClipboardCheck, Loader2, Calendar, Save, SendHorizonal, ChevronDown, Check, ShieldAlert, Trash2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 
@@ -644,10 +644,10 @@ export function BonusEvaluationModal({
               <DialogTitle className="text-base font-bold tracking-tight text-foreground">
                 Avaliação não permitida
               </DialogTitle>
-              <div className="space-y-1.5 text-[13px] leading-relaxed text-muted-foreground/65">
-                <p>Você não é o coordenador responsável por este usuário.</p>
-                <p>Repasse esta avaliação para o coordenador responsável.</p>
-              </div>
+              <DialogDescription className="space-y-1.5 text-[13px] leading-relaxed text-muted-foreground/65">
+                <span className="block">Você não é o coordenador responsável por este usuário.</span>
+                <span className="block">Repasse esta avaliação para o coordenador responsável.</span>
+              </DialogDescription>
               {/* coordinator name pill */}
               <div className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-medium ${
                 responsibleCoordinatorName
@@ -727,11 +727,11 @@ export function BonusEvaluationModal({
                 <DialogTitle className="text-base font-bold tracking-tight text-foreground sm:text-lg">
                   Avaliação de Desempenho
                 </DialogTitle>
-                <p className="text-[13px] text-muted-foreground/50 leading-snug">
+                <DialogDescription className="text-[13px] text-muted-foreground/50 leading-snug">
                   <span className="font-medium text-foreground/70">{consultant?.name ?? "Consultor"}</span>
                   <span className="mx-1.5 text-border/30">·</span>
                   Avalie cada critério com nota e justificativa
-                </p>
+                </DialogDescription>
               </div>
             </DialogHeader>
           </motion.div>

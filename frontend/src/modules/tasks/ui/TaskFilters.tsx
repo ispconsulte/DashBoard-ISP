@@ -1,6 +1,7 @@
 import { Search, X, Filter, ChevronDown, FolderKanban, User, Calendar } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { CustomSelect, MultiSelectProjects } from "../../shared/FilterDropdowns";
 
 type TaskFiltersProps = {
   search: string;
@@ -39,344 +40,13 @@ const statusChips = [
 ];
 
 const periodChips = [
-  { value: "all", label: "Tudo" },
-  { value: "7d", label: "7d" },
-  { value: "30d", label: "30d" },
-  { value: "90d", label: "90d" },
-  { value: "custom", label: "Período" },
+  { value: "all", label: "Todos os períodos" },
+  { value: "7d", label: "7 dias" },
+  { value: "30d", label: "30 dias" },
+  { value: "90d", label: "90 dias" },
+  { value: "custom", label: "Personalizado" },
 ];
 
-/* ── Custom dropdown with search/autocomplete ── */
-function CustomSelect({
-  value,
-  onChange,
-  options,
-  placeholder,
-  icon: Icon,
-  mineSet,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  placeholder: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  mineSet?: Set<string>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  useEffect(() => {
-    if (open && inputRef.current) inputRef.current.focus();
-  }, [open]);
-
-  const selected = options.find((o) => o.value === value);
-
-  const filtered = search.trim()
-    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
-    : options;
-
-  const sortedOptions = mineSet
-    ? [...filtered].sort((a, b) => {
-        const aM = mineSet.has(a.value) ? 0 : 1;
-        const bM = mineSet.has(b.value) ? 0 : 1;
-        return aM - bM || a.label.localeCompare(b.label);
-      })
-    : filtered;
-
-  return (
-    <div ref={ref} className="relative w-full sm:w-auto">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={`flex h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
-          value && value !== "all"
-            ? "border-[hsl(var(--task-purple)/0.4)] bg-[hsl(var(--task-purple)/0.1)] text-white/80"
-            : "border-white/[0.08] bg-[hsl(var(--task-surface))] text-white/50"
-        } hover:border-white/[0.15]`}
-      >
-        {Icon && <Icon className="h-3.5 w-3.5 shrink-0 opacity-50" />}
-        <span className="flex-1 truncate text-left">{selected?.label || placeholder}</span>
-        <ChevronDown className={`h-3 w-3 shrink-0 opacity-40 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ duration: 0.15 }}
-            className="absolute left-0 sm:right-0 sm:left-auto top-full z-[200] mt-1 w-[min(220px,calc(100vw-1.5rem))] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
-            style={{ background: "hsl(260 30% 12%)", maxHeight: "min(260px,70vh)" }}
-          >
-            {options.length > 5 && (
-              <div className="shrink-0 px-1.5 pt-1.5 pb-1 border-b border-white/[0.06]" style={{ background: "hsl(260 30% 12%)" }}>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-white/30" />
-                  <input
-                    ref={inputRef}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar..."
-                    className="h-8 w-full rounded-full border border-white/[0.08] bg-white/[0.04] pl-7 pr-3 text-[11px] text-white/70 outline-none focus:border-[hsl(var(--task-purple)/0.4)] placeholder:text-white/25"
-                  />
-                </div>
-              </div>
-            )}
-            <div className="overflow-y-auto flex-1 p-1.5">
-              <button
-                onClick={() => { onChange("all"); setOpen(false); setSearch(""); }}
-                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition ${
-                  value === "all" || !value ? "bg-[hsl(var(--task-purple)/0.15)] text-white/90" : "text-white/40 hover:bg-white/[0.05] hover:text-white/60"
-                }`}
-              >
-                {placeholder}
-              </button>
-
-              {mineSet && sortedOptions.length > 0 && (
-                <>
-                  {sortedOptions.some(o => mineSet.has(o.value)) && (
-                    <div className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--task-purple)/0.6)]">Projetos que faço parte</div>
-                  )}
-                  {sortedOptions.filter(o => mineSet.has(o.value)).map((o) => (
-                    <button
-                      key={o.value}
-                      onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
-                      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition ${
-                        value === o.value
-                          ? "bg-[hsl(var(--task-purple)/0.15)] text-white/90"
-                          : "text-white/50 hover:bg-white/[0.05] hover:text-white/70"
-                      }`}
-                    >
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--task-purple))]" />
-                      <span className="truncate">{o.label}</span>
-                    </button>
-                  ))}
-                  {sortedOptions.some(o => !mineSet.has(o.value)) && (
-                    <div className="px-3 pt-3 pb-1 text-[9px] font-bold uppercase tracking-widest text-white/20">Outros</div>
-                  )}
-                  {sortedOptions.filter(o => !mineSet.has(o.value)).map((o) => (
-                    <button
-                      key={o.value}
-                      onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
-                      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition ${
-                        value === o.value
-                          ? "bg-[hsl(var(--task-purple)/0.15)] text-white/90"
-                          : "text-white/40 hover:bg-white/[0.05] hover:text-white/60"
-                      }`}
-                    >
-                      <span className="truncate">{o.label}</span>
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {!mineSet && sortedOptions.map((o) => (
-                <button
-                  key={o.value}
-                  onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
-                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition ${
-                    value === o.value
-                      ? "bg-[hsl(var(--task-purple)/0.15)] text-white/90"
-                      : "text-white/40 hover:bg-white/[0.05] hover:text-white/60"
-                  }`}
-                >
-                  <span className="truncate">{o.label}</span>
-                </button>
-              ))}
-
-              {sortedOptions.length === 0 && search.trim() && (
-                <p className="px-3 py-4 text-center text-[11px] text-white/30">Nenhum resultado</p>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* ── Multi-select dropdown for projects ── */
-function MultiSelectProjects({
-  value,
-  onChange,
-  options,
-  placeholder,
-  icon: Icon,
-  mineSet,
-}: {
-  value: string[];
-  onChange: (v: string[]) => void;
-  options: { value: string; label: string }[];
-  placeholder: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  mineSet?: Set<string>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  useEffect(() => {
-    if (open && inputRef.current) inputRef.current.focus();
-  }, [open]);
-
-  const isAll = value.length === 0;
-
-  const filtered = search.trim()
-    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
-    : options;
-
-  const sortedOptions = mineSet
-    ? [...filtered].sort((a, b) => {
-        const aM = mineSet.has(a.value) ? 0 : 1;
-        const bM = mineSet.has(b.value) ? 0 : 1;
-        return aM - bM || a.label.localeCompare(b.label);
-      })
-    : filtered;
-
-  const toggleOption = (v: string) => {
-    if (value.includes(v)) {
-      onChange(value.filter((x) => x !== v));
-    } else {
-      onChange([...value, v]);
-    }
-  };
-
-  const displayLabel = isAll
-    ? placeholder
-    : value.length === 1
-      ? options.find((o) => o.value === value[0])?.label ?? placeholder
-      : `${value.length} projetos`;
-
-  const renderOption = (o: { value: string; label: string }, showDot?: boolean) => {
-    const isSelected = value.includes(o.value);
-    return (
-      <button
-        key={o.value}
-        onClick={(e) => { e.preventDefault(); toggleOption(o.value); }}
-        className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-semibold transition mb-0.5 ${
-          isSelected
-            ? "bg-[hsl(var(--task-purple)/0.12)] border border-[hsl(var(--task-purple)/0.25)] text-white/90"
-            : "border border-transparent text-white/40 hover:bg-white/[0.05] hover:text-white/60"
-        }`}
-      >
-        <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition ${
-          isSelected
-            ? "border-[hsl(var(--task-purple))] bg-[hsl(var(--task-purple))]"
-            : "border-white/20 bg-transparent"
-        }`}>
-          {isSelected && (
-            <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 12 12" fill="none"><path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          )}
-        </span>
-        {showDot && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--task-purple))]" />}
-        <span className="truncate">{o.label}</span>
-      </button>
-    );
-  };
-
-  return (
-    <div ref={ref} className="relative w-full sm:w-auto">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={`flex h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
-          !isAll
-            ? "border-[hsl(var(--task-purple)/0.4)] bg-[hsl(var(--task-purple)/0.1)] text-white/80"
-            : "border-white/[0.08] bg-[hsl(var(--task-surface))] text-white/50"
-        } hover:border-white/[0.15]`}
-      >
-        {Icon && <Icon className="h-3.5 w-3.5 shrink-0 opacity-50" />}
-        <span className="flex-1 truncate text-left">{displayLabel}</span>
-        {!isAll && (
-          <span className="rounded-full bg-[hsl(var(--task-purple))] px-1.5 py-0.5 text-[10px] font-bold text-white">{value.length}</span>
-        )}
-        <ChevronDown className={`h-3 w-3 shrink-0 opacity-40 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ duration: 0.15 }}
-            className="absolute left-0 sm:right-0 sm:left-auto top-full z-[200] mt-1 w-[min(240px,calc(100vw-1.5rem))] rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col"
-            style={{ background: "hsl(260 30% 12%)", maxHeight: "min(300px,70vh)" }}
-          >
-            {options.length > 5 && (
-              <div className="shrink-0 px-1.5 pt-1.5 pb-1 border-b border-white/[0.06]" style={{ background: "hsl(260 30% 12%)" }}>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-white/30" />
-                  <input
-                    ref={inputRef}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar..."
-                    className="h-8 w-full rounded-full border border-white/[0.08] bg-white/[0.04] pl-7 pr-3 text-[11px] text-white/70 outline-none focus:border-[hsl(var(--task-purple)/0.4)] placeholder:text-white/25"
-                  />
-                </div>
-              </div>
-            )}
-            <div className="overflow-y-auto flex-1 p-1.5">
-              {/* Select all / clear */}
-              <button
-                onClick={() => { onChange([]); setSearch(""); }}
-                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition ${
-                  isAll ? "bg-[hsl(var(--task-purple)/0.15)] text-white/90" : "text-white/40 hover:bg-white/[0.05] hover:text-white/60"
-                }`}
-              >
-                {placeholder}
-              </button>
-
-              {mineSet && sortedOptions.length > 0 && (
-                <>
-                  {sortedOptions.some(o => mineSet.has(o.value)) && (
-                    <div className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-widest text-[hsl(var(--task-purple)/0.6)]">Projetos que faço parte</div>
-                  )}
-                  {sortedOptions.filter(o => mineSet.has(o.value)).map((o) => renderOption(o, true))}
-                  {sortedOptions.some(o => !mineSet.has(o.value)) && (
-                    <div className="px-3 pt-3 pb-1 text-[9px] font-bold uppercase tracking-widest text-white/20">Outros</div>
-                  )}
-                  {sortedOptions.filter(o => !mineSet.has(o.value)).map((o) => renderOption(o))}
-                </>
-              )}
-
-              {!mineSet && sortedOptions.map((o) => renderOption(o))}
-
-              {sortedOptions.length === 0 && search.trim() && (
-                <p className="px-3 py-4 text-center text-[11px] text-white/30">Nenhum resultado</p>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
 
 export function TaskFilters({
   search,
@@ -444,7 +114,7 @@ export function TaskFilters({
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-4 py-[9px] text-[13px] font-semibold transition ${
+            className={`flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-xl border px-4 py-[9px] text-[13px] font-semibold transition ${
               expanded
                 ? "border-[hsl(var(--task-purple)/0.4)] bg-[hsl(var(--task-purple)/0.1)] text-[hsl(var(--task-purple))]"
                 : "border-white/[0.06] bg-white/[0.03] text-white/50 hover:border-white/[0.12] hover:text-white/70"
@@ -483,7 +153,7 @@ export function TaskFilters({
                       key={chip.value}
                       type="button"
                       onClick={() => setStatus(chip.value)}
-                      className={`rounded-xl px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-[12px] font-semibold transition-all whitespace-nowrap ${
+                      className={`rounded-xl px-2.5 sm:px-3 py-1.5 min-h-[44px] sm:min-h-0 text-[11px] sm:text-[12px] font-semibold transition-all whitespace-nowrap ${
                         status === chip.value
                           ? "bg-[hsl(var(--task-purple))] text-white shadow"
                           : "text-white/30 hover:text-white/50"
@@ -502,7 +172,7 @@ export function TaskFilters({
                   value={period}
                   onChange={setPeriod}
                   options={periodChips.map(c => ({ value: c.value, label: c.label }))}
-                  placeholder="Todos períodos"
+                  placeholder="Todos os períodos"
                   icon={Calendar}
                 />
               </div>

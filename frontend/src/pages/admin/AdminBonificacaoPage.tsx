@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -544,6 +544,7 @@ export default function AdminBonificacaoPage() {
         <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold">Editar Avaliação</DialogTitle>
+            <DialogDescription className="sr-only">Edite os campos da avaliação selecionada.</DialogDescription>
           </DialogHeader>
           {editRow && (
             <div className="space-y-4 py-1">
@@ -605,8 +606,8 @@ export default function AdminBonificacaoPage() {
         <DialogContent className="max-w-sm rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold">Confirmar alteração</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground/65">Deseja salvar as alterações nesta avaliação?</DialogDescription>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground/65">Deseja salvar as alterações nesta avaliação?</p>
           <DialogFooter className="gap-2">
             <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setEditConfirm(false)}>Cancelar</Button>
             <Button size="sm" className="rounded-xl gap-1.5" disabled={saving} onClick={() => { setEditConfirm(false); void saveEdit(); }}>
@@ -623,8 +624,8 @@ export default function AdminBonificacaoPage() {
             <DialogTitle className="text-sm font-bold flex items-center gap-2 text-red-400">
               <AlertTriangle className="h-4 w-4" /> Excluir avaliação
             </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground/65">Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita.</DialogDescription>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground/65">Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita.</p>
           <DialogFooter className="gap-2">
             <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setDeleteRow(null)}>Cancelar</Button>
             <Button variant="destructive" size="sm" className="rounded-xl gap-1.5" disabled={deleting} onClick={() => void confirmDelete()}>

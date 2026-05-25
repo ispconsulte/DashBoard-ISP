@@ -1018,11 +1018,23 @@ export default function TarefasPage() {
           <button
             type="button"
             onClick={() => setShowDashboard((v) => !v)}
-            className="flex items-center gap-2 mb-3 text-sm font-semibold text-[hsl(var(--task-text))] hover:text-[hsl(var(--task-yellow))] transition"
+            className={`group flex w-full items-center gap-3 mb-3 px-4 py-3 rounded-2xl border transition-all duration-200 ${
+              showDashboard
+                ? "border-violet-500/30 bg-violet-500/[0.07] shadow-[0_0_18px_hsl(263_70%_55%/0.1)]"
+                : "border-white/[0.06] bg-white/[0.025] hover:border-violet-500/20 hover:bg-violet-500/[0.04]"
+            }`}
           >
-            <Layers className="h-4 w-4" />
-            Painel de Desempenho
-            <ChevronDown className={`h-4 w-4 transition-transform ${showDashboard ? "rotate-180" : ""}`} />
+            <div className={`flex h-7 w-7 items-center justify-center rounded-xl border transition-colors duration-200 ${
+              showDashboard
+                ? "border-violet-500/40 bg-violet-500/20"
+                : "border-white/[0.08] bg-white/[0.04] group-hover:border-violet-500/20 group-hover:bg-violet-500/[0.08]"
+            }`}>
+              <Layers className={`h-3.5 w-3.5 transition-colors duration-200 ${showDashboard ? "text-violet-400" : "text-white/35 group-hover:text-violet-400/60"}`} />
+            </div>
+            <span className={`flex-1 text-left text-sm font-semibold transition-colors duration-200 ${showDashboard ? "text-white/90" : "text-white/50 group-hover:text-white/70"}`}>
+              Painel de Desempenho
+            </span>
+            <ChevronDown className={`h-3.5 w-3.5 transition-all duration-200 ${showDashboard ? "rotate-180 text-violet-400/60" : "text-white/20 group-hover:text-white/35"}`} />
           </button>
 
           <AnimatePresence>
@@ -1270,11 +1282,23 @@ export default function TarefasPage() {
           <button
             type="button"
             onClick={() => setShowCharts((v) => !v)}
-            className="flex items-center gap-2 mb-3 text-sm font-semibold text-[hsl(var(--task-text))] hover:text-[hsl(var(--task-yellow))] transition"
+            className={`group flex w-full items-center gap-3 mb-3 px-4 py-3 rounded-2xl border transition-all duration-200 ${
+              showCharts
+                ? "border-sky-500/30 bg-sky-500/[0.07] shadow-[0_0_18px_hsl(199_89%_48%/0.08)]"
+                : "border-white/[0.06] bg-white/[0.025] hover:border-sky-500/20 hover:bg-sky-500/[0.04]"
+            }`}
           >
-            <BarChart3 className="h-4 w-4" />
-            Análise Detalhada
-            <ChevronDown className={`h-4 w-4 transition-transform ${showCharts ? "rotate-180" : ""}`} />
+            <div className={`flex h-7 w-7 items-center justify-center rounded-xl border transition-colors duration-200 ${
+              showCharts
+                ? "border-sky-500/40 bg-sky-500/20"
+                : "border-white/[0.08] bg-white/[0.04] group-hover:border-sky-500/20 group-hover:bg-sky-500/[0.08]"
+            }`}>
+              <BarChart3 className={`h-3.5 w-3.5 transition-colors duration-200 ${showCharts ? "text-sky-400" : "text-white/35 group-hover:text-sky-400/60"}`} />
+            </div>
+            <span className={`flex-1 text-left text-sm font-semibold transition-colors duration-200 ${showCharts ? "text-white/90" : "text-white/50 group-hover:text-white/70"}`}>
+              Análise Detalhada
+            </span>
+            <ChevronDown className={`h-3.5 w-3.5 transition-all duration-200 ${showCharts ? "rotate-180 text-sky-400/60" : "text-white/20 group-hover:text-white/35"}`} />
           </button>
 
           <AnimatePresence>

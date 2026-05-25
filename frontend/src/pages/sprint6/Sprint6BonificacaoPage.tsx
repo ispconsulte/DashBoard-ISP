@@ -74,6 +74,9 @@ export default function Sprint6BonificacaoPage() {
   const [evaluationConsultant, setEvaluationConsultant] = useState<BonusConsultantCard | null>(null);
   const [reportConsultant, setReportConsultant] = useState<BonusConsultantCard | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  // sessionStorage key so the modal shows at most once per browser tab/session,
+  // regardless of how many times the user navigates back to this page.
+  const NOTICE_SESSION_KEY = "bonus_notice_shown";
   const [bonusNoticeOpen, setBonusNoticeOpen] = useState(false);
   const bonus = useBonusRealData(period, session?.accessToken, refreshKey);
   const sharedTasks = useSharedTasks();
@@ -218,8 +221,15 @@ export default function Sprint6BonificacaoPage() {
   }, [isFullAccessManager, pendingEvaluationNotification, pendingTeamEvaluationsCount]);
 
   useEffect(() => {
-    if (bonusReminder) setBonusNoticeOpen(true);
-  }, [bonusReminder]);
+    if (!bonusReminder) return;
+    try {
+      if (sessionStorage.getItem(NOTICE_SESSION_KEY)) return;
+      sessionStorage.setItem(NOTICE_SESSION_KEY, "1");
+    } catch {
+      // sessionStorage unavailable — show anyway
+    }
+    setBonusNoticeOpen(true);
+  }, [bonusReminder, NOTICE_SESSION_KEY]);
 
   const availableTabs = useMemo(() => {
     const tabs: string[] = [];
@@ -273,7 +283,7 @@ export default function Sprint6BonificacaoPage() {
         <div className="space-y-5">
           {/* Header */}
           <div
-            className="relative overflow-hidden rounded-2xl border border-white/[0.07]"
+            className="relative overflow-hidden rounded-2xl ring-1 ring-inset ring-white/[0.06]"
             style={{
               background: "linear-gradient(135deg, hsl(224 48% 10%) 0%, hsl(244 46% 15%) 46%, hsl(38 50% 12%) 100%)",
             }}
@@ -455,7 +465,7 @@ export default function Sprint6BonificacaoPage() {
 
             {availableTabs.length > 0 ? (
               <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="min-w-0 space-y-4">
-                <TabsList className="grid h-auto w-full grid-cols-1 gap-1 rounded-xl border border-white/[0.08] bg-[linear-gradient(135deg,hsl(224_42%_12%/0.72),hsl(236_38%_13%/0.58))] p-1 shadow-lg shadow-black/10 min-[430px]:grid-cols-2 lg:inline-flex lg:w-auto lg:flex-wrap lg:justify-start">
+                <TabsList className="grid h-auto w-full grid-cols-1 gap-1 rounded-xl border border-white/[0.08] bg-[linear-gradient(135deg,hsl(224_42%_12%/0.72),hsl(236_38%_13%/0.58))] p-1 shadow-lg shadow-black/10 min-[430px]:grid-cols-2 lg:flex lg:w-full lg:flex-wrap lg:justify-center">
                   {canSeeRanking && (
                     <TabsTrigger
                       value="ranking"
@@ -560,10 +570,10 @@ export default function Sprint6BonificacaoPage() {
 
       <Dialog open={bonusNoticeOpen && Boolean(bonusReminder)} onOpenChange={setBonusNoticeOpen}>
         <DialogContent className="max-w-md rounded-2xl border-blue-500/20 bg-[linear-gradient(145deg,hsl(222_47%_8%/0.98),hsl(235_42%_11%/0.96),hsl(222_47%_8%/0.98))] p-0 shadow-2xl shadow-black/50">
-          <div className="border-b border-white/[0.06] px-5 py-4">
-            <DialogHeader className="space-y-2 text-left">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-400/20 bg-blue-400/10">
-                <FileText className="h-4.5 w-4.5 text-blue-300" />
+          <div className="border-b border-white/[0.06] px-5 py-6">
+            <DialogHeader className="space-y-3 text-center items-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-400/20 bg-blue-400/10 animate-pulse">
+                <FileText className="h-5 w-5 text-blue-300" />
               </div>
               <DialogTitle className="text-base font-bold text-foreground">
                 {bonusReminder?.title}
@@ -573,8 +583,8 @@ export default function Sprint6BonificacaoPage() {
               </DialogDescription>
             </DialogHeader>
           </div>
-          <div className="flex justify-end px-5 py-4">
-            <Button size="sm" className="rounded-xl px-4" onClick={() => setBonusNoticeOpen(false)}>
+          <div className="flex justify-center px-5 py-4">
+            <Button size="sm" className="rounded-xl px-6" onClick={() => setBonusNoticeOpen(false)}>
               Entendi
             </Button>
           </div>
@@ -662,8 +672,24 @@ export default function Sprint6BonificacaoPage() {
                     </div>
                   ))}
                 </div>
+              ) : rankingConsultants.length > 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-amber-500/10 bg-amber-500/[0.04] px-4 py-5 text-center">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10">
+                    <TrendingUp className="h-4 w-4 text-amber-400" />
+                  </div>
+                  <p className="text-xs font-semibold text-amber-400">Ninguém no destaque ainda</p>
+                  <p className="text-[11px] text-muted-foreground/55 leading-relaxed">
+                    {(() => {
+                      const withScore = rankingConsultants.filter(c => c.scoreSource !== "none");
+                      const max = withScore.length > 0 ? Math.max(...withScore.map(c => c.score)) : null;
+                      return max !== null
+                        ? `Score mais alto: ${max}%. Para entrar aqui precisa de ≥75%.`
+                        : "Nenhum consultor atingiu ≥75% com entregas em dia.";
+                    })()}
+                  </p>
+                </div>
               ) : (
-                <EmptyInsight text="Ainda não há consultores com score acima de 75% e entregas em dia." />
+                <EmptyInsight text="Sem dados neste período." />
               )}
             </SectionCard>
 
@@ -677,7 +703,20 @@ export default function Sprint6BonificacaoPage() {
                   ))}
                 </div>
               ) : rankingConsultants.length > 0 ? (
-                <EmptyInsight text="Todos acima de 60%." />
+                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-emerald-500/10 bg-emerald-500/[0.04] px-4 py-5 text-center">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
+                    <TrendingUp className="h-4 w-4 text-emerald-400" />
+                  </div>
+                  <p className="text-xs font-semibold text-emerald-400">Equipe saudável</p>
+                  <p className="text-[11px] text-muted-foreground/55 leading-relaxed">
+                    Todos os {rankingConsultants.filter(c => c.scoreSource !== "none").length} consultores estão acima de 60%.
+                    {(() => {
+                      const withScore = rankingConsultants.filter(c => c.scoreSource !== "none");
+                      const min = withScore.length > 0 ? Math.min(...withScore.map(c => c.score)) : null;
+                      return min !== null ? ` Score mais baixo: ${min}%.` : "";
+                    })()}
+                  </p>
+                </div>
               ) : (
                 <EmptyInsight text="Sem dados neste período." />
               )}

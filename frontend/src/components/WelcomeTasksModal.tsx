@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, AlarmClockCheck, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
@@ -45,6 +45,7 @@ export default function WelcomeTasksModal({ userEmail }: { userEmail: string }) 
         ].join(" ")}
       >
         <DialogTitle className="sr-only">Boas-vindas às tarefas</DialogTitle>
+        <DialogDescription className="sr-only">Introdução à seção de tarefas do sistema.</DialogDescription>
 
         {/* ── Decorative glows ── */}
         <motion.div
