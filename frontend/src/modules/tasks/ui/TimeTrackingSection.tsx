@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Timer, User, Clock, BarChart3, CircleDot, Info, ChevronDown } from "lucide-react";
+import { Timer, User, Clock, BarChart3, CircleDot, Info, ChevronDown, CalendarClock, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ElapsedTimeRecord } from "@/modules/tasks/types";
 import { formatDurationHHMM, durationColorClass, getElapsedEffectiveDate } from "@/modules/tasks/utils";
@@ -24,23 +24,23 @@ const formatDateTime = (raw?: string | Date | null): string | null => {
   });
 };
 
-const getEntryStartDate = (entry: ElapsedTimeRecord): Date | null =>
-  getElapsedEffectiveDate(entry);
+const formatDayMonth = (date: Date): string =>
+  date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
 
-const getEntryStopDate = (entry: ElapsedTimeRecord): Date | null => {
-  const explicitStop = entry.date_stop ? new Date(String(entry.date_stop)) : null;
-  if (explicitStop && !Number.isNaN(explicitStop.getTime())) {
-    return explicitStop;
-  }
-
-  const start = getEntryStartDate(entry);
-  const seconds = typeof entry.seconds === "number" ? entry.seconds : Number(entry.seconds ?? 0);
-  if (!start || !Number.isFinite(seconds) || seconds <= 0) {
-    return null;
-  }
-
-  return new Date(start.getTime() + seconds * 1000);
+const parseEntryDate = (raw?: string | Date | null): Date | null => {
+  if (!raw) return null;
+  const parsed = new Date(String(raw));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
+
+const getEntryRecordDate = (entry: ElapsedTimeRecord): Date | null =>
+  parseEntryDate(entry.created_date) || getElapsedEffectiveDate(entry) || parseEntryDate(entry.date_start);
+
+const getEntryStartDate = (entry: ElapsedTimeRecord): Date | null =>
+  parseEntryDate(entry.date_start);
 
 const WEEKDAYS_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -72,7 +72,7 @@ const getDisplayName = (fullName: string | null): string | null => {
 function DailyActivityBars({ entries }: { entries: ElapsedTimeRecord[] }) {
   const dailyData = useMemo(() => {
     const now = new Date();
-    const days: { label: string; seconds: number; isToday: boolean }[] = [];
+    const days: { label: string; dateLabel: string; seconds: number; isToday: boolean }[] = [];
 
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
@@ -82,10 +82,7 @@ function DailyActivityBars({ entries }: { entries: ElapsedTimeRecord[] }) {
 
       let totalSec = 0;
       entries.forEach((entry) => {
-        // Try multiple date fields to find the effective date for this entry
-        const effective = getElapsedEffectiveDate(entry);
-        const stopDate = entry.date_stop ? new Date(String(entry.date_stop)) : null;
-        const entryDate = effective ?? (stopDate && !Number.isNaN(stopDate.getTime()) ? stopDate : null);
+        const entryDate = getEntryRecordDate(entry);
         if (!entryDate) return;
         // Compare using local date string to avoid UTC vs local mismatch
         const entryKey = `${entryDate.getFullYear()}-${String(entryDate.getMonth() + 1).padStart(2, "0")}-${String(entryDate.getDate()).padStart(2, "0")}`;
@@ -96,6 +93,7 @@ function DailyActivityBars({ entries }: { entries: ElapsedTimeRecord[] }) {
 
       days.push({
         label: WEEKDAYS_SHORT[d.getDay()],
+        dateLabel: formatDayMonth(d),
         seconds: totalSec,
         isToday: i === 0,
       });
@@ -104,10 +102,6 @@ function DailyActivityBars({ entries }: { entries: ElapsedTimeRecord[] }) {
   }, [entries]);
 
   const maxSec = Math.max(1, ...dailyData.map((d) => d.seconds));
-  const hasActivity = dailyData.some((d) => d.seconds > 0);
-
-  if (!hasActivity) return null;
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -123,7 +117,7 @@ function DailyActivityBars({ entries }: { entries: ElapsedTimeRecord[] }) {
           Atividade dos Últimos 7 Dias
         </span>
       </div>
-      <div className="flex items-end gap-2 h-14">
+      <div className="flex items-end gap-2 h-16">
         {dailyData.map((day, i) => {
           const pct = day.seconds > 0 ? Math.max(10, (day.seconds / maxSec) * 100) : 0;
           const color = durationColorClass(day.seconds);
@@ -151,6 +145,9 @@ function DailyActivityBars({ entries }: { entries: ElapsedTimeRecord[] }) {
               <span className={`text-[9px] font-semibold ${day.isToday ? "text-emerald-400" : "text-[hsl(var(--task-text-muted))]"}`}>
                 {day.label}
               </span>
+              <span className={`text-[9px] leading-none ${day.isToday ? "text-emerald-400/80" : "text-[hsl(var(--task-text-muted)/0.65)]"}`}>
+                {day.dateLabel}
+              </span>
             </div>
           );
         })}
@@ -161,10 +158,12 @@ function DailyActivityBars({ entries }: { entries: ElapsedTimeRecord[] }) {
 
 export function TimeTrackingSection({ entries, totalSeconds, userNames }: TimeTrackingSectionProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [expandedEntryKey, setExpandedEntryKey] = useState<string | number | null>(null);
+  const [changeDetailKey, setChangeDetailKey] = useState<string | number | null>(null);
 
   const sorted = [...entries].sort((a, b) => {
-    const da = getEntryStartDate(a)?.getTime() ?? 0;
-    const db = getEntryStartDate(b)?.getTime() ?? 0;
+    const da = getEntryRecordDate(a)?.getTime() ?? 0;
+    const db = getEntryRecordDate(b)?.getTime() ?? 0;
     return db - da;
   });
 
@@ -279,91 +278,181 @@ export function TimeTrackingSection({ entries, totalSeconds, userNames }: TimeTr
                     const entryDuration = formatDurationHHMM(seconds);
                     const entryColor = durationColorClass(seconds);
                     const avatarColor = userColor(entry.user_id);
-                    const startDate = formatDateTime(getEntryStartDate(entry));
-                    const stopDate = formatDateTime(getEntryStopDate(entry));
-                    const effectiveDate = formatDateTime(getElapsedEffectiveDate(entry));
-                    const hasRangeDate = startDate || stopDate;
+                    const entryKey = entry.id ?? (entry.task_id ? `${entry.task_id}-${i}` : i);
+                    const isEntryOpen = expandedEntryKey === entryKey;
+                    const isChangeDetailOpen = changeDetailKey === entryKey;
+                    const recordRaw = getEntryRecordDate(entry);
+                    const startRaw = getEntryStartDate(entry);
+                    const recordDate = formatDateTime(recordRaw);
+                    const startDate = formatDateTime(startRaw);
+                    const explicitStopDate = formatDateTime(entry.date_stop);
+                    const createdDate = formatDateTime(entry.created_date);
+                    const updatedDate = formatDateTime(entry.updated_at);
+                    const description = typeof entry.comment_text === "string" ? entry.comment_text.trim() : "";
                     const rawName = userNames?.[String(entry.user_id)] || null;
                     const displayName = getDisplayName(rawName);
+                    const hasUpdatedMarker = Boolean(
+                      entry.updated_at &&
+                      entry.created_date &&
+                      String(entry.updated_at) !== String(entry.created_date)
+                    );
 
                     return (
                       <motion.div
-                        key={entry.id ?? (entry.task_id ? `${entry.task_id}-${i}` : i)}
+                        key={entryKey}
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ duration: 0.25, delay: Math.min(i * 0.03, 0.3) }}
-                        className="group flex items-center gap-3 rounded-lg bg-[hsl(var(--task-bg))] px-3 py-2.5 border border-[hsl(var(--task-border)/0.3)] hover:border-[hsl(var(--task-border))] transition-colors"
+                        className="rounded-lg border border-[hsl(var(--task-border)/0.3)] bg-[hsl(var(--task-bg))] transition-colors hover:border-[hsl(var(--task-border))]"
                       >
-                        {/* Timeline dot */}
-                        <div className="flex flex-col items-center gap-0.5">
-                          <CircleDot className="h-3.5 w-3.5 text-emerald-400" />
-                          {i < sorted.length - 1 && (
-                            <div className="w-[1px] h-2 bg-[hsl(var(--task-border)/0.3)]" />
-                          )}
-                        </div>
-
-                        {/* Main content: date + user name */}
-                        <div className="min-w-0 flex-1">
-                          {hasRangeDate ? (
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {startDate && (
-                                <span className="text-[11px] font-medium text-[hsl(var(--task-text))]">
-                                  {startDate}
-                                </span>
-                              )}
-                              {startDate && stopDate && (
-                                <span className="text-[10px] text-[hsl(var(--task-text-muted))]">→</span>
-                              )}
-                              {stopDate && (
-                                <span className="text-[11px] text-[hsl(var(--task-text-muted))]">
-                                  {stopDate}
-                                </span>
-                              )}
-                            </div>
-                          ) : effectiveDate ? (
-                            <span className="text-[11px] font-medium text-[hsl(var(--task-text))]">
-                              {effectiveDate}
-                            </span>
-                          ) : null}
-                          {typeof entry.comment_text === "string" && entry.comment_text.trim() && (
-                            <p className="text-[10px] text-[hsl(var(--task-text-muted))] truncate mt-0.5 italic max-w-[300px]">
-                              {String(entry.comment_text)}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* User badge */}
-                        {entry.user_id && (() => {
-                          return (
-                            <div
-                              className="flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold"
-                              style={{
-                                backgroundColor: `${avatarColor}22`,
-                                color: avatarColor,
-                                border: `1px solid ${avatarColor}44`,
-                              }}
-                              title={rawName || `Usuário #${entry.user_id}`}
-                            >
-                              <User className="h-3 w-3" />
-                              {displayName && (
-                                <span className="text-[10px] font-medium max-w-[120px] truncate">
-                                  {displayName}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })()}
-
-                        {/* Duration badge */}
-                        {entryDuration ? (
-                          <div className={`flex items-center gap-1 rounded-md ${entryColor.bg} px-2 py-0.5 border ${entryColor.border}`}>
-                            <span className={`text-[11px] font-bold font-mono whitespace-nowrap ${entryColor.text}`}>
-                              {entryDuration}
-                            </span>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedEntryKey(isEntryOpen ? null : entryKey)}
+                          className="group flex w-full items-center gap-3 px-3 py-2.5 text-left"
+                        >
+                          {/* Timeline dot */}
+                          <div className="flex flex-col items-center gap-0.5">
+                            <CircleDot className="h-3.5 w-3.5 text-emerald-400" />
+                            {i < sorted.length - 1 && (
+                              <div className="w-[1px] h-2 bg-[hsl(var(--task-border)/0.3)]" />
+                            )}
                           </div>
-                        ) : (
-                          <span className="text-[10px] text-[hsl(var(--task-text-muted))] italic">Sem tempo</span>
-                        )}
+
+                          {/* Main content: date + user name */}
+                          <div className="min-w-0 flex-1">
+                            {recordDate ? (
+                              <span className="text-[11px] font-medium text-[hsl(var(--task-text))]">
+                                {recordDate}
+                              </span>
+                            ) : null}
+                            {description && (
+                              <p className="text-[10px] text-[hsl(var(--task-text-muted))] truncate mt-0.5 italic max-w-[300px]">
+                                {description}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* User badge */}
+                          {entry.user_id && (() => {
+                            return (
+                              <div
+                                className="flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold"
+                                style={{
+                                  backgroundColor: `${avatarColor}22`,
+                                  color: avatarColor,
+                                  border: `1px solid ${avatarColor}44`,
+                                }}
+                                title={rawName || `Usuário #${entry.user_id}`}
+                              >
+                                <User className="h-3 w-3" />
+                                {displayName && (
+                                  <span className="text-[10px] font-medium max-w-[120px] truncate">
+                                    {displayName}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                          {/* Duration badge */}
+                          {entryDuration ? (
+                            <div className={`flex items-center gap-1 rounded-md ${entryColor.bg} px-2 py-0.5 border ${entryColor.border}`}>
+                              <span className={`text-[11px] font-bold font-mono whitespace-nowrap ${entryColor.text}`}>
+                                {entryDuration}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-[hsl(var(--task-text-muted))] italic">Sem tempo</span>
+                          )}
+                          <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[hsl(var(--task-text-muted))] transition-transform ${isEntryOpen ? "rotate-180" : ""}`} />
+                        </button>
+
+                        <AnimatePresence>
+                          {isEntryOpen && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="border-t border-[hsl(var(--task-border)/0.35)] px-3 pb-3 pt-2">
+                                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                  <div className="rounded-md border border-[hsl(var(--task-border)/0.35)] bg-[hsl(var(--task-surface)/0.55)] p-2">
+                                    <div className="mb-1 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[hsl(var(--task-text-muted))]">
+                                      <CalendarClock className="h-3 w-3" />
+                                      Data do registro
+                                    </div>
+                                    <p className="text-[11px] font-bold text-[hsl(var(--task-text))]">{recordDate ?? "Sem data"}</p>
+                                  </div>
+                                  <div className="rounded-md border border-[hsl(var(--task-border)/0.35)] bg-[hsl(var(--task-surface)/0.55)] p-2">
+                                    <div className="mb-1 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[hsl(var(--task-text-muted))]">
+                                      <Clock className="h-3 w-3" />
+                                      Tempo registrado
+                                    </div>
+                                    <p className="text-[11px] font-bold text-[hsl(var(--task-text))]">{entryDuration || "Sem tempo"}</p>
+                                  </div>
+                                  <div className="rounded-md border border-[hsl(var(--task-border)/0.35)] bg-[hsl(var(--task-surface)/0.55)] p-2">
+                                    <div className="mb-1 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[hsl(var(--task-text-muted))]">
+                                      <CalendarClock className="h-3 w-3" />
+                                      Início técnico
+                                    </div>
+                                    <p className="text-[11px] text-[hsl(var(--task-text))]">{startDate ?? "Sem data de início"}</p>
+                                  </div>
+                                  <div className="rounded-md border border-[hsl(var(--task-border)/0.35)] bg-[hsl(var(--task-surface)/0.55)] p-2">
+                                    <div className="mb-1 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[hsl(var(--task-text-muted))]">
+                                      <CalendarClock className="h-3 w-3" />
+                                      Fim técnico
+                                    </div>
+                                    <p className="text-[11px] text-[hsl(var(--task-text))]">
+                                      {explicitStopDate ?? "Sem data final"}
+                                    </p>
+                                  </div>
+                                  {hasUpdatedMarker && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setChangeDetailKey(isChangeDetailOpen ? null : entryKey)}
+                                      className="rounded-md border border-[hsl(var(--task-border)/0.35)] bg-[hsl(var(--task-surface)/0.55)] p-2 text-left transition hover:border-[hsl(var(--task-yellow)/0.35)] hover:bg-[hsl(var(--task-yellow)/0.07)]"
+                                    >
+                                      <div className="mb-1 flex items-center justify-between gap-2 text-[9px] font-semibold uppercase tracking-wider text-[hsl(var(--task-text-muted))]">
+                                        <span className="flex items-center gap-1.5">
+                                          <Info className="h-3 w-3" />
+                                          Alteração
+                                        </span>
+                                        <ChevronDown className={`h-3 w-3 transition-transform ${isChangeDetailOpen ? "rotate-180" : ""}`} />
+                                      </div>
+                                      <p className="text-[11px] text-[hsl(var(--task-text))]">{updatedDate ?? "Sem data"}</p>
+                                    </button>
+                                  )}
+                                </div>
+                                {hasUpdatedMarker && isChangeDetailOpen && (
+                                  <div className="mt-2 rounded-md border border-[hsl(var(--task-yellow)/0.25)] bg-[hsl(var(--task-yellow)/0.08)] p-2">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--task-yellow))]">
+                                      Alteração detectada
+                                    </p>
+                                    <p className="mt-1 text-[11px] leading-relaxed text-[hsl(var(--task-text))]">
+                                      O registro foi atualizado em {updatedDate}. O histórico sincronizado hoje não guarda o valor anterior e o campo alterado. Dados atuais: {entryDuration || "sem tempo"}, registro em {recordDate ?? "sem data"}, início técnico {startDate ?? "sem data"} e fim técnico {explicitStopDate ?? "sem data final"}.
+                                    </p>
+                                  </div>
+                                )}
+                                <div className="mt-2 rounded-md border border-[hsl(var(--task-border)/0.35)] bg-[hsl(var(--task-surface)/0.55)] p-2">
+                                  <div className="mb-1 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wider text-[hsl(var(--task-text-muted))]">
+                                    <FileText className="h-3 w-3" />
+                                    Descrição
+                                  </div>
+                                  <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-[hsl(var(--task-text))]">
+                                    {description || "Sem descrição informada."}
+                                  </p>
+                                </div>
+                                {createdDate && (
+                                  <p className="mt-2 text-[9px] text-[hsl(var(--task-text-muted)/0.7)]">
+                                    Registro criado em {createdDate}
+                                  </p>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </motion.div>
                     );
                   })}

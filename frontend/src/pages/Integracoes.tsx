@@ -34,9 +34,13 @@ import {
 } from "lucide-react";
 import { usePageSEO } from "@/hooks/usePageSEO";
 import { toast } from "sonner";
+import {
+  clearBitrixSyncCooldown,
+  formatBitrixSyncCooldown,
+  readNextAllowedBitrixSyncAt,
+  reserveNextBitrixSyncWindow,
+} from "@/modules/integrations/bitrixManualSyncCooldown";
 
-const BITRIX_MANUAL_SYNC_COOLDOWN_MS = 5 * 60 * 1000;
-const BITRIX_MANUAL_SYNC_COOLDOWN_KEY = "integrations:bitrix_manual_sync_next_allowed_at";
 const BITRIX_LAST_SYNC_REPORT_KEY = "integrations:bitrix_last_sync_report";
 
 type SyncPhase = "idle" | "preparing" | "tasks" | "times" | "done" | "error";
@@ -58,13 +62,6 @@ type SyncReport = {
   timesJob?: TriggerSyncPayload["jobs"][number] | null;
 };
 
-const readNextAllowedSyncAt = () => {
-  if (typeof window === "undefined") return 0;
-  const raw = window.localStorage.getItem(BITRIX_MANUAL_SYNC_COOLDOWN_KEY);
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
 const readLastSyncReport = (): SyncReport | null => {
   if (typeof window === "undefined") return null;
   try {
@@ -78,13 +75,6 @@ const readLastSyncReport = (): SyncReport | null => {
 const saveLastSyncReport = (report: SyncReport) => {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(BITRIX_LAST_SYNC_REPORT_KEY, JSON.stringify(report));
-};
-
-const formatCooldown = (ms: number) => {
-  const totalSeconds = Math.ceil(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 };
 
 const formatNumber = (value?: number | null) =>
@@ -126,7 +116,7 @@ export default function IntegracoesPage() {
   const [progressOpen, setProgressOpen] = useState(false);
   const [syncReport, setSyncReport] = useState<SyncReport | null>(() => readLastSyncReport());
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [nextAllowedSyncAt, setNextAllowedSyncAt] = useState(readNextAllowedSyncAt);
+  const [nextAllowedSyncAt, setNextAllowedSyncAt] = useState(readNextAllowedBitrixSyncAt);
 
   const openModal = (integration: IntegrationWithState) => {
     setSelectedIntegration(integration);
@@ -145,7 +135,7 @@ export default function IntegracoesPage() {
   const canForceBitrixSync = isAdmin && !syncingBitrix && syncCooldownMs === 0;
   const syncButtonLabel = useMemo(() => {
     if (syncingBitrix) return "Atualizando...";
-    if (syncCooldownMs > 0) return `Aguarde ${formatCooldown(syncCooldownMs)}`;
+    if (syncCooldownMs > 0) return `Aguarde ${formatBitrixSyncCooldown(syncCooldownMs)}`;
     return "Forçar atualizações";
   }, [syncingBitrix, syncCooldownMs]);
 
@@ -153,7 +143,7 @@ export default function IntegracoesPage() {
     if (!isAdmin) return;
     const intervalId = window.setInterval(() => {
       setNowMs(Date.now());
-      setNextAllowedSyncAt(readNextAllowedSyncAt());
+      setNextAllowedSyncAt(readNextAllowedBitrixSyncAt());
     }, 1000);
     return () => window.clearInterval(intervalId);
   }, [isAdmin]);
@@ -199,7 +189,7 @@ export default function IntegracoesPage() {
     updateSyncReport((current) => ({
       ...(current ?? { startedAt: new Date().toISOString(), phase: "tasks" }),
       tasksJob,
-      after: tasksPayload.dashboard.overview,
+      after: tasksPayload.dashboard?.overview ?? null,
       phase: "times",
     }));
 
@@ -215,7 +205,7 @@ export default function IntegracoesPage() {
       phase: "done",
       error: null,
       before: before.overview,
-      after: timesPayload.dashboard.overview,
+      after: timesPayload.dashboard?.overview ?? null,
       tasksJob,
       timesJob,
     };
@@ -229,24 +219,23 @@ export default function IntegracoesPage() {
   const handleForceBitrixSync = async () => {
     if (!isAdmin || syncingBitrix) return;
 
-    const nextAllowedAt = readNextAllowedSyncAt();
+    const nextAllowedAt = readNextAllowedBitrixSyncAt();
     const remainingMs = nextAllowedAt - Date.now();
     if (remainingMs > 0) {
       setNextAllowedSyncAt(nextAllowedAt);
-      toast.warning(`Aguarde ${formatCooldown(remainingMs)} para sincronizar novamente.`);
+      toast.warning(`Aguarde ${formatBitrixSyncCooldown(remainingMs)} para sincronizar novamente.`);
       return;
     }
 
     setSyncingBitrix(true);
-    const nextAllowed = Date.now() + BITRIX_MANUAL_SYNC_COOLDOWN_MS;
-    window.localStorage.setItem(BITRIX_MANUAL_SYNC_COOLDOWN_KEY, String(nextAllowed));
-    setNextAllowedSyncAt(nextAllowed);
     toast.info("Sincronização Bitrix iniciada.");
 
     try {
       await invokeBitrixSync();
+      setNextAllowedSyncAt(reserveNextBitrixSyncWindow());
       toast.success("Sincronização concluída. Tarefas, integridade e horas foram atualizadas.");
     } catch (error) {
+      setNextAllowedSyncAt(clearBitrixSyncCooldown());
       const message = error instanceof Error ? error.message : "Não foi possível forçar a sincronização.";
       updateSyncReport((current) => ({
         ...(current ?? { startedAt: new Date().toISOString() }),
@@ -475,7 +464,7 @@ function SyncControlCard({
       {cooldownMs > 0 && !syncing && (
         <div className="mt-3 flex items-center gap-2 text-xs text-[hsl(var(--task-text-muted)/0.75)]">
           <Clock3 className="h-3.5 w-3.5 text-[hsl(var(--task-purple))]" />
-          <span>Nova atualização manual disponível em {formatCooldown(cooldownMs)}.</span>
+          <span>Nova atualização manual disponível em {formatBitrixSyncCooldown(cooldownMs)}.</span>
         </div>
       )}
     </motion.div>

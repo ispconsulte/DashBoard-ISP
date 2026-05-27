@@ -3,7 +3,7 @@ import type { TaskView, ElapsedTimeRecord } from "@/modules/tasks/types";
 import { STATUS_LABELS } from "@/modules/tasks/types";
 import { formatDurationHHMM, durationColorClass, formatSecondsHuman } from "@/modules/tasks/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, ChevronDown, Calendar, User, FolderKanban, Clock, FileText, CalendarClock } from "lucide-react";
+import { ChevronDown, Calendar, User, FolderKanban, Clock, FileText, CalendarClock } from "lucide-react";
 import { FormattedDescription } from "./FormattedDescription";
 import { TimeTrackingSection } from "./TimeTrackingSection";
 import { TaskDeadlineHistory } from "./TaskDeadlineHistory";
@@ -198,14 +198,6 @@ export function TaskListTable({ tasks, timeEntriesByTaskId, userNames }: TaskLis
                         <span className={`text-[13px] font-bold font-mono whitespace-nowrap ${durColor.text}`}>
                           {durationText}
                         </span>
-                        {task.hasHourMismatch && (
-                          <span
-                            className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-amber-400/25 bg-amber-400/10"
-                            title="Divergência entre o total do Bitrix e a soma dos lançamentos"
-                          >
-                            <AlertTriangle className="h-3 w-3 text-amber-300" />
-                          </span>
-                        )}
                       </div>
                       <DurationBar seconds={task.durationSeconds} />
                     </div>
@@ -279,26 +271,8 @@ export function TaskListTable({ tasks, timeEntriesByTaskId, userNames }: TaskLis
                             <div className="flex items-center gap-1.5 mb-1">
                               <Clock className={`h-3 w-3 ${durColor.text}`} />
                               <span className="text-[9px] uppercase tracking-wider text-[hsl(var(--task-text-muted))]">Tempo Total</span>
-                              {task.hasHourMismatch && (
-                                <span className="ml-auto inline-flex items-center gap-1 rounded-md border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-[8px] font-bold text-amber-200">
-                                  <AlertTriangle className="h-2.5 w-2.5" />
-                                  Divergente
-                                </span>
-                              )}
                             </div>
                             <p className={`text-xs font-bold font-mono ${durColor.text}`}>{formatDurationHHMM(task.durationSeconds)}</p>
-                            {task.hasHourMismatch && typeof task.durationDiffSeconds === "number" && typeof task.elapsedSeconds === "number" && (
-                              <p className="mt-1 text-[9px] leading-relaxed text-[hsl(var(--task-text-muted))]">
-                                Lançamentos:{" "}
-                                <span className="font-semibold text-[hsl(var(--task-text))]">
-                                  {formatSecondsHuman(task.elapsedSeconds)}
-                                </span>
-                                {" "}· Diferença:{" "}
-                                <span className="font-semibold text-amber-200">
-                                  {task.durationDiffSeconds > 0 ? "+" : "-"}{formatSecondsHuman(Math.abs(task.durationDiffSeconds))}
-                                </span>
-                              </p>
-                            )}
                             <DurationBar seconds={task.durationSeconds} />
                           </div>
                         )}

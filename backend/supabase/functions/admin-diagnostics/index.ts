@@ -629,6 +629,93 @@ function requestedSyncJobs(value: unknown) {
   ].filter(Boolean) as string[];
 }
 
+function syncRequestBody(jobName: string, mode: unknown) {
+  const fullMode = String(mode ?? "").trim().toLowerCase() === "full";
+  if (jobName === "Get-Projetcs-And-Tasks-Bitrix") {
+    return fullMode
+      ? { full_sync: true, skip_bonus_persistence: true, task_start: 0, max_task_pages: 5 }
+      : { skip_bonus_persistence: true };
+  }
+  if (jobName === "sync-bitrix-times") return { full_reconcile: true };
+  return {};
+}
+
+async function invokeSyncJob(jobName: string, body: Record<string, unknown>) {
+  const response = await fetch(`${EXT_URL}/functions/v1/${jobName}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${EXT_ANON}`,
+      apikey: EXT_ANON,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => null);
+  return {
+    status: response.status,
+    ok: response.ok,
+    data,
+    error: response.ok ? null : data?.error ?? data?.message ?? `HTTP ${response.status}`,
+  };
+}
+
+async function invokePagedTaskFullSync(initialBody: Record<string, unknown>) {
+  const batches = [];
+  let taskStart = Number(initialBody.task_start ?? 0);
+
+  for (let batch = 1; batch <= 100; batch += 1) {
+    const result = await invokeSyncJob("Get-Projetcs-And-Tasks-Bitrix", {
+      ...initialBody,
+      task_start: taskStart,
+      max_task_pages: initialBody.max_task_pages ?? 5,
+    });
+    batches.push({
+      batch,
+      status: result.status,
+      ok: result.ok,
+      tasks: result.data?.tasks ?? null,
+      next_task_start: result.data?.next_task_start ?? null,
+      duration_seconds: result.data?.duration_seconds ?? null,
+      error: result.error,
+    });
+
+    if (!result.ok || result.data?.success === false || result.data?.skipped) {
+      return {
+        status: result.status,
+        ok: false,
+        data: { ...result.data, paged_batches: batches },
+        error: result.error ?? result.data?.error ?? "Falha no sync paginado de tarefas.",
+      };
+    }
+
+    if (result.data?.next_task_start == null) {
+      return {
+        status: result.status,
+        ok: true,
+        data: { ...result.data, paged_batches: batches, paged_batches_count: batches.length },
+        error: null,
+      };
+    }
+
+    taskStart = Number(result.data.next_task_start);
+    if (!Number.isFinite(taskStart)) {
+      return {
+        status: result.status,
+        ok: false,
+        data: { ...result.data, paged_batches: batches },
+        error: "next_task_start invalido no sync paginado de tarefas.",
+      };
+    }
+  }
+
+  return {
+    status: 508,
+    ok: false,
+    data: { paged_batches: batches },
+    error: "Limite de 100 lotes atingido no sync paginado de tarefas.",
+  };
+}
+
 async function recordTriggeredSyncRun(
   adminClient: SupabaseClient,
   input: {
@@ -638,6 +725,7 @@ async function recordTriggeredSyncRun(
     ok: boolean;
     data: Record<string, unknown> | null;
     error: string | null;
+    requestedMode: string;
   },
 ) {
   const status = input.data?.skipped
@@ -662,6 +750,7 @@ async function recordTriggeredSyncRun(
     details: {
       status_code: input.statusCode,
       orchestrated_by: "admin-diagnostics",
+      requested_mode: input.requestedMode,
       response: input.data,
     },
   });
@@ -677,34 +766,31 @@ async function recordTriggeredSyncRun(
 async function triggerSyncJobs(adminClient: SupabaseClient, body: Record<string, unknown>) {
   const jobs = requestedSyncJobs(body.jobs);
   const results = [];
+  const requestedMode = String(body.mode ?? "incremental");
 
   for (const jobName of jobs) {
     const startedAt = Date.now();
-    const response = await fetch(`${EXT_URL}/functions/v1/${jobName}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${EXT_ANON}`,
-        apikey: EXT_ANON,
-      },
-      body: "{}",
-    });
-
-    const data = await response.json().catch(() => null);
+    const requestBody = syncRequestBody(jobName, requestedMode);
+    const fullMode = requestedMode.trim().toLowerCase() === "full";
+    const invoked = fullMode && jobName === "Get-Projetcs-And-Tasks-Bitrix"
+      ? await invokePagedTaskFullSync(requestBody)
+      : await invokeSyncJob(jobName, requestBody);
+    const data = invoked.data;
     const result = {
       job_name: jobName,
-      status: response.status,
-      ok: response.ok,
+      status: invoked.status,
+      ok: invoked.ok,
       data,
-      error: response.ok ? null : data?.error ?? `HTTP ${response.status}`,
+      error: invoked.error,
     };
     await recordTriggeredSyncRun(adminClient, {
       jobName,
       startedAt,
-      statusCode: response.status,
-      ok: response.ok,
+      statusCode: invoked.status,
+      ok: invoked.ok,
       data,
       error: result.error,
+      requestedMode,
     });
     results.push(result);
   }
@@ -742,10 +828,6 @@ serve(async (req: Request) => {
     const adminClient = createClient(EXT_URL, extServiceRoleKey);
     const callerRole = await resolveCallerRole(adminClient, callerUid);
 
-    if (!callerRole || !MANAGER_ROLES.has(callerRole)) {
-      return errRes("Apenas gestores podem acessar a central de integridade.", 403);
-    }
-
     let body: Record<string, unknown> = {};
     if (req.method !== "GET") {
       try {
@@ -758,6 +840,22 @@ serve(async (req: Request) => {
     const action = (body.action as Action | undefined) ?? "list";
     if (!VALID_ACTIONS.includes(action)) {
       return errRes(`Acao invalida: ${String(action)}`, 400);
+    }
+
+    if (action === "trigger_sync") {
+      if (!callerRole || callerRole === "cliente") {
+        return errRes("Apenas usuarios internos podem sincronizar dados do Bitrix.", 403);
+      }
+
+      const jobs = await triggerSyncJobs(adminClient, body);
+      const dashboard = MANAGER_ROLES.has(callerRole)
+        ? await loadDiagnostics(adminClient)
+        : null;
+      return jsonRes({ ok: true, data: { jobs, dashboard } });
+    }
+
+    if (!callerRole || !MANAGER_ROLES.has(callerRole)) {
+      return errRes("Apenas gestores podem acessar a central de integridade.", 403);
     }
 
     if (action === "list") {
@@ -876,12 +974,6 @@ serve(async (req: Request) => {
     if (action === "cleanup_integrity_center") {
       const data = await cleanupIntegrityCenter(adminClient);
       return jsonRes({ ok: true, data });
-    }
-
-    if (action === "trigger_sync") {
-      const jobs = await triggerSyncJobs(adminClient, body);
-      const dashboard = await loadDiagnostics(adminClient);
-      return jsonRes({ ok: true, data: { jobs, dashboard } });
     }
 
     return errRes("Acao nao tratada.", 400);

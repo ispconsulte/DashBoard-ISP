@@ -111,7 +111,7 @@ export type TriggerSyncPayload = {
     data: Record<string, unknown> | null;
     error: string | null;
   }>;
-  dashboard: IntegrityPayload;
+  dashboard: IntegrityPayload | null;
 };
 
 async function request<T>(token: string, body?: Record<string, unknown>, timeoutMs = 40000): Promise<T> {
@@ -188,13 +188,18 @@ export function deleteIntegrityElapsed(token: string, elapsedId: number) {
   });
 }
 
-export function triggerIntegritySync(token: string, jobs: Array<"tasks" | "times" | "all"> = ["all"]) {
+export function triggerIntegritySync(
+  token: string,
+  jobs: Array<"tasks" | "times" | "all"> = ["all"],
+  mode: "incremental" | "full" = "incremental",
+) {
   return request<TriggerSyncPayload>(
     token,
     {
       action: "trigger_sync",
       jobs,
+      mode,
     },
-    180000,
+    mode === "full" ? 600000 : 180000,
   );
 }

@@ -81,6 +81,7 @@
     "dotenv-cli": "^7.1.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "jsdom": "^29.1.1",
     "supabase": "^2.78.1",
     "tailwindcss": "^4",
     "typescript": "^5"

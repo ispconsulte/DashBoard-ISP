@@ -54,6 +54,7 @@ export type ElapsedTimeRecord = {
   orphan_detected_at?: string | Date | null;
   seconds?: number;
   user_id?: string | number | null;
+  reference_date?: string | Date | null;
   date_start?: string | Date | null;
   date_stop?: string | Date | null;
   created_date?: string | Date | null;

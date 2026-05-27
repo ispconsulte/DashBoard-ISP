@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { storage } from "@/modules/shared/storage";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 import type { ElapsedTimeRecord } from "../types";
-import { getElapsedEffectiveDate, parseLocalDateInput } from "../utils";
+import { getElapsedEffectiveDate, parseDateValue, parseLocalDateInput } from "../utils";
 
 type UseElapsedTimesResult = {
   times: ElapsedTimeRecord[];
@@ -19,9 +19,10 @@ type UseElapsedTimesParams = {
   period?: string;
   dateFrom?: string;
   dateTo?: string;
+  dateField?: "reference_date" | "created_date";
 };
 
-const CACHE_KEY = "cache:elapsed_times:v3";
+const CACHE_KEY = "cache:elapsed_times:v4";
 const RELOAD_COOLDOWN_MS = 12_000; // 5 reloads per minute → 60s / 5 = 12s
 const MAX_RELOADS_PER_MINUTE = 5;
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "25000");
@@ -31,18 +32,30 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — stale cache is ignored on hyd
 
 const ALL_CAP_DAYS = 365; // server-side cap for period="all"
 
-const buildDateFilter = (period?: string, dateFrom?: string, dateTo?: string): string => {
+const buildPeriodKey = (
+  dateField: "reference_date" | "created_date",
+  period?: string,
+  dateFrom?: string,
+  dateTo?: string,
+) => `${dateField}:${period === "custom" ? `custom:${dateFrom ?? ""}:${dateTo ?? ""}` : period ?? "all"}`;
+
+const buildDateFilter = (
+  period?: string,
+  dateFrom?: string,
+  dateTo?: string,
+  dateField: "reference_date" | "created_date" = "reference_date",
+): string => {
   if (!period || period === "all") {
     // Cap "all" to ALL_CAP_DAYS so the query stays bounded
     const from = new Date(Date.now() - ALL_CAP_DAYS * 24 * 60 * 60 * 1000);
     const iso = encodeURIComponent(from.toISOString());
-    return `or=(date_start.gte.${iso},created_date.gte.${iso},updated_at.gte.${iso})`;
+    return `${dateField}=gte.${iso}`;
   }
   if (period !== "custom") {
     const days = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : 180;
     const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const iso = encodeURIComponent(from.toISOString());
-    return `or=(date_start.gte.${iso},created_date.gte.${iso},updated_at.gte.${iso})`;
+    return `${dateField}=gte.${iso}`;
   }
   // custom range
   const parts: string[] = [];
@@ -50,25 +63,26 @@ const buildDateFilter = (period?: string, dateFrom?: string, dateTo?: string): s
     const f = parseLocalDateInput(dateFrom);
     if (f && !Number.isNaN(f.getTime())) {
       const iso = encodeURIComponent(f.toISOString());
-      parts.push(`or(date_start.gte.${iso},created_date.gte.${iso},updated_at.gte.${iso})`);
+      parts.push(`${dateField}=gte.${iso}`);
     }
   }
   if (dateTo) {
     const t = parseLocalDateInput(dateTo, true);
     if (t && !Number.isNaN(t.getTime())) {
       const iso = encodeURIComponent(t.toISOString());
-      parts.push(`or(date_start.lte.${iso},created_date.lte.${iso},updated_at.lte.${iso})`);
+      parts.push(`${dateField}=lte.${iso}`);
     }
   }
-  if (parts.length === 2) return `and=(${parts.join(",")})`;
-  if (parts.length === 1) {
-    const single = parts[0];
-    return single.startsWith("or(") ? `or=${single.slice(2)}` : single;
-  }
+  if (parts.length > 0) return parts.join("&");
   return "";
 };
 
-const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
+const buildEndpoint = (
+  period?: string,
+  dateFrom?: string,
+  dateTo?: string,
+  dateField: "reference_date" | "created_date" = "reference_date",
+) => {
   const url = SUPABASE_URL;
   const key = SUPABASE_ANON_KEY;
 
@@ -93,21 +107,31 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
     "date_start",
     "created_date",
     "date_stop",
+    "reference_date",
     "minutes",
     "seconds",
     "local_state",
     "inserted_at",
     "updated_at",
   ].join(",");
-  const dateFilter = buildDateFilter(period, dateFrom, dateTo);
+  const dateFilter = buildDateFilter(period, dateFrom, dateTo, dateField);
   const filterSuffix = dateFilter ? `&${dateFilter}` : "";
   const activeFilter = "local_state=eq.active";
   const endpoint = `${base}/rest/v1/operational_elapsed_times?select=${encodeURIComponent(select)}&${activeFilter}${filterSuffix}`;
-  const latestEndpoint = `${base}/rest/v1/operational_elapsed_times?select=updated_at,inserted_at,created_date,date_start&order=updated_at.desc&limit=1&${activeFilter}${filterSuffix}`;
+  const latestEndpoint = `${base}/rest/v1/operational_elapsed_times?select=updated_at,inserted_at,created_date,date_start,reference_date&order=updated_at.desc&limit=1&${activeFilter}${filterSuffix}`;
   return { endpoint, latestEndpoint, key, error: null };
 };
 
-const filterByEffectivePeriod = (rows: ElapsedTimeRecord[], period?: string, dateFrom?: string, dateTo?: string) => {
+const getElapsedFilterDate = (row: ElapsedTimeRecord, dateField: "reference_date" | "created_date") =>
+  dateField === "created_date" ? parseDateValue(row.created_date) : getElapsedEffectiveDate(row);
+
+const filterByEffectivePeriod = (
+  rows: ElapsedTimeRecord[],
+  period?: string,
+  dateFrom?: string,
+  dateTo?: string,
+  dateField: "reference_date" | "created_date" = "reference_date",
+) => {
   if (period === "all") return rows;
 
   let from: Date | null = null;
@@ -131,7 +155,7 @@ const filterByEffectivePeriod = (rows: ElapsedTimeRecord[], period?: string, dat
   }
 
   return rows.filter((row) => {
-    const effective = getElapsedEffectiveDate(row);
+    const effective = getElapsedFilterDate(row, dateField);
     if (!effective) return false;
     if (from && effective < from) return false;
     if (to && effective > to) return false;
@@ -149,15 +173,15 @@ const normalizeSeconds = (record: Partial<ElapsedTimeRecord> & { minutes?: numbe
 };
 
 export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedTimesResult {
-  const { period = "all", dateFrom, dateTo } = params;
+  const { period = "all", dateFrom, dateTo, dateField = "reference_date" } = params;
   const { endpoint, latestEndpoint, key, error: envError } = useMemo(
-    () => buildEndpoint(period, dateFrom, dateTo),
-    [period, dateFrom, dateTo]
+    () => buildEndpoint(period, dateFrom, dateTo, dateField),
+    [period, dateFrom, dateTo, dateField]
   );
 
   // Hydrate from cache on mount so UI renders instantly (only if within TTL)
   const initialCache = useMemo(() => {
-    const periodKey = period === "custom" ? `custom:${dateFrom ?? ""}:${dateTo ?? ""}` : period;
+    const periodKey = buildPeriodKey(dateField, period, dateFrom, dateTo);
     const cached = storage.get<{ data: ElapsedTimeRecord[]; timestamp: number } | null>(`${CACHE_KEY}:${periodKey}`, null);
     if (!cached?.data?.length) return null;
     if (Date.now() - (cached.timestamp ?? 0) > CACHE_TTL_MS) return null;
@@ -190,7 +214,7 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
     reloadTimestampsRef.current = [...recentReloads, now];
 
     // Clear latestUpdatedAtMs so next fetch always goes to server
-    const periodKey = period === "custom" ? `custom:${dateFrom ?? ""}:${dateTo ?? ""}` : period;
+    const periodKey = buildPeriodKey(dateField, period, dateFrom, dateTo);
     const cacheKey = `${CACHE_KEY}:${periodKey}`;
     const cached = storage.get<{ data: ElapsedTimeRecord[]; timestamp: number; latestUpdatedAtMs?: number | null } | null>(cacheKey, null);
     if (cached) {
@@ -199,7 +223,7 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
 
     setNoChanges(false);
     setRefreshToken((prev) => prev + 1);
-  }, [period, dateFrom, dateTo]);
+  }, [period, dateFrom, dateTo, dateField]);
 
   useEffect(() => {
     const tick = () => {
@@ -219,7 +243,7 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
     if (envError) return;
     if (!endpoint || !latestEndpoint || !key) return;
 
-    const periodKey = period === "custom" ? `custom:${dateFrom ?? ""}:${dateTo ?? ""}` : period;
+    const periodKey = buildPeriodKey(dateField, period, dateFrom, dateTo);
     const cacheKey = `${CACHE_KEY}:${periodKey}`;
     const cached = storage.get<{ data: ElapsedTimeRecord[]; timestamp: number; latestUpdatedAtMs?: number | null } | null>(
       cacheKey,
@@ -275,6 +299,7 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
               inserted_at?: string | null;
               created_date?: string | null;
               date_start?: string | null;
+              reference_date?: string | null;
             }[];
             const latestRow = latestRows?.[0] ?? null;
             const parsedUpdated = latestRow?.updated_at ? Date.parse(String(latestRow.updated_at)) : Number.NaN;
@@ -346,7 +371,7 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
           }
         }
 
-        data = filterByEffectivePeriod(data, period, dateFrom, dateTo);
+        data = filterByEffectivePeriod(data, period, dateFrom, dateTo, dateField);
         if (active) setTimes(data);
         const timestamp = Date.now();
         const latestUpdatedAtMs = data.reduce<number | null>((max, row) => {
@@ -406,7 +431,7 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
       clearTimeout(timeoutId);
       inFlightKeyRef.current = null;
     };
-  }, [endpoint, latestEndpoint, key, envError, refreshToken, params.accessToken, period, dateFrom, dateTo]);
+  }, [endpoint, latestEndpoint, key, envError, refreshToken, params.accessToken, period, dateFrom, dateTo, dateField]);
 
   return { times, loading, error, reload, lastUpdated, reloadCooldownMsLeft, noChanges };
 }

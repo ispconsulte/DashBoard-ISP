@@ -14,6 +14,14 @@ import { TaskListTable } from "@/modules/tasks/ui/TaskListTable";
 import { TaskCharts } from "@/modules/tasks/ui/TaskCharts";
 import { useElapsedTimes } from "@/modules/tasks/api/useElapsedTimes";
 import { useTasks } from "@/modules/tasks/api/useTasks";
+import { getTaskDatasetQueries } from "@/modules/tasks/taskDatasetQuery";
+import { triggerIntegritySync } from "@/modules/diagnostics/api/adminDiagnosticsApi";
+import {
+  clearBitrixSyncCooldown,
+  formatBitrixSyncCooldown,
+  readNextAllowedBitrixSyncAt,
+  reserveNextBitrixSyncWindow,
+} from "@/modules/integrations/bitrixManualSyncCooldown";
 import { type TaskRecord, type TaskView } from "@/modules/tasks/types";
 import {
   RefreshCw,
@@ -41,18 +49,23 @@ import {
   formatHoursHuman,
   formatSecondsHuman,
   isDeadlineSoon,
-  parseLocalDateInput,
   parseDateValue,
-  getTaskPeriodDate,
   getTaskDurationSeconds,
   getTaskTimeSpentSeconds,
   normalizeTaskTitle,
   type TaskStatusKey,
 } from "@/modules/tasks/utils";
+import {
+  DEFAULT_TASK_DATE_FILTER_MODE,
+  isTaskDateFilterMode,
+  taskMatchesStatus,
+  type TaskDateFilterMode,
+} from "@/modules/tasks/taskDateFilter";
 import { STATUS_LABELS } from "@/modules/tasks/types";
 import { exportTasksPDF } from "@/lib/exportPdf";
 import ExportPDFModal, { type PDFExportSelection, type TaskIntegrityInfo } from "@/modules/analytics/components/ExportPDFModal";
 import { FormattedDescription } from "@/modules/tasks/ui/FormattedDescription";
+import { toast } from "sonner";
 
 /* ─── Helpers (business logic preserved) ─── */
 
@@ -175,16 +188,6 @@ const normalizeTask = (task: TaskRecord, elapsedSeconds?: number, projectNameByI
   };
 };
 
-const filterByPeriod = (tasks: TaskView[], period: string) => {
-  if (period === "all") return tasks;
-  const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
-  const threshold = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  return tasks.filter((task) => {
-    const date = getTaskPeriodDate(task.raw);
-    return date ? date >= threshold : false;
-  });
-};
-
 /* ─── Animations ─── */
 const fadeUp = {
   initial: { opacity: 0, y: 20 },
@@ -202,7 +205,11 @@ export default function TarefasPage() {
   usePageSEO("/tarefas");
   const { session } = useAuth();
   const isAdmin = session?.role === "admin" || session?.role === "gerente" || session?.role === "coordenador";
+  const canSyncBitrix = Boolean(session?.role && session.role !== "cliente");
   const [nowTs] = useState(() => Date.now());
+  const [syncingBitrix, setSyncingBitrix] = useState(false);
+  const [syncNowMs, setSyncNowMs] = useState(() => Date.now());
+  const [nextAllowedBitrixSyncAt, setNextAllowedBitrixSyncAt] = useState(readNextAllowedBitrixSyncAt);
 
   // Filter state — restored from localStorage (clear if different user)
   const FILTERS_KEY = "tarefas:filters";
@@ -225,6 +232,11 @@ export default function TarefasPage() {
   const [period, setPeriod] = useState(savedFilters.period || "30d");
   const [dateFrom, setDateFrom] = useState(savedFilters.dateFrom || "");
   const [dateTo, setDateTo] = useState(savedFilters.dateTo || "");
+  const [dateFilterMode, setDateFilterMode] = useState<TaskDateFilterMode>(
+    isTaskDateFilterMode(savedFilters.dateFilterMode)
+      ? savedFilters.dateFilterMode
+      : DEFAULT_TASK_DATE_FILTER_MODE
+  );
   const [deadlineTo, setDeadlineTo] = useState(savedFilters.deadlineTo || "");
   const [consultant, setConsultant] = useState(savedFilters.consultant || "all");
   const [project, setProject] = useState<string[]>(() => {
@@ -321,19 +333,31 @@ export default function TarefasPage() {
 
   // Persist filters when they change
   useEffect(() => {
-    storage.set(FILTERS_KEY, { status, deadline, period, dateFrom, dateTo, deadlineTo, consultant, project });
-  }, [status, deadline, period, dateFrom, dateTo, deadlineTo, consultant, project]);
+    storage.set(FILTERS_KEY, { status, deadline, period, dateFrom, dateTo, dateFilterMode, deadlineTo, consultant, project });
+  }, [status, deadline, period, dateFrom, dateTo, dateFilterMode, deadlineTo, consultant, project]);
   const pageSize = 10;
 
   const searchInputRef = useRef<HTMLInputElement>(null!);
   const filtersBoxRef = useRef<HTMLDivElement>(null);
 
   // Data hooks
-  const { tasks, loading, error, reload, lastUpdated, totalCount, reloadCooldownMsLeft, reloadsRemainingThisMinute } = useTasks({
+  const taskDatasetQueries = useMemo(
+    () => getTaskDatasetQueries({ period, dateFrom, dateTo, dateFilterMode }),
+    [period, dateFrom, dateTo, dateFilterMode]
+  );
+  const { tasks, loading, error, reload, lastUpdated, totalCount } = useTasks({
     accessToken: session?.accessToken,
-    period,
-    dateFrom,
-    dateTo,
+    period: taskDatasetQueries.results.period,
+    dateFrom: taskDatasetQueries.results.dateFrom,
+    dateTo: taskDatasetQueries.results.dateTo,
+    dateFilterMode: taskDatasetQueries.results.dateFilterMode,
+  });
+  const { tasks: filterOptionTasks } = useTasks({
+    accessToken: session?.accessToken,
+    period: taskDatasetQueries.filterOptions.period,
+    dateFrom: taskDatasetQueries.filterOptions.dateFrom,
+    dateTo: taskDatasetQueries.filterOptions.dateTo,
+    dateFilterMode: taskDatasetQueries.filterOptions.dateFilterMode,
   });
   const {
     times,
@@ -343,7 +367,10 @@ export default function TarefasPage() {
     lastUpdated: lastUpdatedTimes,
   } = useElapsedTimes({
     accessToken: session?.accessToken,
-    period: "all",
+    period,
+    dateFrom,
+    dateTo,
+    dateField: dateFilterMode === "elapsed_created_date" ? "created_date" : "reference_date",
   });
 
   // Auto-refresh every minute so status/deadline changes appear quickly after sync
@@ -352,16 +379,34 @@ export default function TarefasPage() {
     return () => clearInterval(interval);
   }, [reload, reloadTimes]);
 
+  useEffect(() => {
+    if (!canSyncBitrix) return;
+    const intervalId = window.setInterval(() => {
+      setSyncNowMs(Date.now());
+      setNextAllowedBitrixSyncAt(readNextAllowedBitrixSyncAt());
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [canSyncBitrix]);
+
   const scrollToFilters = useCallback(() => {
     filtersBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
   const hasActiveFilters =
-    !!search || status !== "all" || deadline !== "all" || period !== "all" || consultant !== "all" || project.length > 0 || !!dateFrom || !!dateTo || !!deadlineTo;
+    !!search ||
+    status !== "all" ||
+    deadline !== "all" ||
+    period !== "all" ||
+    dateFilterMode !== DEFAULT_TASK_DATE_FILTER_MODE ||
+    consultant !== "all" ||
+    project.length > 0 ||
+    !!dateFrom ||
+    !!dateTo ||
+    !!deadlineTo;
 
   const resetFilters = useCallback(() => {
     setSearch(""); setDebouncedSearch(""); setStatus("all"); setDeadline("all");
-    setPeriod("all"); setConsultant("all"); setProject([]);
+    setPeriod("all"); setDateFilterMode(DEFAULT_TASK_DATE_FILTER_MODE); setConsultant("all"); setProject([]);
     setDateFrom(""); setDateTo(""); setDeadlineTo(""); setPage(1);
     requestAnimationFrame(() => { scrollToFilters(); searchInputRef.current?.focus(); });
   }, [scrollToFilters]);
@@ -372,10 +417,62 @@ export default function TarefasPage() {
   }, [search]);
 
   const refreshing = loading || loadingTimes;
+  const bitrixSyncCooldownMs = Math.max(0, nextAllowedBitrixSyncAt - syncNowMs);
+  const refreshButtonBusy = refreshing || syncingBitrix;
   const combinedLastUpdated =
     lastUpdated && lastUpdatedTimes
       ? Math.min(lastUpdated, lastUpdatedTimes)
       : lastUpdated ?? lastUpdatedTimes ?? null;
+
+  const handleManualBitrixSync = useCallback(async () => {
+    if (!canSyncBitrix || syncingBitrix) return;
+
+    if (!session?.accessToken) {
+      toast.error("Sessão expirada. Faça login novamente para sincronizar.");
+      return;
+    }
+
+    const nextAllowedAt = readNextAllowedBitrixSyncAt();
+    const remainingMs = nextAllowedAt - Date.now();
+    if (remainingMs > 0) {
+      setNextAllowedBitrixSyncAt(nextAllowedAt);
+      setSyncNowMs(Date.now());
+      toast.warning(`Aguarde ${formatBitrixSyncCooldown(remainingMs)} para sincronizar novamente.`);
+      return;
+    }
+
+    setSyncingBitrix(true);
+    setSyncNowMs(Date.now());
+    toast.info("Sincronização Bitrix iniciada.");
+
+    try {
+      const result = await triggerIntegritySync(session.accessToken, ["all"], "incremental");
+      const failed = result.jobs.filter((job) => !job.ok);
+      const skipped = result.jobs.filter((job) => Boolean(job.data?.skipped));
+
+      if (failed.length) {
+        setNextAllowedBitrixSyncAt(clearBitrixSyncCooldown());
+        const firstError = failed[0]?.error || "Erro não informado.";
+        toast.error(`Falha em ${failed.map((job) => job.job_name).join(", ")}: ${firstError}`);
+      } else if (skipped.length) {
+        setNextAllowedBitrixSyncAt(reserveNextBitrixSyncWindow());
+        toast.info("Já havia uma sincronização em andamento. Os dados locais serão recarregados.");
+      } else {
+        setNextAllowedBitrixSyncAt(reserveNextBitrixSyncWindow());
+        toast.success("Sincronização concluída. Tarefas, projetos e horas foram atualizados.");
+      }
+    } catch (syncError) {
+      setNextAllowedBitrixSyncAt(clearBitrixSyncCooldown());
+      const message = syncError instanceof Error ? syncError.message : "Não foi possível sincronizar com o Bitrix.";
+      toast.error(message);
+    } finally {
+      reload();
+      reloadTimes();
+      setSyncingBitrix(false);
+      setSyncNowMs(Date.now());
+      setNextAllowedBitrixSyncAt(readNextAllowedBitrixSyncAt());
+    }
+  }, [canSyncBitrix, reload, reloadTimes, session?.accessToken, syncingBitrix]);
 
   // Duration map
   const durationByTaskId = useMemo(() => {
@@ -462,19 +559,36 @@ export default function TarefasPage() {
     });
   }, [tasks, durationByTaskId, projectNameById]);
 
+  const filterOptionProjectNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    filterOptionTasks.forEach((task) => {
+      const pid = task.project_id != null ? String(task.project_id) : null;
+      const joinName = task.projects && typeof task.projects === "object"
+        ? String((task.projects as any).name ?? "").trim()
+        : "";
+      if (pid && joinName) map.set(pid, joinName);
+    });
+    return map;
+  }, [filterOptionTasks]);
+
+  const normalizedFilterOptionTasks = useMemo(
+    () => filterOptionTasks.map((task) => normalizeTask(task, undefined, filterOptionProjectNameById)),
+    [filterOptionTasks, filterOptionProjectNameById]
+  );
+
   // Status alerts now handled globally via DashboardLayout → AssistantReminder
 
   // Filter by accessible projects (non-admin users only see assigned projects)
   const companyName = session?.company?.trim();
   const accessibleProjectNames = session?.accessibleProjectNames;
   const accessibleProjectIds = session?.accessibleProjectIds;
-  const projectFilteredTasks = useMemo(() => {
+  const scopeTasksToSession = useCallback((sourceTasks: TaskView[]) => {
     // Admins, gerentes, coordenadores see everything
-    if (isAdmin) return normalizedTasks;
+    if (isAdmin) return sourceTasks;
 
     const hasExplicitIds = accessibleProjectIds && accessibleProjectIds.length > 0;
     const hasCompanyName = !!companyName;
-    const myTasks = normalizedTasks.filter((task) => {
+    const myTasks = sourceTasks.filter((task) => {
       return taskBelongsToSession(
         task.consultant,
         task.raw.responsible_id ?? task.raw.user_id,
@@ -497,7 +611,7 @@ export default function TarefasPage() {
       return name ? `name:${name}` : null;
     };
 
-    const filtered = normalizedTasks.filter((task) => {
+    const filtered = sourceTasks.filter((task) => {
       // Check by exact project ID match
       const pid = Number(task.raw.project_id);
       if (allowedIds && pid) {
@@ -546,7 +660,17 @@ export default function TarefasPage() {
     }
 
     return filtered.length > 0 ? filtered : myTasks;
-  }, [normalizedTasks, isAdmin, accessibleProjectIds, accessibleProjectNames, companyName, session?.name, session?.bitrixUserId]);
+  }, [isAdmin, accessibleProjectIds, accessibleProjectNames, companyName, session?.name, session?.bitrixUserId]);
+
+  const projectFilteredTasks = useMemo(
+    () => scopeTasksToSession(normalizedTasks),
+    [normalizedTasks, scopeTasksToSession]
+  );
+
+  const filterOptionScopedTasks = useMemo(
+    () => scopeTasksToSession(normalizedFilterOptionTasks),
+    [normalizedFilterOptionTasks, scopeTasksToSession]
+  );
 
   // Scope by company (kept for backward compat, now uses projectFilteredTasks)
   const scopedTasks = projectFilteredTasks;
@@ -559,7 +683,7 @@ export default function TarefasPage() {
     if (!uName) return new Set<string>();
 
     const names = new Set<string>();
-    normalizedTasks.forEach((t) => {
+    normalizedFilterOptionTasks.forEach((t) => {
       if (
         taskBelongsToSession(
           t.consultant,
@@ -573,7 +697,7 @@ export default function TarefasPage() {
       }
     });
     return names;
-  }, [normalizedTasks, session?.name, session?.bitrixUserId]);
+  }, [normalizedFilterOptionTasks, session?.name, session?.bitrixUserId]);
 
   // Default project filter for non-admin: pre-select only projects where user "faz parte"
   useEffect(() => {
@@ -632,7 +756,7 @@ export default function TarefasPage() {
   // Filter options — projects with "<>" in the name go to the end
   const projectOptions = useMemo(() => {
     const set = new Set<string>();
-    searchScopedTasks.forEach((task) => {
+    filterOptionScopedTasks.forEach((task) => {
       const name = (task.project || "").trim();
       if (!name || name.toLowerCase() === "projeto indefinido") return;
       set.add(name);
@@ -643,36 +767,24 @@ export default function TarefasPage() {
       if (aHas !== bHas) return aHas ? 1 : -1;
       return a.localeCompare(b);
     });
-  }, [searchScopedTasks]);
+  }, [filterOptionScopedTasks]);
 
   const consultantOptions = useMemo(() => {
     const set = new Set<string>();
-    searchScopedTasks.forEach((task) => {
+    filterOptionScopedTasks.forEach((task) => {
       const name = (task.consultant || "").trim();
       if (!name) return;
       set.add(name);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [searchScopedTasks]);
+  }, [filterOptionScopedTasks]);
 
   const lockedProject = session?.role === "cliente" && session.company?.trim();
   const effectiveProjectFilter: string[] = lockedProject ? [session.company?.trim() ?? ""] : project;
 
   // Filtered tasks
   const filteredTasks = useMemo(() => {
-    const byPeriod =
-      period === "custom"
-        ? scopedTasks.filter((task) => {
-            const from = parseLocalDateInput(dateFrom);
-            const to = parseLocalDateInput(dateTo, true);
-            // Critério Bitrix: filtra pela data de modificação da tarefa (changed_date).
-            const date = getTaskPeriodDate(task.raw);
-            if (!date) return false;
-            if (from && date < from) return false;
-            if (to && date > to) return false;
-            return true;
-          })
-        : filterByPeriod(scopedTasks, period);
+    const byPeriod = scopedTasks;
 
     const visible = byPeriod.filter((task) => {
       const projectNormalized = (task.project || "").trim().toLowerCase();
@@ -685,14 +797,7 @@ export default function TarefasPage() {
       const matchesProject =
         effectiveProjectFilter.length === 0 ||
         effectiveProjectFilter.some((projectName) => normalizeComparableText(projectName) === normalizedProject);
-      const matchesStatus =
-        status === "all"
-          ? true
-          : status === "done"
-            ? task.statusKey === "done"
-            : status === "overdue"
-              ? task.statusKey === "overdue"
-              : task.statusKey === "pending" || task.statusKey === "unknown";
+      const matchesStatus = taskMatchesStatus(task, status);
       const matchesDeadline =
         deadline === "all"
           ? true
@@ -726,7 +831,7 @@ export default function TarefasPage() {
       if (diff !== 0) return diff;
       return a.title.localeCompare(b.title);
     });
-  }, [scopedTasks, period, searchTerm, status, deadline, dateFrom, dateTo, deadlineTo, consultant, effectiveProjectFilter, nowTs, matchesSearchTerm]);
+  }, [scopedTasks, searchTerm, status, deadline, deadlineTo, consultant, effectiveProjectFilter, nowTs, matchesSearchTerm]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / pageSize));
@@ -734,14 +839,6 @@ export default function TarefasPage() {
     const start = (page - 1) * pageSize;
     return filteredTasks.slice(start, start + pageSize);
   }, [filteredTasks, page]);
-
-  const hourMismatchTasks = useMemo(
-    () =>
-      filteredTasks
-        .filter((task) => task.hasHourMismatch && typeof task.durationDiffSeconds === "number")
-        .sort((a, b) => Math.abs(b.durationDiffSeconds ?? 0) - Math.abs(a.durationDiffSeconds ?? 0)),
-    [filteredTasks],
-  );
 
   // Stats — always use filtered count so numbers match visible tasks
   const stats = useMemo(() => {
@@ -830,7 +927,7 @@ export default function TarefasPage() {
   }, [filteredTasks]);
 
   // Reset page on filter change
-  useEffect(() => { setPage(1); }, [debouncedSearch, status, deadline, period, dateFrom, dateTo, deadlineTo, consultant, effectiveProjectFilter]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, status, deadline, period, dateFrom, dateTo, dateFilterMode, deadlineTo, consultant, effectiveProjectFilter]);
 
   const totalHours = stats.totalSeconds / 3600;
   const totalHoursLabel = formatSecondsHuman(stats.totalSeconds);
@@ -868,7 +965,7 @@ export default function TarefasPage() {
           subtitle="Progresso, prazos e desempenho das atividades."
           actions={
             <>
-              {session?.role !== "cliente" && (
+              {canSyncBitrix && (
                 <button
                   type="button"
                   onClick={() => setShowExportModal(true)}
@@ -880,31 +977,32 @@ export default function TarefasPage() {
                   <span className="hidden sm:inline">PDF</span>
                 </button>
               )}
-              {session?.role !== "cliente" && (
+              {canSyncBitrix && (
                 <button
                   type="button"
-                  onClick={() => { reload(); reloadTimes(); }}
-                  disabled={refreshing || reloadCooldownMsLeft > 0 || reloadsRemainingThisMinute <= 0}
+                  onClick={() => void handleManualBitrixSync()}
+                  disabled={refreshButtonBusy || bitrixSyncCooldownMs > 0}
                   title={
-                    reloadsRemainingThisMinute <= 0
-                      ? "Limite de 5 atualizações por minuto atingido"
-                      : reloadCooldownMsLeft > 0
-                      ? `Aguarde ${Math.ceil(reloadCooldownMsLeft / 1000)}s`
-                      : `Atualizar dados (${reloadsRemainingThisMinute} restantes)`
+                    syncingBitrix
+                      ? "Sincronizando tarefas, projetos e horas do Bitrix"
+                      : bitrixSyncCooldownMs > 0
+                      ? `Aguarde ${formatBitrixSyncCooldown(bitrixSyncCooldownMs)} para sincronizar novamente`
+                      : refreshing
+                      ? "Atualizando dados locais"
+                      : "Sincronizar dados com o Bitrix"
                   }
                   className="group flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-2 text-xs font-medium text-white/50 transition-all hover:border-white/[0.15] hover:bg-white/[0.05] hover:text-white/70 disabled:opacity-40"
                 >
-                  <RefreshCw className={`h-3.5 w-3.5 transition-transform group-hover:scale-110 ${refreshing ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`h-3.5 w-3.5 transition-transform group-hover:scale-110 ${refreshButtonBusy ? "animate-spin" : ""}`} />
                   <span className="hidden sm:inline">
-                    {refreshing
+                    {syncingBitrix
+                      ? "Sincronizando..."
+                      : bitrixSyncCooldownMs > 0
+                      ? `Aguarde ${formatBitrixSyncCooldown(bitrixSyncCooldownMs)}`
+                      : refreshing
                       ? "Atualizando..."
-                      : reloadsRemainingThisMinute <= 0
-                      ? "Limite atingido"
                       : "Atualizar"}
                   </span>
-                  {reloadsRemainingThisMinute > 0 && reloadsRemainingThisMinute < 5 && !refreshing && (
-                    <span className="opacity-50">({reloadsRemainingThisMinute})</span>
-                  )}
                 </button>
               )}
             </>
@@ -985,6 +1083,7 @@ export default function TarefasPage() {
             period={period} setPeriod={setPeriod}
             dateFrom={dateFrom} setDateFrom={setDateFrom}
             dateTo={dateTo} setDateTo={setDateTo}
+            dateFilterMode={dateFilterMode} setDateFilterMode={setDateFilterMode}
             deadlineTo={deadlineTo} setDeadlineTo={setDeadlineTo}
             consultant={consultant} setConsultant={setConsultant}
             consultantOptions={isAdmin ? consultantOptions : (session?.name ? [session.name] : [])}
@@ -1387,30 +1486,6 @@ export default function TarefasPage() {
           {(error || timesError) && (
             <div className="mb-3 rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5 text-xs text-rose-400">
               {String(error || timesError)}
-            </div>
-          )}
-
-          {isAdmin && hourMismatchTasks.length > 0 && (
-            <div className="mb-3 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3">
-              <div className="mb-2 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-300" />
-                <p className="text-xs font-bold text-amber-100">
-                  {hourMismatchTasks.length} tarefa{hourMismatchTasks.length > 1 ? "s" : ""} com divergência entre Bitrix e lançamentos
-                </p>
-              </div>
-              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {hourMismatchTasks.slice(0, 6).map((task) => (
-                  <div key={String(task.raw.task_id ?? task.raw.id ?? task.title)} className="rounded-lg border border-white/[0.06] bg-black/10 px-3 py-2">
-                    <p className="truncate text-[11px] font-semibold text-white/85">{task.title}</p>
-                    <p className="mt-0.5 text-[10px] text-white/45">
-                      Bitrix {formatSecondsHuman(task.durationSeconds ?? 0)} · lançamentos {formatSecondsHuman(task.elapsedSeconds ?? 0)} · diferença{" "}
-                      <span className="font-bold text-amber-200">
-                        {(task.durationDiffSeconds ?? 0) > 0 ? "+" : "-"}{formatSecondsHuman(Math.abs(task.durationDiffSeconds ?? 0))}
-                      </span>
-                    </p>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 

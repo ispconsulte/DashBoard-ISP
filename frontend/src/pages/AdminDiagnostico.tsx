@@ -152,6 +152,46 @@ function jobSubtitle(jobName: string) {
   return JOB_SUBTITLES[jobName] ?? "Rotina de sincronização";
 }
 
+function syncHealthWarnings(sync?: IntegrityPayload["sync"] | null) {
+  if (!sync) return [];
+  const now = Date.now();
+  const staleRunningMs = 35 * 60 * 1000;
+  const staleSuccessMs = 5 * 60 * 60 * 1000;
+  const latestSuccess = (jobName: string) =>
+    sync.recent_runs.find((run) => run.job_name === jobName && run.status === "success") ?? null;
+  const warnings: string[] = [];
+  const tasksRun = sync.latest_tasks_run;
+  const timesRun = sync.latest_times_run;
+  const tasksSuccess = latestSuccess("Get-Projetcs-And-Tasks-Bitrix");
+  const timesSuccess = latestSuccess("sync-bitrix-times");
+
+  [tasksRun, timesRun].forEach((run) => {
+    const startedAt = run?.started_at ? Date.parse(run.started_at) : Number.NaN;
+    if (run?.status === "running" && Number.isFinite(startedAt) && now - startedAt > staleRunningMs) {
+      warnings.push(`${jobSubtitle(run.job_name)} está em execução há mais de 35 minutos.`);
+    }
+  });
+
+  [
+    { label: "tarefas/projetos", run: tasksSuccess },
+    { label: "tempos lançados", run: timesSuccess },
+  ].forEach((item) => {
+    const finishedOrStarted = item.run?.finished_at ?? item.run?.started_at ?? null;
+    const at = finishedOrStarted ? Date.parse(finishedOrStarted) : Number.NaN;
+    if (!Number.isFinite(at) || now - at > staleSuccessMs) {
+      warnings.push(`A sincronização de ${item.label} está sem sucesso recente.`);
+    }
+  });
+
+  const tasksAt = tasksSuccess?.finished_at ?? tasksSuccess?.started_at ?? null;
+  const timesAt = timesSuccess?.finished_at ?? timesSuccess?.started_at ?? null;
+  if (tasksAt && timesAt && Date.parse(timesAt) - Date.parse(tasksAt) > staleSuccessMs) {
+    warnings.push("Os tempos estão mais recentes que tarefas/projetos; relacione novamente antes de confiar nos analytics.");
+  }
+
+  return warnings;
+}
+
 function formatTaskStatus(value: string | number | null | undefined) {
   if (typeof value === "number") {
     if (value === 1) return "Nova";
@@ -513,6 +553,7 @@ export default function AdminDiagnostico() {
 
   const hiddenTaskCount = payload?.problematic_tasks.filter((t) => t.visibility_mode !== "show_in_operations").length ?? 0;
   const releasedTaskCount = payload?.problematic_tasks.filter((t) => t.visibility_mode === "show_in_operations").length ?? 0;
+  const syncWarnings = useMemo(() => syncHealthWarnings(payload?.sync), [payload?.sync]);
 
   const allTasks = useMemo(() => dedupeTasks(payload?.problematic_tasks ?? []), [payload]);
 
@@ -631,8 +672,8 @@ export default function AdminDiagnostico() {
     setSyncing(true);
     setError(null);
     try {
-      const result = await triggerIntegritySync(session.accessToken, ["all"]);
-      setPayload(result.dashboard);
+      const result = await triggerIntegritySync(session.accessToken, ["all"], "full");
+      if (result.dashboard) setPayload(result.dashboard);
       const failed = result.jobs.filter((job) => !job.ok);
       if (failed.length) {
         setError(`Sincronização concluída com falha em: ${failed.map((job) => job.job_name).join(", ")}.`);
@@ -748,6 +789,19 @@ export default function AdminDiagnostico() {
 
         {error && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-300">{error}</div>
+        )}
+
+        {syncWarnings.length > 0 && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-4 py-3 text-sm text-amber-100">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+              <div className="space-y-1">
+                {syncWarnings.map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
