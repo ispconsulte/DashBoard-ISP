@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { storage } from "@/modules/shared/storage";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 import type { ElapsedTimeRecord } from "../types";
+import { TASKS_PAGE_ELAPSED_STATE_FILTER } from "../taskOperationalFilters";
 import { getElapsedEffectiveDate, parseDateValue, parseLocalDateInput } from "../utils";
 
 type UseElapsedTimesResult = {
@@ -22,15 +23,13 @@ type UseElapsedTimesParams = {
   dateField?: "reference_date" | "created_date";
 };
 
-const CACHE_KEY = "cache:elapsed_times:v4";
+const CACHE_KEY = "cache:elapsed_times:v5";
 const RELOAD_COOLDOWN_MS = 12_000; // 5 reloads per minute → 60s / 5 = 12s
 const MAX_RELOADS_PER_MINUTE = 5;
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "25000");
 const PAGE_SIZE = 1000;
-const MAX_PAGES = 10;
+const MAX_FALLBACK_PAGES = 10;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — stale cache is ignored on hydration
-
-const ALL_CAP_DAYS = 365; // server-side cap for period="all"
 
 const buildPeriodKey = (
   dateField: "reference_date" | "created_date",
@@ -46,10 +45,7 @@ const buildDateFilter = (
   dateField: "reference_date" | "created_date" = "reference_date",
 ): string => {
   if (!period || period === "all") {
-    // Cap "all" to ALL_CAP_DAYS so the query stays bounded
-    const from = new Date(Date.now() - ALL_CAP_DAYS * 24 * 60 * 60 * 1000);
-    const iso = encodeURIComponent(from.toISOString());
-    return `${dateField}=gte.${iso}`;
+    return "";
   }
   if (period !== "custom") {
     const days = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : 180;
@@ -116,9 +112,9 @@ const buildEndpoint = (
   ].join(",");
   const dateFilter = buildDateFilter(period, dateFrom, dateTo, dateField);
   const filterSuffix = dateFilter ? `&${dateFilter}` : "";
-  const activeFilter = "local_state=eq.active";
-  const endpoint = `${base}/rest/v1/operational_elapsed_times?select=${encodeURIComponent(select)}&${activeFilter}${filterSuffix}`;
-  const latestEndpoint = `${base}/rest/v1/operational_elapsed_times?select=updated_at,inserted_at,created_date,date_start,reference_date&order=updated_at.desc&limit=1&${activeFilter}${filterSuffix}`;
+  const activeFilter = TASKS_PAGE_ELAPSED_STATE_FILTER;
+  const endpoint = `${base}/rest/v1/elapsed_times?select=${encodeURIComponent(select)}&${activeFilter}${filterSuffix}`;
+  const latestEndpoint = `${base}/rest/v1/elapsed_times?select=updated_at,inserted_at,created_date,date_start,reference_date&order=updated_at.desc&limit=1&${activeFilter}${filterSuffix}`;
   return { endpoint, latestEndpoint, key, error: null };
 };
 
@@ -356,14 +352,14 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
 
         if (first.rows.length >= PAGE_SIZE && first.totalFromHeader && first.totalFromHeader > PAGE_SIZE) {
           // Fetch remaining pages in parallel
-          const remaining = Math.min(Math.ceil(first.totalFromHeader / PAGE_SIZE) - 1, MAX_PAGES - 1);
+          const remaining = Math.ceil(first.totalFromHeader / PAGE_SIZE) - 1;
           const offsets = Array.from({ length: remaining }, (_, i) => (i + 1) * PAGE_SIZE);
           const pages = await Promise.all(offsets.map((o) => fetchPage(o)));
           for (const p of pages) data = data.concat(p.rows.map((row) => ({ ...row, seconds: normalizeSeconds(row) })));
         } else if (first.rows.length >= PAGE_SIZE) {
           // Fallback sequential if no count header
           let offset = PAGE_SIZE;
-          for (let page = 1; page < MAX_PAGES; page++) {
+          for (let page = 1; page < MAX_FALLBACK_PAGES; page++) {
             const chunk = await fetchPage(offset);
             data = data.concat(chunk.rows.map((row) => ({ ...row, seconds: normalizeSeconds(row) })));
             if (chunk.rows.length < PAGE_SIZE) break;

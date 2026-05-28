@@ -8,6 +8,7 @@ import {
   DEFAULT_TASK_DATE_FILTER_MODE,
   type TaskDateFilterMode,
 } from "../taskDateFilter";
+import { TASKS_PAGE_ELAPSED_STATE_FILTER, TASKS_PAGE_TASK_STATE_FILTER } from "../taskOperationalFilters";
 
 type UseTasksResult = {
   tasks: TaskRecord[];
@@ -32,13 +33,13 @@ type UseTasksParams = {
   skip?: boolean;
 };
 
-const CACHE_KEY = "cache:tasks:v8";
+const CACHE_KEY = "cache:tasks:v9";
 const RELOAD_COOLDOWN_MS = 12_000; // 5 reloads per minute → 60s / 5 = 12s between
 const MAX_RELOADS_PER_MINUTE = 5;
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "25000");
 const PAGE_SIZE = 1000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — stale cache is ignored on hydration
-const MAX_PAGES = 10;
+const MAX_FALLBACK_PAGES = 10;
 
 const buildPeriodKey = (
   dateFilterMode: TaskDateFilterMode,
@@ -86,7 +87,7 @@ const buildEndpoint = (
     "projects(name,cliente_id,closed)",
   ].join(",");
   const filterSuffix = dateFilter ? `&${dateFilter}` : "";
-  const activeFilter = "local_state=eq.active&diagnostic_codes=eq.%7B%7D";
+  const activeFilter = TASKS_PAGE_TASK_STATE_FILTER;
   const endpoint = `${base}/rest/v1/tasks?select=${encodeURIComponent(select)}&order=deadline.nullslast&${activeFilter}${filterSuffix}`;
   const latestEndpoint = `${base}/rest/v1/tasks?select=updated_at,inserted_at&order=updated_at.desc.nullslast&limit=1&${activeFilter}${filterSuffix}`;
   const countEndpoint = `${base}/rest/v1/tasks?select=task_id&limit=1&${activeFilter}`;
@@ -346,8 +347,8 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
           const base = SUPABASE_URL.replace(/\/$/, "");
           const select = encodeURIComponent("task_id");
           const suffix = elapsedFilter ? `&${elapsedFilter}` : "";
-          const activeFilter = "local_state=eq.active";
-          const elapsedEndpoint = `${base}/rest/v1/operational_elapsed_times?select=${select}&${activeFilter}${suffix}`;
+          const activeFilter = TASKS_PAGE_ELAPSED_STATE_FILTER;
+          const elapsedEndpoint = `${base}/rest/v1/elapsed_times?select=${select}&${activeFilter}${suffix}`;
           const taskIds = new Set<string>();
 
           const fetchElapsedPage = async (offset: number) => {
@@ -380,7 +381,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
           });
 
           if (firstElapsed.rows.length >= PAGE_SIZE && firstElapsed.totalFromHeader && firstElapsed.totalFromHeader > PAGE_SIZE) {
-            const remaining = Math.min(Math.ceil(firstElapsed.totalFromHeader / PAGE_SIZE) - 1, MAX_PAGES - 1);
+            const remaining = Math.ceil(firstElapsed.totalFromHeader / PAGE_SIZE) - 1;
             const offsets = Array.from({ length: remaining }, (_, i) => (i + 1) * PAGE_SIZE);
             const pages = await Promise.all(offsets.map((o) => fetchElapsedPage(o)));
             pages.forEach((page) => {
@@ -390,7 +391,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
             });
           } else if (firstElapsed.rows.length >= PAGE_SIZE) {
             let offset = PAGE_SIZE;
-            for (let page = 1; page < MAX_PAGES; page++) {
+            for (let page = 1; page < MAX_FALLBACK_PAGES; page++) {
               const chunk = await fetchElapsedPage(offset);
               chunk.rows.forEach((row) => {
                 if (row.task_id !== undefined && row.task_id !== null) taskIds.add(String(row.task_id));
@@ -409,14 +410,14 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
 
         if (first.rows.length >= PAGE_SIZE && first.totalFromHeader && first.totalFromHeader > PAGE_SIZE) {
           // Fetch remaining pages in parallel
-          const remaining = Math.min(Math.ceil(first.totalFromHeader / PAGE_SIZE) - 1, MAX_PAGES - 1);
+          const remaining = Math.ceil(first.totalFromHeader / PAGE_SIZE) - 1;
           const offsets = Array.from({ length: remaining }, (_, i) => (i + 1) * PAGE_SIZE);
           const pages = await Promise.all(offsets.map((o) => fetchPage(o)));
           for (const p of pages) data = data.concat(p.rows);
         } else if (first.rows.length >= PAGE_SIZE) {
           // Fallback sequential if no count header
           let offset = PAGE_SIZE;
-          for (let page = 1; page < MAX_PAGES; page++) {
+          for (let page = 1; page < MAX_FALLBACK_PAGES; page++) {
             const chunk = await fetchPage(offset);
             data = data.concat(chunk.rows);
             if (chunk.rows.length < PAGE_SIZE) break;

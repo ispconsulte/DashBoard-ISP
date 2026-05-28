@@ -61,6 +61,7 @@ import {
   taskMatchesStatus,
   type TaskDateFilterMode,
 } from "@/modules/tasks/taskDateFilter";
+import { taskMatchesConsultantFilter } from "@/modules/tasks/taskConsultantFilter";
 import { STATUS_LABELS } from "@/modules/tasks/types";
 import { exportTasksPDF } from "@/lib/exportPdf";
 import ExportPDFModal, { type PDFExportSelection, type TaskIntegrityInfo } from "@/modules/analytics/components/ExportPDFModal";
@@ -503,6 +504,9 @@ export default function TarefasPage() {
   // and also from time entries cross-referenced with task consultants
   const userNames = useMemo(() => {
     const map: Record<string, string> = {};
+    if (session?.bitrixUserId && session?.name) {
+      map[String(session.bitrixUserId)] = session.name;
+    }
     // Method 1: Direct from task responsible_id → responsible_name
     tasks.forEach((task) => {
       const uid = task.responsible_id ?? task.user_id;
@@ -533,7 +537,7 @@ export default function TarefasPage() {
       });
     }
     return map;
-  }, [tasks, timeEntriesByTaskId]);
+  }, [tasks, timeEntriesByTaskId, session?.bitrixUserId, session?.name]);
 
   // Build a project_id → name lookup from tasks that have the join data
   // This prevents phantom projects when some tasks fall back to group_name
@@ -588,14 +592,28 @@ export default function TarefasPage() {
 
     const hasExplicitIds = accessibleProjectIds && accessibleProjectIds.length > 0;
     const hasCompanyName = !!companyName;
-    const myTasks = sourceTasks.filter((task) => {
-      return taskBelongsToSession(
-        task.consultant,
-        task.raw.responsible_id ?? task.raw.user_id,
-        session?.name,
-        session?.bitrixUserId,
-      );
-    });
+    const belongsToSessionOrActivity = (task: TaskView) => {
+      if (
+        taskBelongsToSession(
+          task.consultant,
+          task.raw.responsible_id ?? task.raw.user_id,
+          session?.name,
+          session?.bitrixUserId,
+        )
+      ) {
+        return true;
+      }
+
+      const rawTaskId = task.raw.id ?? task.raw.task_id;
+      const entries = rawTaskId != null ? timeEntriesByTaskId[String(rawTaskId)] : undefined;
+      return Boolean(session?.name && taskMatchesConsultantFilter({
+        task,
+        selectedConsultant: session.name,
+        entries,
+        userNames,
+      }));
+    };
+    const myTasks = sourceTasks.filter(belongsToSessionOrActivity);
 
     // Sem vínculo de projeto configurado, ainda mostramos as tarefas do próprio responsável.
     if (!hasExplicitIds && !hasCompanyName) return myTasks;
@@ -634,33 +652,30 @@ export default function TarefasPage() {
       return false;
     });
 
+    const filteredOrMine = Array.from(
+      new Map([...filtered, ...myTasks].map((task) => [String(task.raw.task_id ?? task.raw.id ?? task.title), task])).values(),
+    );
+
     // Non-admin: show only projects where the logged user has linked tasks (faz parte)
     if (session?.name || session?.bitrixUserId) {
       const myProjectKeys = new Set<string>();
 
-      filtered.forEach((task) => {
-        if (
-          taskBelongsToSession(
-            task.consultant,
-            task.raw.responsible_id ?? task.raw.user_id,
-            session?.name,
-            session?.bitrixUserId,
-          )
-        ) {
+      filteredOrMine.forEach((task) => {
+        if (belongsToSessionOrActivity(task)) {
           const projectKey = getProjectAccessKey(task);
           if (projectKey) myProjectKeys.add(projectKey);
         }
       });
 
-      if (myProjectKeys.size === 0) return filtered.length > 0 ? filtered : myTasks;
-      return filtered.filter((task) => {
+      if (myProjectKeys.size === 0) return filteredOrMine.length > 0 ? filteredOrMine : myTasks;
+      return filteredOrMine.filter((task) => {
         const projectKey = getProjectAccessKey(task);
-        return !!projectKey && myProjectKeys.has(projectKey);
+        return !projectKey || myProjectKeys.has(projectKey);
       });
     }
 
-    return filtered.length > 0 ? filtered : myTasks;
-  }, [isAdmin, accessibleProjectIds, accessibleProjectNames, companyName, session?.name, session?.bitrixUserId]);
+    return filteredOrMine.length > 0 ? filteredOrMine : myTasks;
+  }, [isAdmin, accessibleProjectIds, accessibleProjectNames, companyName, session?.name, session?.bitrixUserId, timeEntriesByTaskId, userNames]);
 
   const projectFilteredTasks = useMemo(
     () => scopeTasksToSession(normalizedTasks),
@@ -787,12 +802,14 @@ export default function TarefasPage() {
     const byPeriod = scopedTasks;
 
     const visible = byPeriod.filter((task) => {
-      const projectNormalized = (task.project || "").trim().toLowerCase();
-      if (projectNormalized === "projeto indefinido") return false;
-
-      const matchesConsultant =
-        consultant === "all" ||
-        normalizeComparableText(task.consultant) === normalizeComparableText(consultant);
+      const rawTaskId = task.raw.id ?? task.raw.task_id;
+      const entries = rawTaskId != null ? timeEntriesByTaskId[String(rawTaskId)] : undefined;
+      const matchesConsultant = taskMatchesConsultantFilter({
+        task,
+        selectedConsultant: consultant,
+        entries,
+        userNames,
+      });
       const normalizedProject = normalizeComparableText(task.project);
       const matchesProject =
         effectiveProjectFilter.length === 0 ||
@@ -831,7 +848,7 @@ export default function TarefasPage() {
       if (diff !== 0) return diff;
       return a.title.localeCompare(b.title);
     });
-  }, [scopedTasks, searchTerm, status, deadline, deadlineTo, consultant, effectiveProjectFilter, nowTs, matchesSearchTerm]);
+  }, [scopedTasks, searchTerm, status, deadline, deadlineTo, consultant, effectiveProjectFilter, nowTs, matchesSearchTerm, timeEntriesByTaskId, userNames]);
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / pageSize));
