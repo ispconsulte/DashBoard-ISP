@@ -22,6 +22,8 @@ import type { ProjectAnalytics } from "@/modules/analytics/types";
 import { usePageSEO } from "@/hooks/usePageSEO";
 import { exportAnalyticsPDF } from "@/lib/exportPdf";
 import ExportPDFModal, { type PDFExportSelection } from "@/modules/analytics/components/ExportPDFModal";
+import { formatSecondsHuman } from "@/modules/tasks/utils";
+import { AlertTriangle } from "lucide-react";
 
 // Lazy-load contracted hours components so a DB error doesn't crash the whole page
 const ContractedHoursModal = lazy(() =>
@@ -181,7 +183,7 @@ export default function AnaliticasPage() {
     return { startIso: start.toISOString(), endIso: end.toISOString() };
   }, [filters.period, periodDays]);
 
-  const { data: projectHours, loading: loadingHours } = useProjectHours({ startIso, endIso });
+  const { data: projectHours, mismatches: hourMismatches, loading: loadingHours } = useProjectHours({ startIso, endIso });
 
   // Only block initial render on tasks+times, not hours (hours can load in background)
   const loading = loadingTasks || loadingTimes;
@@ -467,6 +469,13 @@ export default function AnaliticasPage() {
     [displayedProjects],
   );
 
+  const displayedHourMismatches = useMemo(() => {
+    if (!isAdmin) return [];
+    if (filters.projectIds.length === 0) return hourMismatches.slice(0, 12);
+    const projectSet = new Set(filters.projectIds);
+    return hourMismatches.filter((item) => projectSet.has(item.projectId)).slice(0, 12);
+  }, [hourMismatches, filters.projectIds, isAdmin]);
+
   const displayedActiveProjects = useMemo(
     () => displayedProjects.filter((project) => project.isActive).length,
     [displayedProjects],
@@ -558,6 +567,49 @@ export default function AnaliticasPage() {
           overdueCount={filteredTasks.filter((task) => classifyTask(task) === "overdue").length}
           loading={loading}
         />
+
+        {displayedHourMismatches.length > 0 && (
+          <section className="rounded-2xl border border-amber-400/20 bg-amber-500/[0.06] p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-300" />
+              <h2 className="text-sm font-bold text-white">Divergências de horas por tarefa</h2>
+              <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-bold text-amber-200">
+                {hourMismatches.length}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-xs">
+                <thead className="text-[10px] uppercase tracking-[0.14em] text-white/35">
+                  <tr>
+                    <th className="pb-2 pr-3">Tarefa</th>
+                    <th className="pb-2 pr-3">Projeto</th>
+                    <th className="pb-2 pr-3">Responsável</th>
+                    <th className="pb-2 pr-3 text-right">Bitrix</th>
+                    <th className="pb-2 pr-3 text-right">Lançamentos</th>
+                    <th className="pb-2 text-right">Diferença</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.06] text-white/75">
+                  {displayedHourMismatches.map((item) => (
+                    <tr key={item.taskId}>
+                      <td className="py-2 pr-3 font-semibold text-white/90">
+                        <span className="block max-w-[320px] truncate">{item.title}</span>
+                        <span className="text-[10px] font-medium text-white/35">#{item.taskId}</span>
+                      </td>
+                      <td className="py-2 pr-3">{item.projectName}</td>
+                      <td className="py-2 pr-3">{item.responsibleName || "Sem responsável"}</td>
+                      <td className="py-2 pr-3 text-right">{formatSecondsHuman(item.timeSpentSeconds)}</td>
+                      <td className="py-2 pr-3 text-right">{formatSecondsHuman(item.elapsedSeconds)}</td>
+                      <td className="py-2 text-right font-bold text-amber-200">
+                        {item.diffSeconds > 0 ? "+" : "-"}{formatSecondsHuman(Math.abs(item.diffSeconds))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {/* Row 1: Client Radar + Velocity Chart */}
         <div className="grid gap-5 lg:grid-cols-2 overflow-x-hidden">

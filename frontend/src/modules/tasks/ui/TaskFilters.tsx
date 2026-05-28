@@ -1,7 +1,13 @@
 import { Search, X, Filter, ChevronDown, FolderKanban, User, Calendar } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CustomSelect, MultiSelectProjects } from "../../shared/FilterDropdowns";
+import { MIN_CUSTOM_FILTER_DATE, getCustomDateCommit } from "../customDateRange";
+import {
+  DEFAULT_TASK_DATE_FILTER_MODE,
+  taskDateFilterOptions,
+  type TaskDateFilterMode,
+} from "../taskDateFilter";
 
 type TaskFiltersProps = {
   search: string;
@@ -16,6 +22,8 @@ type TaskFiltersProps = {
   setDateFrom: (value: string) => void;
   dateTo: string;
   setDateTo: (value: string) => void;
+  dateFilterMode: TaskDateFilterMode;
+  setDateFilterMode: (value: TaskDateFilterMode) => void;
   deadlineTo: string;
   setDeadlineTo: (value: string) => void;
   searchRef?: React.RefObject<HTMLInputElement>;
@@ -47,6 +55,7 @@ const periodChips = [
   { value: "custom", label: "Personalizado" },
 ];
 
+const isFullDateInput = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 export function TaskFilters({
   search,
@@ -61,6 +70,8 @@ export function TaskFilters({
   setDateFrom,
   dateTo,
   setDateTo,
+  dateFilterMode,
+  setDateFilterMode,
   deadlineTo,
   setDeadlineTo,
   searchRef,
@@ -77,10 +88,41 @@ export function TaskFilters({
   hideFilters = false,
 }: TaskFiltersProps) {
   const [expanded, setExpanded] = useState(false);
+  const [draftDateFrom, setDraftDateFrom] = useState(dateFrom);
+  const [draftDateTo, setDraftDateTo] = useState(dateTo);
+
+  useEffect(() => {
+    setDraftDateFrom(dateFrom);
+  }, [dateFrom]);
+
+  useEffect(() => {
+    setDraftDateTo(dateTo);
+  }, [dateTo]);
+
+  const applyDateCommit = (commit: { dateFrom?: string; dateTo?: string }) => {
+    if (commit.dateFrom !== undefined) setDateFrom(commit.dateFrom);
+    if (commit.dateTo !== undefined) setDateTo(commit.dateTo);
+  };
+
+  const handleDateFromChange = (value: string) => {
+    if (isFullDateInput(value) && value < MIN_CUSTOM_FILTER_DATE) return;
+    setDraftDateFrom(value);
+    const commit = getCustomDateCommit("from", value, dateFrom, dateTo);
+    applyDateCommit(commit);
+    if (commit.dateTo === "") setDraftDateTo("");
+  };
+
+  const handleDateToChange = (value: string) => {
+    const minDateTo = dateFrom || MIN_CUSTOM_FILTER_DATE;
+    if (isFullDateInput(value) && value < minDateTo) return;
+    setDraftDateTo(value);
+    applyDateCommit(getCustomDateCommit("to", value, dateFrom, dateTo));
+  };
 
   const activeCount =
     (status !== "all" ? 1 : 0) +
     (period !== "all" ? 1 : 0) +
+    (dateFilterMode !== DEFAULT_TASK_DATE_FILTER_MODE ? 1 : 0) +
     (consultant !== "all" && consultant ? 1 : 0) +
     (project.length > 0 ? 1 : 0);
 
@@ -147,22 +189,25 @@ export function TaskFilters({
               {/* Status */}
               <div className="space-y-1.5 w-full sm:w-auto">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Status</label>
-                <div className="flex gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1 overflow-x-auto">
-                  {statusChips.map((chip) => (
-                    <button
-                      key={chip.value}
-                      type="button"
-                      onClick={() => setStatus(chip.value)}
-                      className={`rounded-xl px-2.5 sm:px-3 py-1.5 min-h-[44px] sm:min-h-0 text-[11px] sm:text-[12px] font-semibold transition-all whitespace-nowrap ${
-                        status === chip.value
-                          ? "bg-[hsl(var(--task-purple))] text-white shadow"
-                          : "text-white/30 hover:text-white/50"
-                      }`}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
+                <CustomSelect
+                  value={status}
+                  onChange={setStatus}
+                  options={statusChips}
+                  placeholder="Todos"
+                  icon={Filter}
+                />
+              </div>
+
+              {/* Date field dropdown */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Filtrar tarefa por</label>
+                <CustomSelect
+                  value={dateFilterMode}
+                  onChange={(value) => setDateFilterMode(value as TaskDateFilterMode)}
+                  options={taskDateFilterOptions}
+                  placeholder="Data e tempo gasto"
+                  icon={Calendar}
+                />
               </div>
 
               {/* Period dropdown */}
@@ -212,14 +257,16 @@ export function TaskFilters({
                   <div className="flex flex-wrap gap-2">
                     <input
                       type="date"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
+                      min={MIN_CUSTOM_FILTER_DATE}
+                      value={draftDateFrom}
+                      onChange={(e) => handleDateFromChange(e.target.value)}
                       className="h-9 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-[hsl(var(--task-surface))] px-2.5 text-xs text-white/70 outline-none"
                     />
                     <input
                       type="date"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
+                      min={dateFrom || MIN_CUSTOM_FILTER_DATE}
+                      value={draftDateTo}
+                      onChange={(e) => handleDateToChange(e.target.value)}
                       className="h-9 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-[hsl(var(--task-surface))] px-2.5 text-xs text-white/70 outline-none"
                     />
                   </div>

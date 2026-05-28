@@ -386,7 +386,7 @@ async function fetchDeleteTombstones(supabase: any): Promise<Set<number>> {
 async function createSyncRun(supabase: any, details: Record<string, unknown>) {
   const staleBeforeIso = new Date(Date.now() - RUN_STALE_AFTER_MS).toISOString();
 
-  const { error: staleError } = await supabase
+  const { data: staleRows, error: staleError } = await supabase
     .from('sync_job_runs')
     .update({
       status: 'error',
@@ -395,10 +395,23 @@ async function createSyncRun(supabase: any, details: Record<string, unknown>) {
     })
     .eq('job_name', SYNC_JOB_NAME)
     .eq('status', 'running')
-    .lt('started_at', staleBeforeIso);
+    .lt('started_at', staleBeforeIso)
+    .select('id,started_at');
 
   if (staleError) {
     console.error('Falha ao encerrar runs antigos:', staleError.message);
+  } else if ((staleRows ?? []).length > 0) {
+    await upsertSourceStatus(
+      supabase,
+      'error',
+      {
+        stale_marked_at: new Date().toISOString(),
+        stale_before_iso: staleBeforeIso,
+        stale_runs_closed: (staleRows ?? []).length,
+        stale_run_ids: (staleRows ?? []).map((row: any) => row.id),
+      },
+      'Marked stale before a new scheduled run started.',
+    );
   }
 
   const { data: runningRows, error: runningError } = await supabase

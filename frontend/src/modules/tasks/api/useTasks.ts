@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { storage } from "@/modules/shared/storage";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 import type { TaskRecord } from "../types";
-import { parseLocalDateInput } from "../utils";
+import {
+  buildElapsedCreatedDateFilter,
+  buildTaskDateFilter,
+  DEFAULT_TASK_DATE_FILTER_MODE,
+  type TaskDateFilterMode,
+} from "../taskDateFilter";
+import { TASKS_PAGE_ELAPSED_STATE_FILTER, TASKS_PAGE_TASK_STATE_FILTER } from "../taskOperationalFilters";
 
 type UseTasksResult = {
   tasks: TaskRecord[];
@@ -22,53 +28,32 @@ type UseTasksParams = {
   period?: string;
   dateFrom?: string;
   dateTo?: string;
+  dateFilterMode?: TaskDateFilterMode;
   /** When true the hook returns empty defaults and skips all network requests. */
   skip?: boolean;
 };
 
-const CACHE_KEY = "cache:tasks:v7";
+const CACHE_KEY = "cache:tasks:v9";
 const RELOAD_COOLDOWN_MS = 12_000; // 5 reloads per minute → 60s / 5 = 12s between
 const MAX_RELOADS_PER_MINUTE = 5;
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_TASKS_TIMEOUT_MS ?? "25000");
 const PAGE_SIZE = 1000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — stale cache is ignored on hydration
-const MAX_PAGES = 10;
+const MAX_FALLBACK_PAGES = 10;
 
-const buildDateFilter = (period?: string, dateFrom?: string, dateTo?: string) => {
-  const now = new Date();
-  if (period && period !== "all" && period !== "custom") {
-    const days = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : 180;
-    const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-    const iso = encodeURIComponent(from.toISOString());
-    return `or=(changed_date.gte.${iso},closed_date.gte.${iso},deadline.gte.${iso})`;
-  }
-  if (period === "custom") {
-    const parts: string[] = [];
-    if (dateFrom) {
-      const from = parseLocalDateInput(dateFrom);
-      if (from && !Number.isNaN(from.getTime())) {
-        const iso = encodeURIComponent(from.toISOString());
-        parts.push(`or(changed_date.gte.${iso},closed_date.gte.${iso},deadline.gte.${iso})`);
-      }
-    }
-    if (dateTo) {
-      const to = parseLocalDateInput(dateTo, true);
-      if (to && !Number.isNaN(to.getTime())) {
-        const iso = encodeURIComponent(to.toISOString());
-        parts.push(`or(changed_date.lte.${iso},closed_date.lte.${iso},deadline.lte.${iso})`);
-      }
-    }
-    if (parts.length === 2) return `and=(${parts.join(",")})`;
-    if (parts.length === 1) {
-      const single = parts[0];
-      return single.startsWith("or(") ? `or=${single.slice(2)}` : single;
-    }
-    return "";
-  }
-  return "";
-};
+const buildPeriodKey = (
+  dateFilterMode: TaskDateFilterMode,
+  period?: string,
+  dateFrom?: string,
+  dateTo?: string,
+) => `${dateFilterMode}:${period === "custom" ? `custom:${dateFrom ?? ""}:${dateTo ?? ""}` : period ?? "all"}`;
 
-const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
+const buildEndpoint = (
+  period?: string,
+  dateFrom?: string,
+  dateTo?: string,
+  dateFilterMode: TaskDateFilterMode = DEFAULT_TASK_DATE_FILTER_MODE,
+) => {
   const url = SUPABASE_URL;
   const key = SUPABASE_ANON_KEY;
 
@@ -77,7 +62,7 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
   }
 
   const base = url.replace(/\/$/, "");
-  const dateFilter = buildDateFilter(period, dateFrom, dateTo);
+  const dateFilter = buildTaskDateFilter(dateFilterMode, period, dateFrom, dateTo);
   const select = [
     "task_id",
     "title",
@@ -85,6 +70,7 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
     "status",
     "deadline",
     "closed_date",
+    ...(dateFilterMode === "created_date" ? ["created_date"] : []),
     "changed_date",
     "time_spent_in_logs",
     "group_id",
@@ -101,7 +87,7 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
     "projects(name,cliente_id,closed)",
   ].join(",");
   const filterSuffix = dateFilter ? `&${dateFilter}` : "";
-  const activeFilter = "local_state=eq.active&diagnostic_codes=eq.%7B%7D";
+  const activeFilter = TASKS_PAGE_TASK_STATE_FILTER;
   const endpoint = `${base}/rest/v1/tasks?select=${encodeURIComponent(select)}&order=deadline.nullslast&${activeFilter}${filterSuffix}`;
   const latestEndpoint = `${base}/rest/v1/tasks?select=updated_at,inserted_at&order=updated_at.desc.nullslast&limit=1&${activeFilter}${filterSuffix}`;
   const countEndpoint = `${base}/rest/v1/tasks?select=task_id&limit=1&${activeFilter}`;
@@ -109,15 +95,15 @@ const buildEndpoint = (period?: string, dateFrom?: string, dateTo?: string) => {
 };
 
 export function useTasks(params: UseTasksParams = {}): UseTasksResult {
-  const { period = "all", dateFrom, dateTo, skip = false } = params;
+  const { period = "all", dateFrom, dateTo, dateFilterMode = DEFAULT_TASK_DATE_FILTER_MODE, skip = false } = params;
   const { endpoint, latestEndpoint, countEndpoint, key, error: envError } = useMemo(
-    () => buildEndpoint(period, dateFrom, dateTo),
-    [period, dateFrom, dateTo]
+    () => buildEndpoint(period, dateFrom, dateTo, dateFilterMode),
+    [period, dateFrom, dateTo, dateFilterMode]
   );
 
   // Hydrate from cache on mount so UI renders instantly (only if within TTL)
   const initialCache = useMemo(() => {
-    const periodKey = period === "custom" ? `custom:${dateFrom ?? ""}:${dateTo ?? ""}` : period;
+    const periodKey = buildPeriodKey(dateFilterMode, period, dateFrom, dateTo);
     const cached = storage.get<{ data: TaskRecord[]; timestamp: number } | null>(`${CACHE_KEY}:${periodKey}`, null);
     if (!cached?.data?.length) return null;
     if (Date.now() - (cached.timestamp ?? 0) > CACHE_TTL_MS) return null;
@@ -158,7 +144,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
     reloadTimestampsRef.current = [...recentReloads, now];
 
     // Force a new fetch (bypass noChanges check by clearing latestUpdatedAtMs in cache)
-    const periodKey = period === "custom" ? `custom:${dateFrom ?? ""}:${dateTo ?? ""}` : period;
+    const periodKey = buildPeriodKey(dateFilterMode, period, dateFrom, dateTo);
     const cacheKey = `${CACHE_KEY}:${periodKey}`;
     const cached = storage.get<{ data: TaskRecord[]; timestamp: number; latestUpdatedAtMs?: number | null } | null>(cacheKey, null);
     if (cached) {
@@ -168,7 +154,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
 
     setNoChanges(false);
     setRefreshToken((prev) => prev + 1);
-  }, [period, dateFrom, dateTo]);
+  }, [period, dateFrom, dateTo, dateFilterMode]);
 
   // Update cooldown + remaining count every 250ms
   useEffect(() => {
@@ -241,7 +227,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
     if (envError) return;
     if (!endpoint || !latestEndpoint || !key) return;
 
-    const periodKey = period === "custom" ? `custom:${dateFrom ?? ""}:${dateTo ?? ""}` : period;
+    const periodKey = buildPeriodKey(dateFilterMode, period, dateFrom, dateTo);
     const cacheKey = `${CACHE_KEY}:${periodKey}`;
     const cached = storage.get<{ data: TaskRecord[]; timestamp: number; latestUpdatedAtMs?: number | null } | null>(
       cacheKey,
@@ -284,8 +270,8 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
         );
         const cachedLatestMs = cachedForCheck?.latestUpdatedAtMs ?? null;
 
-        // Only skip fetch if we have a valid latestUpdatedAtMs AND this is not a manual reload
-        if (typeof cachedLatestMs === "number" && refreshToken === 0) {
+        // Tempo gasto depends on elapsed rows, so do not trust the task-only latest shortcut.
+        if (typeof cachedLatestMs === "number" && refreshToken === 0 && dateFilterMode !== "elapsed_created_date") {
           // auto-fetch on mount: check if anything changed before pulling all rows
           const latestResponse = await fetch(latestEndpoint, {
             headers: {
@@ -356,20 +342,82 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
           return { rows, totalFromHeader };
         };
 
+        const fetchElapsedTaskIds = async () => {
+          const elapsedFilter = buildElapsedCreatedDateFilter(period, dateFrom, dateTo);
+          const base = SUPABASE_URL.replace(/\/$/, "");
+          const select = encodeURIComponent("task_id");
+          const suffix = elapsedFilter ? `&${elapsedFilter}` : "";
+          const activeFilter = TASKS_PAGE_ELAPSED_STATE_FILTER;
+          const elapsedEndpoint = `${base}/rest/v1/elapsed_times?select=${select}&${activeFilter}${suffix}`;
+          const taskIds = new Set<string>();
+
+          const fetchElapsedPage = async (offset: number) => {
+            const url = `${elapsedEndpoint}&limit=${PAGE_SIZE}&offset=${offset}`;
+            const response = await fetch(url, {
+              headers: {
+                apikey: key,
+                Authorization: `Bearer ${bearer}`,
+                Prefer: "count=exact",
+              },
+              signal: controller.signal,
+              cache: "no-store",
+            });
+
+            if (!response.ok) {
+              const text = await response.text();
+              throw new Error(text || `Erro ao buscar tempos por tarefa (${response.status}).`);
+            }
+
+            const range = response.headers.get("Content-Range");
+            const totalRaw = range?.includes("/") ? range.split("/")[1] : null;
+            const totalFromHeader = totalRaw && Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : null;
+            const rows = (await response.json()) as Array<{ task_id?: string | number | null }>;
+            return { rows, totalFromHeader };
+          };
+
+          const firstElapsed = await fetchElapsedPage(0);
+          firstElapsed.rows.forEach((row) => {
+            if (row.task_id !== undefined && row.task_id !== null) taskIds.add(String(row.task_id));
+          });
+
+          if (firstElapsed.rows.length >= PAGE_SIZE && firstElapsed.totalFromHeader && firstElapsed.totalFromHeader > PAGE_SIZE) {
+            const remaining = Math.ceil(firstElapsed.totalFromHeader / PAGE_SIZE) - 1;
+            const offsets = Array.from({ length: remaining }, (_, i) => (i + 1) * PAGE_SIZE);
+            const pages = await Promise.all(offsets.map((o) => fetchElapsedPage(o)));
+            pages.forEach((page) => {
+              page.rows.forEach((row) => {
+                if (row.task_id !== undefined && row.task_id !== null) taskIds.add(String(row.task_id));
+              });
+            });
+          } else if (firstElapsed.rows.length >= PAGE_SIZE) {
+            let offset = PAGE_SIZE;
+            for (let page = 1; page < MAX_FALLBACK_PAGES; page++) {
+              const chunk = await fetchElapsedPage(offset);
+              chunk.rows.forEach((row) => {
+                if (row.task_id !== undefined && row.task_id !== null) taskIds.add(String(row.task_id));
+              });
+              if (chunk.rows.length < PAGE_SIZE) break;
+              offset += PAGE_SIZE;
+            }
+          }
+
+          return taskIds;
+        };
+
         // Fetch first page to discover total count
         const first = await fetchPage(0);
         let data: TaskRecord[] = first.rows;
 
         if (first.rows.length >= PAGE_SIZE && first.totalFromHeader && first.totalFromHeader > PAGE_SIZE) {
           // Fetch remaining pages in parallel
-          const remaining = Math.min(Math.ceil(first.totalFromHeader / PAGE_SIZE) - 1, MAX_PAGES - 1);
+          const remaining = Math.ceil(first.totalFromHeader / PAGE_SIZE) - 1;
           const offsets = Array.from({ length: remaining }, (_, i) => (i + 1) * PAGE_SIZE);
           const pages = await Promise.all(offsets.map((o) => fetchPage(o)));
           for (const p of pages) data = data.concat(p.rows);
         } else if (first.rows.length >= PAGE_SIZE) {
           // Fallback sequential if no count header
           let offset = PAGE_SIZE;
-          for (let page = 1; page < MAX_PAGES; page++) {
+          for (let page = 1; page < MAX_FALLBACK_PAGES; page++) {
             const chunk = await fetchPage(offset);
             data = data.concat(chunk.rows);
             if (chunk.rows.length < PAGE_SIZE) break;
@@ -377,7 +425,15 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
           }
         }
 
-        const filteredData = data;
+        const elapsedTaskIds = dateFilterMode === "elapsed_created_date"
+          ? await fetchElapsedTaskIds()
+          : null;
+        const filteredData = elapsedTaskIds
+          ? data.filter((row) => {
+              const id = row.task_id ?? row.id;
+              return id !== undefined && id !== null && elapsedTaskIds.has(String(id));
+            })
+          : data;
 
         const timestamp = Date.now();
         const latestUpdatedAtMs = filteredData.reduce<number | null>((max, row) => {
@@ -457,7 +513,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
       clearTimeout(timeoutId);
       inFlightKeyRef.current = null;
     };
-  }, [skip, endpoint, latestEndpoint, key, envError, refreshToken, params.accessToken, period, dateFrom, dateTo]);
+  }, [skip, endpoint, latestEndpoint, key, envError, refreshToken, params.accessToken, period, dateFrom, dateTo, dateFilterMode]);
 
   return { tasks, loading, error, reload, lastUpdated, reloadCooldownMsLeft, reloadsRemainingThisMinute, noChanges, totalCount };
 }

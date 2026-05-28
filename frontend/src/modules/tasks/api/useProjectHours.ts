@@ -1,17 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
-import { getTaskTimeSpentSeconds } from "@/modules/tasks/utils";
-
-type ProjectHoursRow = {
-  task_id: string | number;
-  project_id: number | string | null;
-  group_name: string | null;
-  time_spent_in_logs: number | string | null;
-  projects?: {
-    name?: string | null;
-    cliente_id?: number | string | null;
-  } | null;
-};
+import {
+  buildProjectHoursFromElapsedRows,
+  type ProjectHoursElapsedRow,
+  type ProjectHoursTaskRow,
+} from "./projectHoursAggregation";
 
 type ClientRow = {
   cliente_id: number | string;
@@ -25,6 +18,20 @@ export type ProjectHours = {
   clientName: string;
   hours: number;
   seconds: number;
+  elapsedSeconds: number;
+  diffSeconds: number;
+  hasHourMismatch: boolean;
+};
+
+export type TaskHoursMismatch = {
+  taskId: string;
+  title: string;
+  projectId: number;
+  projectName: string;
+  responsibleName: string;
+  timeSpentSeconds: number;
+  elapsedSeconds: number;
+  diffSeconds: number;
 };
 
 type UseProjectHoursParams = {
@@ -32,10 +39,12 @@ type UseProjectHoursParams = {
   endIso: string;
   clientId?: number | null;
   projectId?: number | null;
+  userId?: number | null;
 };
 
 type UseProjectHoursResult = {
   data: ProjectHours[];
+  mismatches: TaskHoursMismatch[];
   loading: boolean;
   error: string | null;
   reload: () => void;
@@ -47,21 +56,22 @@ const buildRpcEndpoint = () => {
   if (!url || !key) {
     return { endpoint: null, key: null, error: "Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY." };
   }
-  const endpoint = `${url.replace(/\/$/, "")}/rest/v1/tasks`;
+  const endpoint = `${url.replace(/\/$/, "")}/rest/v1`;
   return { endpoint, key, error: null };
 };
 
 export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursResult {
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
-  const { startIso, endIso, clientId = null, projectId = null } = params;
+  const { startIso, endIso, clientId = null, projectId = null, userId = null } = params;
   const [{ endpoint, key, error: envError }] = useState(buildRpcEndpoint);
   const [data, setData] = useState<ProjectHours[]>([]);
+  const [mismatches, setMismatches] = useState<TaskHoursMismatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(envError);
   const [refreshFlag, setRefreshFlag] = useState(0);
-  const cacheRef = useRef(new Map<string, { timestamp: number; data: ProjectHours[] }>());
+  const cacheRef = useRef(new Map<string, { timestamp: number; data: ProjectHours[]; mismatches: TaskHoursMismatch[] }>());
   const lastReloadRef = useRef(0);
-  const cacheKey = `${startIso}|${endIso}|${clientId ?? "all"}|${projectId ?? "all"}`;
+  const cacheKey = `${startIso}|${endIso}|${clientId ?? "all"}|${projectId ?? "all"}|${userId ?? "all"}`;
   const CACHE_TTL_MS = 5 * 60 * 1000;
   const RELOAD_COOLDOWN_MS = 5000;
 
@@ -101,6 +111,7 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
     const cached = cacheRef.current.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS && refreshFlag === 0) {
       setData(cached.data);
+      setMismatches(cached.mismatches);
       return;
     }
 
@@ -109,30 +120,39 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
       setLoading(true);
       setError(null);
       try {
-        const select = [
+        const elapsedSelect = [
           "task_id",
+          "user_id",
+          "seconds",
+          "reference_date",
+          "date_start",
+          "created_date",
+        ].join(",");
+        const taskSelect = [
+          "task_id",
+          "title",
+          "responsible_name",
           "project_id",
           "group_name",
           "time_spent_in_logs",
           "projects(name,cliente_id)",
         ].join(",");
         const pageSize = 1000;
-        const rows: ProjectHoursRow[] = [];
+        const elapsedRows: ProjectHoursElapsedRow[] = [];
 
         for (let offset = 0; offset < 10000; offset += pageSize) {
-          const params = new URLSearchParams({
-            select,
+          const elapsedParams = new URLSearchParams({
+            select: elapsedSelect,
             local_state: "eq.active",
-            diagnostic_codes: "eq.{}",
-            changed_date: `gte.${startIso}`,
-            order: "project_id.asc.nullslast",
+            reference_date: `gte.${startIso}`,
+            order: "reference_date.asc",
             limit: String(pageSize),
             offset: String(offset),
           });
-          params.append("changed_date", `lte.${endIso}`);
-          if (projectId) params.append("project_id", `eq.${projectId}`);
+          elapsedParams.append("reference_date", `lte.${endIso}`);
+          if (userId) elapsedParams.append("user_id", `eq.${userId}`);
 
-          const response = await fetch(`${endpoint}?${params.toString()}`, {
+          const response = await fetch(`${endpoint}/operational_elapsed_times?${elapsedParams.toString()}`, {
             headers: {
               apikey: key,
               Authorization: `Bearer ${key}`,
@@ -145,9 +165,41 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
             throw new Error(text || `Erro ao buscar horas (status ${response.status}).`);
           }
 
-          const pageRows = (await response.json()) as ProjectHoursRow[];
-          rows.push(...pageRows);
+          const pageRows = (await response.json()) as ProjectHoursElapsedRow[];
+          elapsedRows.push(...pageRows);
           if (pageRows.length < pageSize) break;
+        }
+
+        const taskIds = Array.from(new Set(elapsedRows.map((row) => String(row.task_id ?? "")).filter(Boolean)));
+        const rows: ProjectHoursTaskRow[] = [];
+
+        for (let start = 0; start < taskIds.length; start += 150) {
+          const slice = taskIds.slice(start, start + 150);
+          if (!slice.length) continue;
+          const taskParams = new URLSearchParams({
+            select: taskSelect,
+            local_state: "eq.active",
+            diagnostic_codes: "eq.{}",
+            task_id: `in.(${slice.join(",")})`,
+            order: "project_id.asc.nullslast",
+            limit: String(pageSize),
+          });
+          if (projectId) taskParams.append("project_id", `eq.${projectId}`);
+
+          const response = await fetch(`${endpoint}/tasks?${taskParams.toString()}`, {
+            headers: {
+              apikey: key,
+              Authorization: `Bearer ${key}`,
+            },
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `Erro ao buscar dimensões das tarefas (status ${response.status}).`);
+          }
+
+          rows.push(...((await response.json()) as ProjectHoursTaskRow[]));
         }
 
         const clientIds = Array.from(
@@ -163,7 +215,7 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
           const slice = clientIds.slice(offset, offset + 200);
           if (!slice.length) continue;
           const clientResponse = await fetch(
-            `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/clientes?select=cliente_id,nome&cliente_id=in.(${slice.join(",")})`,
+            `${endpoint}/clientes?select=cliente_id,nome&cliente_id=in.(${slice.join(",")})`,
             {
               headers: {
                 apikey: key,
@@ -180,37 +232,20 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
           });
         }
 
-        const totals = new Map<number, ProjectHours>();
-        rows.forEach((row) => {
-          const seconds = getTaskTimeSpentSeconds(row as unknown as Record<string, unknown>) ?? 0;
-          if (seconds <= 0) return;
-
-          const resolvedProjectId = Number(row.project_id ?? 0);
-          if (!resolvedProjectId) return;
-
-          const resolvedClientId = Number(row.projects?.cliente_id ?? 0);
-          if (clientId && resolvedClientId !== clientId) return;
-
-          const current = totals.get(resolvedProjectId) ?? {
-            projectId: resolvedProjectId,
-            projectName: String(row.projects?.name ?? row.group_name ?? `Projeto #${resolvedProjectId}`),
-            clientId: resolvedClientId,
-            clientName: resolvedClientId ? clientNameById.get(resolvedClientId) ?? "" : "",
-            hours: 0,
-            seconds: 0,
-          };
-
-          current.seconds += seconds;
-          current.hours = Math.round((current.seconds / 3600) * 100) / 100;
-          if (!current.clientName && resolvedClientId) {
-            current.clientName = clientNameById.get(resolvedClientId) ?? "";
-          }
-          totals.set(resolvedProjectId, current);
+        const { data: mapped, mismatches: taskMismatches } = buildProjectHoursFromElapsedRows({
+          elapsedRows,
+          taskRows: rows,
+          clientNameById,
+          startIso,
+          endIso,
+          clientId,
+          projectId,
+          userId,
         });
 
-        const mapped = Array.from(totals.values()).sort((a, b) => b.seconds - a.seconds);
         setData(mapped);
-        cacheRef.current.set(cacheKey, { timestamp: Date.now(), data: mapped });
+        setMismatches(taskMismatches);
+        cacheRef.current.set(cacheKey, { timestamp: Date.now(), data: mapped, mismatches: taskMismatches });
       } catch (err) {
         if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) return;
         const message = (err as Error).message || "Não foi possível carregar as horas.";
@@ -225,12 +260,12 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
 
     fetchData().catch(() => {});
     return () => controller.abort();
-  }, [endpoint, key, envError, startIso, endIso, clientId, projectId, refreshFlag]);
+  }, [endpoint, key, envError, startIso, endIso, clientId, projectId, userId, refreshFlag]);
 
   const normalized = useMemo(
     () => data.filter((d) => Number.isFinite(d.hours) && d.projectName),
     [data]
   );
 
-  return { data: normalized, loading, error, reload };
+  return { data: normalized, mismatches, loading, error, reload };
 }

@@ -54,6 +54,7 @@ export type ElapsedTimeRecord = {
   orphan_detected_at?: string | Date | null;
   seconds?: number;
   user_id?: string | number | null;
+  reference_date?: string | Date | null;
   date_start?: string | Date | null;
   date_stop?: string | Date | null;
   created_date?: string | Date | null;
@@ -82,6 +83,9 @@ export type TaskView = {
   statusKey: TaskStatusKey;
   durationSeconds?: number;
   durationLabel: string;
+  elapsedSeconds?: number;
+  durationDiffSeconds?: number;
+  hasHourMismatch?: boolean;
   deadlineDate: Date | null;
   deadlineLabel: string;
   deadlineColor: string;

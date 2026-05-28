@@ -104,11 +104,13 @@ export const collectTaskRelevantDates = (task: Record<string, unknown>): Date[] 
 };
 
 export const getElapsedEffectiveDate = (value: {
+  reference_date?: unknown;
   date_start?: unknown;
   created_date?: unknown;
   inserted_at?: unknown;
   updated_at?: unknown;
 }) =>
+  parseDateValue(value.reference_date) ||
   parseDateValue(value.date_start) ||
   parseDateValue(value.created_date) ||
   parseDateValue(value.inserted_at) ||
@@ -163,12 +165,12 @@ export const getTaskDurationSeconds = (
   task: Record<string, unknown>,
   elapsedFallbackSeconds?: number | null,
 ): number | undefined => {
-  const bitrixSeconds = getTaskTimeSpentSeconds(task);
-  if (bitrixSeconds != null) return bitrixSeconds;
-
   if (typeof elapsedFallbackSeconds === "number" && Number.isFinite(elapsedFallbackSeconds) && elapsedFallbackSeconds > 0) {
     return elapsedFallbackSeconds;
   }
+
+  const bitrixSeconds = getTaskTimeSpentSeconds(task);
+  if (bitrixSeconds != null) return bitrixSeconds;
 
   const explicitSeconds = firstPositiveNumber(task, ["duration_seconds", "durationSeconds", "seconds"]);
   if (explicitSeconds != null) return explicitSeconds;

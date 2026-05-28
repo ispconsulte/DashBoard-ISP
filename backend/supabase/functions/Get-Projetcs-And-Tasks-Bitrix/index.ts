@@ -50,6 +50,13 @@ function toIso(value: any): string | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
+function parseBooleanFlag(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value !== 'string') return false;
+  return ['1', 'true', 'yes', 'y', 'sim'].includes(value.trim().toLowerCase());
+}
+
 function nonEmptyString(value: any): string | null {
   if (value === undefined || value === null) return null;
   const str = String(value).trim();
@@ -359,15 +366,22 @@ async function getLastTaskSyncCursor(supabase: any) {
   return changedSince;
 }
 
-async function fetchIncrementalTaskPages(sinceIso: string | null) {
+async function fetchIncrementalTaskPages(
+  sinceIso: string | null,
+  forceFullSync = false,
+  options: { start?: number; maxPages?: number } = {},
+) {
   if (!BITRIX_BASE_URL) {
     throw new Error("A BITRIX_BASE_URL não foi configurada nos Secrets.");
   }
 
-  if (!sinceIso) {
+  if (forceFullSync || !sinceIso) {
     const allTasks: any[] = [];
-    let start = 0;
+    let start = Math.max(0, toInt(options.start) ?? 0);
+    const maxPages = Math.max(0, toInt(options.maxPages) ?? 0);
+    let pagesFetched = 0;
     let hasMore = true;
+    let nextStart: number | null = null;
 
     while (hasMore) {
       const taskUrl = new URL('tasks.task.list.json', BITRIX_BASE_URL);
@@ -390,16 +404,28 @@ async function fetchIncrementalTaskPages(sinceIso: string | null) {
       const data = await fetchJsonWithRetry(taskUrl.toString());
       const tasks = normalizeList(data.result?.tasks || data.result || []);
       allTasks.push(...tasks);
+      pagesFetched += 1;
 
       if (data.next) {
-        start = data.next;
+        nextStart = Number(data.next);
+        if (maxPages > 0 && pagesFetched >= maxPages) {
+          hasMore = false;
+          break;
+        }
+        start = nextStart;
         await new Promise((r) => setTimeout(r, DELAY_MS));
       } else {
+        nextStart = null;
         hasMore = false;
       }
     }
 
-    return { mode: 'full' as const, pages: allTasks };
+    return {
+      mode: forceFullSync ? (maxPages > 0 ? 'full_sync_paged' as const : 'full_sync' as const) : 'full_initial' as const,
+      pages: allTasks,
+      nextStart,
+      pagesFetched,
+    };
   }
 
   const filters = [
@@ -446,7 +472,7 @@ async function fetchIncrementalTaskPages(sinceIso: string | null) {
     }
   }
 
-  return { mode: 'incremental' as const, pages: Array.from(byTaskId.values()) };
+  return { mode: 'incremental' as const, pages: Array.from(byTaskId.values()), nextStart: null, pagesFetched: null };
 }
 
 async function fetchBitrixTaskById(taskId: number) {
@@ -482,7 +508,7 @@ async function fetchExistingTasksMap(supabase: any, taskIds: number[]) {
     const slice = taskIds.slice(offset, offset + 500);
     const { data, error } = await supabase
       .from('tasks')
-      .select('task_id,title,description,status,real_status,deadline,closed_date,changed_date,time_spent_in_logs,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,diagnostic_codes')
+      .select('task_id,title,description,status,real_status,deadline,closed_date,created_date,changed_date,time_spent_in_logs,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,diagnostic_codes')
       .in('task_id', slice);
 
     if (error) throw new Error(`Erro ao carregar tarefas existentes: ${error.message}`);
@@ -515,6 +541,7 @@ function mergeTaskRecord(incoming: any, existing?: any) {
     real_status: keepBest(incoming.real_status, existing.real_status ?? existing.status),
     deadline: keepBest(incoming.deadline, existing.deadline),
     closed_date: keepBest(incoming.closed_date, existing.closed_date),
+    created_date: keepBest(incoming.created_date, existing.created_date),
     changed_date: keepBest(incoming.changed_date, existing.changed_date),
     time_spent_in_logs: incoming.time_spent_in_logs ?? existing.time_spent_in_logs ?? 0,
     group_id: keepBest(incoming.group_id, existing.group_id),
@@ -642,27 +669,50 @@ async function fetchTasksForReconciliation(supabase: any) {
   return await fetchAllRows(
     supabase,
     'tasks',
-    'task_id,title,status,real_status,deadline,closed_date,changed_date,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,diagnostic_codes',
+    'task_id,title,status,real_status,deadline,closed_date,created_date,changed_date,group_id,group_name,responsible_id,responsible_name,project_id,last_seen_at,last_seen_in_bitrix_at,missing_from_bitrix_since,bitrix_visible,project_closed,local_state,diagnostic_codes',
     'task_id',
   );
 }
 
 async function createSyncRun(supabase: any, details: Record<string, unknown>) {
   const staleBeforeIso = new Date(Date.now() - RUN_STALE_AFTER_MS).toISOString();
+  const forceRestartRunning = details.force_restart_running === true;
 
-  const { error: staleError } = await supabase
+  let staleQuery = supabase
     .from('sync_job_runs')
     .update({
       status: 'error',
       finished_at: new Date().toISOString(),
-      error_message: 'Marked stale before a new scheduled run started.',
+      error_message: forceRestartRunning
+        ? 'Marked stale by explicit force_restart_running request.'
+        : 'Marked stale before a new scheduled run started.',
     })
     .eq('job_name', SYNC_JOB_NAME)
-    .eq('status', 'running')
-    .lt('started_at', staleBeforeIso);
+    .eq('status', 'running');
+
+  if (!forceRestartRunning) {
+    staleQuery = staleQuery.lt('started_at', staleBeforeIso);
+  }
+
+  const { data: staleRows, error: staleError } = await staleQuery
+    .select('id,started_at');
 
   if (staleError) {
     console.error('Falha ao encerrar runs antigos:', staleError.message);
+  } else if ((staleRows ?? []).length > 0) {
+    await upsertSourceStatus(
+      supabase,
+      'error',
+      {
+        stale_marked_at: new Date().toISOString(),
+        stale_before_iso: staleBeforeIso,
+        stale_runs_closed: (staleRows ?? []).length,
+        stale_run_ids: (staleRows ?? []).map((row: any) => row.id),
+      },
+      forceRestartRunning
+        ? 'Marked stale by explicit force_restart_running request.'
+        : 'Marked stale before a new scheduled run started.',
+    );
   }
 
   const { data: runningRows, error: runningError } = await supabase
@@ -1639,8 +1689,49 @@ Deno.serve(async (req) => {
   const startedAt = Date.now();
   let supabase: any = null;
   let runId: string | null = null;
+  let requestedFullSync = false;
+  let requestedSkipBonusPersistence = false;
+  let requestedForceRestartRunning = false;
+  let requestedTaskStart = 0;
+  let requestedMaxTaskPages = 0;
 
   try {
+    if (req.method !== 'GET') {
+      try {
+        const body = await req.json();
+        requestedFullSync =
+          parseBooleanFlag(body?.full_sync) ||
+          parseBooleanFlag(body?.force_full_sync) ||
+          parseBooleanFlag(body?.reset_cursor);
+        requestedSkipBonusPersistence =
+          parseBooleanFlag(body?.skip_bonus_persistence) ||
+          parseBooleanFlag(body?.skip_bonus_snapshots);
+        requestedForceRestartRunning = parseBooleanFlag(body?.force_restart_running);
+        requestedTaskStart = Math.max(0, toInt(body?.task_start ?? body?.start) ?? 0);
+        requestedMaxTaskPages = Math.max(0, toInt(body?.max_task_pages) ?? 0);
+      } catch {
+        requestedFullSync = false;
+        requestedSkipBonusPersistence = false;
+        requestedForceRestartRunning = false;
+        requestedTaskStart = 0;
+        requestedMaxTaskPages = 0;
+      }
+    } else {
+      const url = new URL(req.url);
+      requestedFullSync =
+        parseBooleanFlag(url.searchParams.get('full_sync')) ||
+        parseBooleanFlag(url.searchParams.get('force_full_sync')) ||
+        parseBooleanFlag(url.searchParams.get('reset_cursor'));
+      requestedSkipBonusPersistence =
+        parseBooleanFlag(url.searchParams.get('skip_bonus_persistence')) ||
+        parseBooleanFlag(url.searchParams.get('skip_bonus_snapshots'));
+      requestedForceRestartRunning = parseBooleanFlag(url.searchParams.get('force_restart_running'));
+      requestedTaskStart = Math.max(0, toInt(url.searchParams.get('task_start') ?? url.searchParams.get('start')) ?? 0);
+      requestedMaxTaskPages = Math.max(0, toInt(url.searchParams.get('max_task_pages')) ?? 0);
+    }
+
+    const pagedFullSync = requestedFullSync && requestedMaxTaskPages > 0;
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     supabase = createClient(supabaseUrl, supabaseKey);
@@ -1655,6 +1746,11 @@ Deno.serve(async (req) => {
     const runState = await createSyncRun(supabase, {
       started_at_iso: syncStartedAtIso,
       request_method: req.method,
+      requested_full_sync: requestedFullSync,
+      skip_bonus_persistence: requestedSkipBonusPersistence,
+      force_restart_running: requestedForceRestartRunning,
+      task_start: requestedTaskStart,
+      max_task_pages: requestedMaxTaskPages,
     });
 
     if (runState?.skipped) {
@@ -1677,6 +1773,12 @@ Deno.serve(async (req) => {
     await upsertSourceStatus(supabase, 'running', {
       started_at_iso: syncStartedAtIso,
       request_method: req.method,
+      requested_full_sync: requestedFullSync,
+      skip_bonus_persistence: requestedSkipBonusPersistence,
+      force_restart_running: requestedForceRestartRunning,
+      task_start: requestedTaskStart,
+      max_task_pages: requestedMaxTaskPages,
+      strategy: requestedFullSync ? 'full_sync' : 'incremental',
     });
 
     // Cache para validar chaves estrangeiras
@@ -1860,8 +1962,12 @@ Deno.serve(async (req) => {
     const existingRows = await fetchTasksForReconciliation(supabase);
     const existingTasksMap = new Map(existingRows.map((row: any) => [Number(row.task_id), row]));
     const tombstones = await fetchDeleteTombstones(supabase);
-    const incrementalSince = await getLastTaskSyncCursor(supabase);
-    const incrementalPayload = await fetchIncrementalTaskPages(incrementalSince);
+    const incrementalSince = requestedFullSync ? null : await getLastTaskSyncCursor(supabase);
+    const incrementalPayload = await fetchIncrementalTaskPages(
+      incrementalSince,
+      requestedFullSync,
+      { start: requestedTaskStart, maxPages: requestedMaxTaskPages },
+    );
     const sourceTasks = incrementalPayload.pages;
 
     console.log('>>> Estratégia de sync de tarefas:', {
@@ -1889,6 +1995,7 @@ Deno.serve(async (req) => {
         const rawStatus = getField(t, 'status', 'STATUS');
         const rawDeadline = getField(t, 'deadline', 'DEADLINE');
         const rawClosedDate = getField(t, 'closedDate', 'CLOSED_DATE');
+        const rawCreatedDate = getField(t, 'createdDate', 'CREATED_DATE');
         const rawChangedDate = getField(t, 'changedDate', 'CHANGED_DATE');
         const rawTimeSpent = getField(t, 'timeSpentInLogs', 'TIME_SPENT_IN_LOGS');
         const rawGroupId = getField(t, 'groupId', 'GROUP_ID');
@@ -1900,6 +2007,7 @@ Deno.serve(async (req) => {
 
         const deadline = toIso(rawDeadline);
         const closedDate = toIso(rawClosedDate);
+        const createdDate = toIso(rawCreatedDate);
         const changedDate = toIso(rawChangedDate);
         const originalGroupId = toInt(rawGroupId);
         let projectId = null;
@@ -1935,6 +2043,7 @@ Deno.serve(async (req) => {
           real_status: toInt(rawStatus),
           deadline,
           closed_date: closedDate,
+          created_date: createdDate,
           changed_date: changedDate,
           time_spent_in_logs: toInt(rawTimeSpent) ?? 0,
           group_id: originalGroupId,
@@ -1999,7 +2108,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const reconcileCandidates = existingRows.filter((row: any) => {
+    const reconcileCandidates = pagedFullSync ? [] : existingRows.filter((row: any) => {
       const taskId = Number(row.task_id);
       if (!taskId || seenTaskIds.has(taskId)) return false;
       if (tombstones.has(taskId)) return true;
@@ -2055,6 +2164,7 @@ Deno.serve(async (req) => {
       const liveLocalState = 'active';
       const liveTitle = getTaskTitle(liveTask) ?? nonEmptyString(row.title) ?? `Tarefa ${taskId}`;
       const liveDeadline = toIso(getField(liveTask, 'deadline', 'DEADLINE'));
+      const liveCreatedDate = toIso(getField(liveTask, 'createdDate', 'CREATED_DATE'));
       const liveResponsibleId = toInt(getField(liveTask, 'responsibleId', 'RESPONSIBLE_ID'));
       const liveResponsibleName = nonEmptyString(liveTask.responsible?.name || liveTask.RESPONSIBLE?.NAME);
 
@@ -2066,6 +2176,7 @@ Deno.serve(async (req) => {
         real_status: toInt(getField(liveTask, 'status', 'STATUS')),
         deadline: liveDeadline,
         closed_date: toIso(getField(liveTask, 'closedDate', 'CLOSED_DATE')),
+        created_date: liveCreatedDate,
         changed_date: toIso(getField(liveTask, 'changedDate', 'CHANGED_DATE')),
         time_spent_in_logs: toInt(getField(liveTask, 'timeSpentInLogs', 'TIME_SPENT_IN_LOGS')) ?? 0,
         group_id: liveGroupId,
@@ -2093,7 +2204,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const staleUpdates = existingRows
+    const staleUpdates = pagedFullSync ? [] : existingRows
       .filter((row: any) => {
         const taskId = Number(row.task_id);
         if (!taskId || seenTaskIds.has(taskId) || tombstones.has(taskId)) return false;
@@ -2146,7 +2257,25 @@ Deno.serve(async (req) => {
     }
 
     const relinkedOrphans = await relinkOrphanElapsedTimes(supabase);
-    const bonusPersistence = await persistBonusSnapshots(supabase, syncStartedAtIso);
+    let bonusPersistence;
+    if (requestedSkipBonusPersistence) {
+      bonusPersistence = {
+        skipped: true,
+        reason: 'skip_bonus_persistence requested for resource-safe task sync',
+      };
+    } else {
+      try {
+        bonusPersistence = await persistBonusSnapshots(supabase, syncStartedAtIso);
+      } catch (bonusError) {
+        const bonusMessage = bonusError instanceof Error ? bonusError.message : String(bonusError);
+        console.error('Falha nao bloqueante ao persistir bonus snapshots:', bonusMessage);
+        bonusPersistence = {
+          skipped: false,
+          non_blocking_error: bonusMessage,
+          reason: 'bonus snapshot persistence failed after operational task sync completed',
+        };
+      }
+    }
 
     const responseBody = {
       success: true,
@@ -2156,6 +2285,14 @@ Deno.serve(async (req) => {
       tasks: canonicalTasks.size,
       deadline_changes_detected: deadlineChangesWritten,
       incremental_mode: incrementalPayload.mode,
+      requested_full_sync: requestedFullSync,
+      skip_bonus_persistence: requestedSkipBonusPersistence,
+      force_restart_running: requestedForceRestartRunning,
+      task_start: requestedTaskStart,
+      max_task_pages: requestedMaxTaskPages,
+      next_task_start: incrementalPayload.nextStart,
+      task_pages_fetched: incrementalPayload.pagesFetched,
+      full_sync_complete: requestedFullSync ? incrementalPayload.nextStart == null : null,
       incremental_since: incrementalSince,
       reconciled_tasks: reconciledUpdates.length,
       stale_tasks_marked: staleUpdates.length,
