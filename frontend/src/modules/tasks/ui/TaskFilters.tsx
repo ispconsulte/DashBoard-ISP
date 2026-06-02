@@ -207,6 +207,7 @@ export function TaskFilters({
                   options={taskDateFilterOptions}
                   placeholder="Criação + tempo gasto (padrão)"
                   icon={Calendar}
+                  subtleSelection
                 />
               </div>
 
@@ -219,6 +220,7 @@ export function TaskFilters({
                   options={periodChips.map(c => ({ value: c.value, label: c.label }))}
                   placeholder="Todos os períodos"
                   icon={Calendar}
+                  subtleSelection
                 />
               </div>
 

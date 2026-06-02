@@ -178,6 +178,7 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
                   icon={Calendar}
                   accentVar="--ana-purple"
                   surfaceVar="--ana-surface"
+                  subtleSelection
                 />
               </div>
 
