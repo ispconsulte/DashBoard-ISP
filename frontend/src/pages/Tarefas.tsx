@@ -65,7 +65,7 @@ import { taskMatchesConsultantFilter } from "@/modules/tasks/taskConsultantFilte
 import { STATUS_LABELS } from "@/modules/tasks/types";
 import { exportTasksPDF } from "@/lib/exportPdf";
 import ExportPDFModal, { type PDFExportSelection, type TaskIntegrityInfo } from "@/modules/analytics/components/ExportPDFModal";
-import { notifyError } from "@/lib/friendlyError";
+import { notifyError, withRetry } from "@/lib/friendlyError";
 import { FormattedDescription } from "@/modules/tasks/ui/FormattedDescription";
 import { toast } from "sonner";
 
@@ -1611,7 +1611,8 @@ export default function TarefasPage() {
               return;
             }
 
-            await exportTasksPDF({
+            // Geração de PDF é idempotente: nova tentativa em falhas transitórias antes de avisar.
+            await withRetry(() => exportTasksPDF({
               tasks: rows,
               stats: {
                 total: rows.length,
@@ -1621,12 +1622,12 @@ export default function TarefasPage() {
                 totalHours: `${totalHoursLabel}h`,
               },
               generatedBy: session?.name || undefined,
-            });
+            }), { label: "tarefas-pdf" });
             } catch (pdfError) {
               // Detalhe técnico fica apenas no log; o usuário recebe a mensagem amigável.
               notifyError(pdfError, {
                 context: "tarefas-pdf",
-                message: "Não foi possível gerar o PDF agora. Revise os filtros e tente novamente. Se o problema continuar, acione o suporte.",
+                message: "Não foi possível gerar o PDF agora. Tentamos novamente, mas o erro persistiu. Revise os filtros e tente novamente ou acione o suporte.",
               });
             }
           }}

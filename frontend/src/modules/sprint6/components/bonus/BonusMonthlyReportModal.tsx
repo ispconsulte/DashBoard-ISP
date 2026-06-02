@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { money } from "./BonusHelpers";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase";
 import { exportBonusReportPdf, type BonusPdfData } from "@/lib/exportBonusPdf";
-import { notifyError } from "@/lib/friendlyError";
+import { notifyError, withRetry } from "@/lib/friendlyError";
 
 /* ── Pretty category/subtopic labels ────────────────────────────────── */
 const CATEGORY_PT: Record<string, string> = {
@@ -225,27 +225,34 @@ export function BonusMonthlyReportModal({
       setPreviewLoading(true);
       try {
         const periodKey = `${year}-${String(month).padStart(2, "0")}`;
-        const [{ data: snapshotRows, error: snapshotError }, { data: evaluationRows, error: evaluationError }] = await Promise.all([
-          supabase
-            .from("bonus_score_snapshots")
-            .select("score, payout_amount")
-            .eq("snapshot_kind", "consultant_monthly")
-            .eq("period_key", periodKey)
-            .eq("user_id", consultant.userId)
-            .limit(1),
-          supabase
-            .from("bonus_internal_evaluations")
-            .select("category, subtopic, score_1_10, justificativa, pontos_de_melhoria, status")
-            .eq("evaluation_scope", "consultant")
-            .eq("user_id", consultant.userId)
-            .eq("period_month", month)
-            .eq("period_year", year)
-            .order("category")
-            .order("subtopic"),
-        ]);
-
-        if (snapshotError) throw snapshotError;
-        if (evaluationError) throw evaluationError;
+        // Leitura idempotente: nova tentativa em falhas transitórias antes de cair no fallback.
+        // O supabase-js devolve o erro no objeto de resposta, então lançamos para o withRetry classificar.
+        const { snapshotRows, evaluationRows } = await withRetry(
+          async () => {
+            const [snapshotRes, evaluationRes] = await Promise.all([
+              supabase
+                .from("bonus_score_snapshots")
+                .select("score, payout_amount")
+                .eq("snapshot_kind", "consultant_monthly")
+                .eq("period_key", periodKey)
+                .eq("user_id", consultant.userId)
+                .limit(1),
+              supabase
+                .from("bonus_internal_evaluations")
+                .select("category, subtopic, score_1_10, justificativa, pontos_de_melhoria, status")
+                .eq("evaluation_scope", "consultant")
+                .eq("user_id", consultant.userId)
+                .eq("period_month", month)
+                .eq("period_year", year)
+                .order("category")
+                .order("subtopic"),
+            ]);
+            if (snapshotRes.error) throw snapshotRes.error;
+            if (evaluationRes.error) throw evaluationRes.error;
+            return { snapshotRows: snapshotRes.data, evaluationRows: evaluationRes.data };
+          },
+          { label: "bonus-report-preview" },
+        );
 
         const rows = (evaluationRows ?? [])
           .filter((row: { status: string | null }) => row.status !== "draft")
@@ -403,10 +410,15 @@ export function BonusMonthlyReportModal({
       }),
     };
     try {
-      await exportBonusReportPdf(pdfData);
+      // Geração de PDF é idempotente: tenta novamente em falhas transitórias antes de avisar.
+      await withRetry(() => exportBonusReportPdf(pdfData), { label: "bonus-report-pdf" });
       toast.success("PDF exportado com sucesso.");
     } catch (err) {
-      notifyError(err, { context: "bonus-report-pdf", hint: "pdf" });
+      notifyError(err, {
+        context: "bonus-report-pdf",
+        hint: "pdf",
+        message: "Não foi possível gerar o PDF agora. Tentamos novamente, mas o erro persistiu.",
+      });
     }
   };
 

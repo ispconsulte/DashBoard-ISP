@@ -182,3 +182,95 @@ export function notifyError(error: unknown, options: NotifyOptions = {}): string
   }
   return message;
 }
+
+/* ── Retry seguro para falhas transitórias ─────────────────────────────
+ * Tenta novamente apenas erros que costumam ser temporários (rede, timeout,
+ * 502/503/504, banco indisponível). NUNCA repete falhas permanentes
+ * (400/401/403/404), cancelamentos esperados (AbortError) nem mutações sem
+ * proteção de idempotência — isso é responsabilidade do chamador.
+ * ─────────────────────────────────────────────────────────────────────── */
+
+/** Categorias consideradas transitórias (passíveis de nova tentativa). */
+const TRANSIENT_KINDS: ReadonlySet<FriendlyErrorKind> = new Set<FriendlyErrorKind>([
+  "network",
+  "timeout",
+  "server",
+  "unavailable",
+  "database",
+]);
+
+/** AbortError esperado (navegação/troca de filtro) — não é erro do usuário. */
+export function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  return error instanceof Error && error.name === "AbortError";
+}
+
+/** Indica se o erro é transitório e seguro para nova tentativa. */
+export function isTransientError(error: unknown): boolean {
+  if (isAbortError(error)) return false;
+  return TRANSIENT_KINDS.has(classifyError(error));
+}
+
+export type RetryOptions = {
+  /** Número máximo de tentativas, incluindo a primeira (padrão: 3). */
+  maxAttempts?: number;
+  /** Atraso base entre tentativas em ms (padrão: 500). Cresce exponencialmente. */
+  baseDelayMs?: number;
+  /** Teto do atraso em ms (padrão: 4000). */
+  maxDelayMs?: number;
+  /** Decide se um erro deve ser repetido. Padrão: somente transitórios. */
+  shouldRetry?: (error: unknown, attempt: number) => boolean;
+  /** Rótulo do contexto para log/telemetria. */
+  label?: string;
+  /** Chamado antes de cada nova tentativa (útil para estado de UI). */
+  onRetry?: (info: { attempt: number; maxAttempts: number; error: unknown; delayMs: number }) => void;
+  /** Sinal para cancelar a espera entre tentativas. */
+  signal?: AbortSignal;
+};
+
+const delay = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => { clearTimeout(timer); reject(new DOMException("Aborted", "AbortError")); },
+      { once: true },
+    );
+  });
+
+/**
+ * Executa `operation` com novas tentativas limitadas para falhas transitórias.
+ * Após esgotar as tentativas (ou diante de um erro permanente), relança o erro
+ * para que o chamador o trate com `notifyError`. Não exibe toast nem loga em
+ * cada tentativa — apenas um aviso leve de retry (com proteção anti-flood).
+ */
+export async function withRetry<T>(operation: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
+  const maxAttempts = Math.max(1, options.maxAttempts ?? 3);
+  const baseDelayMs = options.baseDelayMs ?? 500;
+  const maxDelayMs = options.maxDelayMs ?? 4000;
+  const label = options.label ?? "retry";
+  const shouldRetry = options.shouldRetry ?? ((err) => isTransientError(err));
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const isLast = attempt >= maxAttempts;
+      // Aborto esperado nunca repete e nunca vira erro — propaga limpo.
+      if (isAbortError(error) || isLast || !shouldRetry(error, attempt)) {
+        throw error;
+      }
+      const delayMs = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
+      // Aviso único por contexto+tentativa (anti-flood) para não poluir o console.
+      if (shouldEmit(`${label}:retry:${attempt}`)) {
+        console.warn(`[${label}] tentativa ${attempt}/${maxAttempts} falhou; nova tentativa em ${delayMs}ms`);
+      }
+      options.onRetry?.({ attempt, maxAttempts, error, delayMs });
+      await delay(delayMs, options.signal);
+    }
+  }
+  throw lastError;
+}
