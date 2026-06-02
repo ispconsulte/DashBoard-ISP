@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Search, ChevronDown } from "lucide-react";
+import { Search, ChevronDown, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // z-[200]: dropdowns must sit above Radix Dialogs (z-50) and the filter panel
@@ -107,10 +107,16 @@ export function CustomSelect({
   mineSet,
   accentVar = "--task-purple",
   surfaceVar = "--task-surface",
+  subtleSelection = false,
 }: BaseDropdownProps & {
   value: string;
   onChange: (v: string) => void;
   options: DropdownOption[];
+  /** When true, the active option is not highlighted in the accent colour —
+   *  the dropdown opens "neutral" (only a discreet check marks the current
+   *  value). Used for the always-defaulted Base de data / Período filters so
+   *  they don't look pre-selected. */
+  subtleSelection?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -125,6 +131,12 @@ export function CustomSelect({
 
   const selected = options.find((o) => o.value === value);
   const isActive = Boolean(value && value !== "all");
+  // The placeholder doubles as the "all/default" reset entry rendered as a fixed
+  // top button. Suppress it whenever the options list already represents that
+  // entry — either via an explicit "all" value (Status/Período) or because the
+  // placeholder text matches an existing option (Base de data) — otherwise the
+  // same label would appear twice (fixed button + list item).
+  const hasResetOption = options.some((o) => o.value === "all" || o.label === placeholder);
 
   const filtered = search.trim()
     ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
@@ -147,7 +159,7 @@ export function CustomSelect({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={`flex min-h-[44px] h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
-          isActive
+          isActive && !subtleSelection
             ? `border-[hsl(var(${accentVar})/0.4)] bg-[hsl(var(${accentVar})/0.1)] text-white/80`
             : `border-white/[0.08] bg-[hsl(var(${surfaceVar}))] text-white/50`
         } hover:border-white/[0.15]`}
@@ -162,17 +174,19 @@ export function CustomSelect({
           <SearchInput value={search} onChange={setSearch} inputRef={inputRef} surfaceVar={surfaceVar} accentVar={accentVar} />
         )}
         <div className="overflow-y-auto flex-1 p-1.5 flex flex-col gap-0.5">
-          <button
-            type="button"
-            onClick={() => { onChange("all"); setOpen(false); setSearch(""); }}
-            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition ${
-              !isActive
-                ? `bg-[hsl(var(${accentVar})/0.15)] text-white/90`
-                : "text-white/40 hover:bg-white/[0.06] hover:text-white/60"
-            }`}
-          >
-            {placeholder}
-          </button>
+          {!hasResetOption && (
+            <button
+              type="button"
+              onClick={() => { onChange("all"); setOpen(false); setSearch(""); }}
+              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition ${
+                !isActive
+                  ? `bg-[hsl(var(${accentVar})/0.15)] text-white/90`
+                  : "text-white/40 hover:bg-white/[0.06] hover:text-white/60"
+              }`}
+            >
+              {placeholder}
+            </button>
+          )}
 
           {mineSet && mine.length > 0 && (
             <>
@@ -201,20 +215,26 @@ export function CustomSelect({
             <div className="px-3 pt-2 pb-0.5 text-[9px] font-bold uppercase tracking-widest text-white/20">Outros</div>
           )}
 
-          {(mineSet ? others : sortedOptions).map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
-              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition ${
-                value === o.value
-                  ? `bg-[hsl(var(${accentVar})/0.15)] text-white/90`
-                  : "text-white/40 hover:bg-white/[0.06] hover:text-white/60"
-              }`}
-            >
-              <span className="truncate">{o.label}</span>
-            </button>
-          ))}
+          {(mineSet ? others : sortedOptions).map((o) => {
+            const isCurrent = value === o.value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
+                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition ${
+                  isCurrent && !subtleSelection
+                    ? `bg-[hsl(var(${accentVar})/0.15)] text-white/90`
+                    : "text-white/40 hover:bg-white/[0.06] hover:text-white/60"
+                }`}
+              >
+                <span className="flex-1 truncate text-left">{o.label}</span>
+                {isCurrent && subtleSelection && (
+                  <Check className={`h-3.5 w-3.5 shrink-0 text-[hsl(var(${accentVar}))]`} />
+                )}
+              </button>
+            );
+          })}
 
           {sortedOptions.length === 0 && search.trim() && (
             <p className="px-3 py-4 text-center text-[11px] text-white/30">Nenhum resultado</p>
