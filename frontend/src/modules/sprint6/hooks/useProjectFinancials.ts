@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { supabaseExt as supabase } from "@/lib/supabase";
+import { withRetry, notifyError } from "@/lib/friendlyError";
 
 export interface ProjectFinancialRow {
   id: string;
@@ -69,9 +70,20 @@ export function useProjectFinancials(accessToken?: string | null): UseProjectFin
       setLoading(true);
       setError(null);
       try {
-        const { data: rows, error: err } = await supabase
-          .from("project_financials")
-          .select("id, project_id, receita_projeto, custo_hora, custo_total_estimado, observacoes");
+        // Leitura idempotente: nova tentativa segura em falhas transitórias.
+        // Tabela ausente (missing relation) é tratada como vazio, sem retry e sem erro.
+        const { data: rows, error: err } = await withRetry(
+          () => supabase
+            .from("project_financials")
+            .select("id, project_id, receita_projeto, custo_hora, custo_total_estimado, observacoes")
+            .then((res) => {
+              if (res.error && !isMissingRelation(res.error.message ?? "")) {
+                throw new Error(res.error.message);
+              }
+              return res;
+            }),
+          { label: "project-financials" },
+        );
         if (err) {
           if (isMissingRelation(err.message ?? "")) {
             if (!cancelled) {
@@ -95,8 +107,8 @@ export function useProjectFinancials(accessToken?: string | null): UseProjectFin
           });
         }
         setData(map);
-      } catch (e: any) {
-        if (!cancelled) setError(e.message ?? "Erro ao carregar dados financeiros");
+      } catch (e) {
+        if (!cancelled) setError(notifyError(e, { context: "project-financials", toast: false }));
       } finally {
         if (!cancelled) setLoading(false);
       }

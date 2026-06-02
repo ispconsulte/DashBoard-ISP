@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabaseExt as supabase } from "@/lib/supabase";
+import { withRetry, notifyError } from "@/lib/friendlyError";
 import type { RoiPeriod } from "@/modules/sprint6/types";
 
 export interface BonusScoreSnapshotRow {
@@ -221,12 +222,22 @@ export function useBonusPersistenceData(period: RoiPeriod = "180d", refreshKey =
           notificationsQuery = notificationsQuery.in("period_key", monthKeys);
         }
 
-        const [snapshotsRes, evaluationsRes, notificationsRes, sourceStatusesRes] = await Promise.all([
-          snapshotsQuery,
-          evaluationsQuery,
-          notificationsQuery,
-          supabase.from("bonus_source_statuses").select("*").order("source_code", { ascending: true }),
-        ]);
+        // Leitura idempotente: nova tentativa segura em falhas transitórias antes de mostrar erro.
+        const [snapshotsRes, evaluationsRes, notificationsRes, sourceStatusesRes] = await withRetry(
+          () => Promise.all([
+            snapshotsQuery,
+            evaluationsQuery,
+            notificationsQuery,
+            supabase.from("bonus_source_statuses").select("*").order("source_code", { ascending: true }),
+          ]).then((results) => {
+            // O supabase-js devolve erro no objeto; lançamos para o withRetry classificar/repetir.
+            for (const res of results) {
+              if (res.error) throw new Error(res.error.message);
+            }
+            return results;
+          }),
+          { label: "bonus-persistence" },
+        );
 
         if (snapshotsRes.error) throw new Error(snapshotsRes.error.message);
         if (evaluationsRes.error) throw new Error(evaluationsRes.error.message);
@@ -246,12 +257,20 @@ export function useBonusPersistenceData(period: RoiPeriod = "180d", refreshKey =
 
         let breakdownRows: BonusMetricBreakdownRow[] = [];
         if (snapshotIds.length > 0) {
-          const { data, error: breakdownsError } = await supabase
-            .from("bonus_metric_breakdowns")
-            .select("*")
-            .in("snapshot_id", snapshotIds)
-            .order("metric_group", { ascending: true })
-            .order("metric_label", { ascending: true });
+          // Leitura idempotente: nova tentativa segura em falhas transitórias.
+          const { data, error: breakdownsError } = await withRetry(
+            () => supabase
+              .from("bonus_metric_breakdowns")
+              .select("*")
+              .in("snapshot_id", snapshotIds)
+              .order("metric_group", { ascending: true })
+              .order("metric_label", { ascending: true })
+              .then((res) => {
+                if (res.error) throw new Error(res.error.message);
+                return res;
+              }),
+            { label: "bonus-breakdowns" },
+          );
 
           if (breakdownsError) throw new Error(breakdownsError.message);
           breakdownRows = (data ?? []) as BonusMetricBreakdownRow[];
@@ -264,9 +283,10 @@ export function useBonusPersistenceData(period: RoiPeriod = "180d", refreshKey =
         setEvaluations(evaluationRows);
         setNotifications(notificationRows);
         setSourceStatuses(sourceRows);
-      } catch (loadError: any) {
+      } catch (loadError) {
         if (!cancelled) {
-          setError(loadError?.message ?? "Erro ao carregar persistência de bonificação");
+          // Detalhe técnico fica no log; estado de erro recebe mensagem amigável mapeada.
+          setError(notifyError(loadError, { context: "bonus-persistence", toast: false }));
           setSnapshots([]);
           setBreakdowns([]);
           setEvaluations([]);

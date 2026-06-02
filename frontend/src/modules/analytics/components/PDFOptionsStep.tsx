@@ -106,6 +106,12 @@ export default function OptionsStep({
         </button>
       </div>
 
+      {/* Current filters note — the export always reflects the filters applied on the page */}
+      <div className="mx-6 mb-1 flex items-start gap-2 rounded-xl border border-[hsl(262_83%_58%/0.2)] bg-[hsl(262_83%_58%/0.06)] px-4 py-2.5 text-[11px] text-white/55">
+        <FileDown className="h-3.5 w-3.5 shrink-0 text-[hsl(262_83%_68%)] mt-0.5" />
+        <span>O relatório usa os filtros aplicados na página (período, base de data, projeto e consultor). Ajuste os filtros antes de exportar para alterar o conteúdo.</span>
+      </div>
+
       {/* Options */}
       <div className="px-6 pb-2 space-y-2">
         <p className="text-[10px] font-bold uppercase tracking-wider text-white/30 mb-3">Conteúdo do relatório</p>

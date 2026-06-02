@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { money } from "./BonusHelpers";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase";
 import { exportBonusReportPdf, type BonusPdfData } from "@/lib/exportBonusPdf";
+import { notifyError, withRetry } from "@/lib/friendlyError";
 
 /* ── Pretty category/subtopic labels ────────────────────────────────── */
 const CATEGORY_PT: Record<string, string> = {
@@ -224,27 +225,34 @@ export function BonusMonthlyReportModal({
       setPreviewLoading(true);
       try {
         const periodKey = `${year}-${String(month).padStart(2, "0")}`;
-        const [{ data: snapshotRows, error: snapshotError }, { data: evaluationRows, error: evaluationError }] = await Promise.all([
-          supabase
-            .from("bonus_score_snapshots")
-            .select("score, payout_amount")
-            .eq("snapshot_kind", "consultant_monthly")
-            .eq("period_key", periodKey)
-            .eq("user_id", consultant.userId)
-            .limit(1),
-          supabase
-            .from("bonus_internal_evaluations")
-            .select("category, subtopic, score_1_10, justificativa, pontos_de_melhoria, status")
-            .eq("evaluation_scope", "consultant")
-            .eq("user_id", consultant.userId)
-            .eq("period_month", month)
-            .eq("period_year", year)
-            .order("category")
-            .order("subtopic"),
-        ]);
-
-        if (snapshotError) throw snapshotError;
-        if (evaluationError) throw evaluationError;
+        // Leitura idempotente: nova tentativa em falhas transitórias antes de cair no fallback.
+        // O supabase-js devolve o erro no objeto de resposta, então lançamos para o withRetry classificar.
+        const { snapshotRows, evaluationRows } = await withRetry(
+          async () => {
+            const [snapshotRes, evaluationRes] = await Promise.all([
+              supabase
+                .from("bonus_score_snapshots")
+                .select("score, payout_amount")
+                .eq("snapshot_kind", "consultant_monthly")
+                .eq("period_key", periodKey)
+                .eq("user_id", consultant.userId)
+                .limit(1),
+              supabase
+                .from("bonus_internal_evaluations")
+                .select("category, subtopic, score_1_10, justificativa, pontos_de_melhoria, status")
+                .eq("evaluation_scope", "consultant")
+                .eq("user_id", consultant.userId)
+                .eq("period_month", month)
+                .eq("period_year", year)
+                .order("category")
+                .order("subtopic"),
+            ]);
+            if (snapshotRes.error) throw snapshotRes.error;
+            if (evaluationRes.error) throw evaluationRes.error;
+            return { snapshotRows: snapshotRes.data, evaluationRows: evaluationRes.data };
+          },
+          { label: "bonus-report-preview" },
+        );
 
         const rows = (evaluationRows ?? [])
           .filter((row: { status: string | null }) => row.status !== "draft")
@@ -284,7 +292,10 @@ export function BonusMonthlyReportModal({
             soft: Math.round(consultant.manualEvaluation.softSkillScore ?? 0),
             people: Math.round(consultant.manualEvaluation.peopleSkillScore ?? 0),
           });
-          toast.error(error?.message ?? "Erro ao carregar preview do relatório.");
+          notifyError(error, {
+            context: "bonus-report-preview",
+            message: "Não foi possível carregar a prévia do relatório. Os dados disponíveis foram mantidos — tente novamente em instantes.",
+          });
         }
       } finally {
         if (!cancelled) setPreviewLoading(false);
@@ -303,6 +314,11 @@ export function BonusMonthlyReportModal({
     }
     return false;
   }, [permissionRole, consultant?.userId, session?.coordinatorOf]);
+
+  // Friendly fallback shown whenever the e-mail service fails or is unavailable.
+  // The PDF export remains available in the footer as the manual alternative.
+  const EMAIL_FALLBACK_MESSAGE =
+    "Não foi possível enviar o relatório por e-mail no momento. Baixe o PDF e envie manualmente, ou acione o time responsável informando que o envio por e-mail está indisponível.";
 
   const sendReport = async () => {
     if (!consultant?.userId || !recipientEmail.trim() || !session?.accessToken) return;
@@ -326,13 +342,27 @@ export function BonusMonthlyReportModal({
         }),
       });
 
-      if (!res.ok) throw new Error("Falha ao enviar relatório mensal.");
+      if (!res.ok) {
+        // Detalhe técnico fica apenas no log; o usuário recebe a orientação amigável (com PDF como alternativa).
+        const detail = await res.text().catch(() => "");
+        notifyError(detail || `HTTP ${res.status}`, {
+          context: "bonus-report-email",
+          message: EMAIL_FALLBACK_MESSAGE,
+          duration: 8000,
+        });
+        return;
+      }
 
       toast.success("Relatório enviado com sucesso.");
       onSent?.();
       onOpenChange(false);
-    } catch (error: any) {
-      toast.error(error?.message ?? "Erro ao enviar relatório mensal.");
+    } catch (error) {
+      // Rede/falha inesperada — mesma orientação amigável, detalhe técnico apenas no log.
+      notifyError(error, {
+        context: "bonus-report-email",
+        message: EMAIL_FALLBACK_MESSAGE,
+        duration: 8000,
+      });
     } finally {
       setSending(false);
     }
@@ -380,10 +410,15 @@ export function BonusMonthlyReportModal({
       }),
     };
     try {
-      await exportBonusReportPdf(pdfData);
+      // Geração de PDF é idempotente: tenta novamente em falhas transitórias antes de avisar.
+      await withRetry(() => exportBonusReportPdf(pdfData), { label: "bonus-report-pdf" });
       toast.success("PDF exportado com sucesso.");
-    } catch (err: any) {
-      toast.error(err?.message ?? "Erro ao exportar PDF.");
+    } catch (err) {
+      notifyError(err, {
+        context: "bonus-report-pdf",
+        hint: "pdf",
+        message: "Não foi possível gerar o PDF agora. Tentamos novamente, mas o erro persistiu.",
+      });
     }
   };
 
@@ -704,19 +739,22 @@ export function BonusMonthlyReportModal({
         </div>
 
         {/* ── Sticky footer ──────────────────────────────────── */}
-        <div className="shrink-0 border-t border-border/6 bg-[hsl(229_33%_8%/0.97)] px-4 py-3.5 sm:px-6 sm:py-4">
-          <div className="flex items-center gap-3 rounded-2xl border border-border/8 bg-white/[0.02] px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.15)]">
-            <Button variant="outline" size="default" onClick={handleExportPdf} disabled={previewLoading || previewRows.length === 0} className="rounded-xl border-border/10 hover:bg-white/[0.04] gap-2 text-sm">
+        <div className="shrink-0 border-t border-border/6 bg-[hsl(229_33%_8%/0.97)] px-4 py-3.5 sm:px-6 sm:py-4 space-y-2.5">
+          <p className="text-[11px] leading-snug text-muted-foreground/45 text-center sm:text-left">
+            Prefere enviar manualmente? Baixe o PDF — ele também serve como alternativa caso o envio por e-mail esteja indisponível.
+          </p>
+          <div className="flex flex-col gap-2.5 rounded-2xl border border-border/8 bg-white/[0.02] px-4 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.15)] sm:flex-row sm:items-center">
+            <Button variant="outline" size="default" onClick={handleExportPdf} disabled={previewLoading || previewRows.length === 0} className="w-full rounded-xl border-border/10 hover:bg-white/[0.04] gap-2 text-sm sm:w-auto">
               <Download className="h-4 w-4" />
-              Exportar PDF
+              Baixar PDF
             </Button>
-            <div className="flex-1" />
-            <Button variant="outline" size="default" onClick={() => onOpenChange(false)} className="rounded-xl border-border/10 hover:bg-white/[0.04] text-sm">
+            <div className="hidden flex-1 sm:block" />
+            <Button variant="outline" size="default" onClick={() => onOpenChange(false)} className="w-full rounded-xl border-border/10 hover:bg-white/[0.04] text-sm sm:w-auto">
               Cancelar
             </Button>
-            <Button size="default" onClick={sendReport} disabled={sending || !recipientEmail.trim()} className="rounded-xl gap-2 text-sm">
+            <Button size="default" onClick={sendReport} disabled={sending || !recipientEmail.trim()} className="w-full rounded-xl gap-2 text-sm sm:w-auto">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4" />}
-              Enviar relatório
+              Enviar por e-mail
             </Button>
           </div>
         </div>

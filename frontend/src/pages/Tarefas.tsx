@@ -65,6 +65,7 @@ import { taskMatchesConsultantFilter } from "@/modules/tasks/taskConsultantFilte
 import { STATUS_LABELS } from "@/modules/tasks/types";
 import { exportTasksPDF } from "@/lib/exportPdf";
 import ExportPDFModal, { type PDFExportSelection, type TaskIntegrityInfo } from "@/modules/analytics/components/ExportPDFModal";
+import { notifyError, withRetry } from "@/lib/friendlyError";
 import { FormattedDescription } from "@/modules/tasks/ui/FormattedDescription";
 import { toast } from "sonner";
 
@@ -1569,6 +1570,7 @@ export default function TarefasPage() {
             statusKey: t.statusKey,
           }))}
           onExport={async (sel: PDFExportSelection, incompleteAction) => {
+            try {
             const EMPTY_MARKERS = ["sem título", "sem projeto", "sem consultor", "sem prazo", "sem registro", "sem status", "tarefa sem título", "projeto indefinido", ""];
 
             const isFieldEmpty = (v: string) => EMPTY_MARKERS.includes(v.trim().toLowerCase()) || v.trim() === "" || v.trim() === "—";
@@ -1604,7 +1606,13 @@ export default function TarefasPage() {
               durationLabel: sel.includeDuration ? ((t.durationLabel || "").trim() || "Sem registro") : "—",
             }));
 
-            await exportTasksPDF({
+            if (rows.length === 0) {
+              toast.warning("Nenhuma tarefa corresponde às opções selecionadas. Ajuste os filtros e tente novamente.");
+              return;
+            }
+
+            // Geração de PDF é idempotente: nova tentativa em falhas transitórias antes de avisar.
+            await withRetry(() => exportTasksPDF({
               tasks: rows,
               stats: {
                 total: rows.length,
@@ -1614,7 +1622,14 @@ export default function TarefasPage() {
                 totalHours: `${totalHoursLabel}h`,
               },
               generatedBy: session?.name || undefined,
-            });
+            }), { label: "tarefas-pdf" });
+            } catch (pdfError) {
+              // Detalhe técnico fica apenas no log; o usuário recebe a mensagem amigável.
+              notifyError(pdfError, {
+                context: "tarefas-pdf",
+                message: "Não foi possível gerar o PDF agora. Tentamos novamente, mas o erro persistiu. Revise os filtros e tente novamente ou acione o suporte.",
+              });
+            }
           }}
         />
       )}

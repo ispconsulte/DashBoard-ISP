@@ -200,12 +200,12 @@ export function TaskFilters({
 
               {/* Date field dropdown */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Filtrar tarefa por</label>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Base de data</label>
                 <CustomSelect
                   value={dateFilterMode}
                   onChange={(value) => setDateFilterMode(value as TaskDateFilterMode)}
                   options={taskDateFilterOptions}
-                  placeholder="Data e tempo gasto"
+                  placeholder="Criação + tempo gasto (padrão)"
                   icon={Calendar}
                 />
               </div>

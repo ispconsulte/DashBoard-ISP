@@ -18,6 +18,7 @@ import { useAuth } from "@/modules/auth/hooks/useAuth";
 import { supabaseExt as supabase } from "@/lib/supabase";
 import { supabaseRest, safeJson } from "@/modules/users/api/supabaseRest";
 import { toast } from "sonner";
+import { notifyError } from "@/lib/friendlyError";
 import { BonusPaymentManagerCard } from "@/modules/sprint6/components/bonus/BonusPaymentManagerCard";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -291,7 +292,8 @@ export default function AdminBonificacaoPage() {
       })) as EvalRow[]);
       setUsers(usData.map((u) => ({ id: String(u.id), name: String(u.name ?? u.id), email: u.email ?? undefined })));
     } catch (e: unknown) {
-      setDataError(e instanceof Error ? e.message : "Erro ao carregar dados");
+      // Detalhe técnico apenas no log; banner exibe mensagem amigável mapeada.
+      setDataError(notifyError(e, { context: "admin-bonus-load", toast: false }));
     } finally {
       setLoading(false);
     }
@@ -370,7 +372,7 @@ export default function AdminBonificacaoPage() {
       setEditRow(null);
       void load();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Erro ao salvar");
+      notifyError(e, { context: "admin-bonus-save", hint: "save" });
     } finally {
       setSaving(false);
     }
@@ -387,7 +389,7 @@ export default function AdminBonificacaoPage() {
       setDeleteRow(null);
       void load();
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Erro ao excluir");
+      notifyError(e, { context: "admin-bonus-delete", hint: "save" });
     } finally {
       setDeleting(false);
     }

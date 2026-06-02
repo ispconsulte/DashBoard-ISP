@@ -551,7 +551,7 @@ export async function exportTasksPDF({
         head: [["Tarefa", "Responsável", "Status", "Prazo", "Duração"]],
         body: tableBody,
         theme: "grid",
-        styles: { fontSize: 8.5, cellPadding: 3.5, textColor: [200, 200, 230], lineColor: [50, 48, 80], lineWidth: 0.15, fillColor: [22, 20, 48] },
+        styles: { fontSize: 8.5, cellPadding: 3.5, textColor: [200, 200, 230], lineColor: [50, 48, 80], lineWidth: 0.15, fillColor: [22, 20, 48], overflow: "linebreak", valign: "middle" },
         headStyles: {
           fillColor: [24, 22, 60], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5, halign: "center", cellPadding: 4,
         },
@@ -600,7 +600,7 @@ export async function exportTasksPDF({
       head: [["Tarefa", "Projeto", "Responsável", "Status", "Prazo", "Duração"]],
       body: tableBody,
       theme: "grid",
-      styles: { fontSize: 8.5, cellPadding: 3.5, textColor: [200, 200, 230], lineColor: [50, 48, 80], lineWidth: 0.15, fillColor: [22, 20, 48] },
+      styles: { fontSize: 8.5, cellPadding: 3.5, textColor: [200, 200, 230], lineColor: [50, 48, 80], lineWidth: 0.15, fillColor: [22, 20, 48], overflow: "linebreak", valign: "middle" },
       headStyles: {
         fillColor: [24, 22, 60], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5, halign: "center", cellPadding: 4,
       },

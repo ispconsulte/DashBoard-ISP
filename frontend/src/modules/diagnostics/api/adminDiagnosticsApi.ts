@@ -1,4 +1,5 @@
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase";
+import { withRetry } from "@/lib/friendlyError";
 
 const EDGE_FN_URL = `${SUPABASE_URL}/functions/v1/admin-diagnostics`;
 
@@ -141,7 +142,11 @@ async function request<T>(token: string, body?: Record<string, unknown>, timeout
 }
 
 export function fetchIntegrityDashboard(token: string) {
-  return request<IntegrityPayload>(token, { action: "list" });
+  // Leitura idempotente (action: "list"): nova tentativa segura em falhas transitórias
+  // (rede/timeout/5xx) antes de propagar o erro para o tratamento amigável.
+  return withRetry(() => request<IntegrityPayload>(token, { action: "list" }), {
+    label: "integrity-dashboard",
+  });
 }
 
 export function upsertIntegrityTaskControl(

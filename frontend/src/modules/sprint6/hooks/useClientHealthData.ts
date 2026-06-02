@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabaseExt as supabase } from "@/lib/supabase";
+import { withRetry, notifyError } from "@/lib/friendlyError";
 import type {
   ClientHealthSummary,
   ClientKpi,
@@ -119,14 +120,21 @@ export function useClientHealthData(opts: UseClientHealthOptions): ClientHealthD
       setLoading(true);
       setError(null);
       try {
-        const [kpiPayload, benchRes, weightsRes] = await Promise.all([
-          supabase
-            .from("client_kpis")
-            .select("id, cliente_name, month, ebitda, churn, nps")
-            .order("month", { ascending: false }),
-          supabase.from("client_benchmarks").select("ebitda_avg, churn_avg, nps_avg").limit(1),
-          supabase.from("health_score_config" as any).select("weight_ebitda, weight_churn, weight_nps").limit(1),
-        ]);
+        // Leitura idempotente: nova tentativa segura em falhas transitórias antes de mostrar erro.
+        const [kpiPayload, benchRes, weightsRes] = await withRetry(
+          () => Promise.all([
+            supabase
+              .from("client_kpis")
+              .select("id, cliente_name, month, ebitda, churn, nps")
+              .order("month", { ascending: false }),
+            supabase.from("client_benchmarks").select("ebitda_avg, churn_avg, nps_avg").limit(1),
+            supabase.from("health_score_config" as any).select("weight_ebitda, weight_churn, weight_nps").limit(1),
+          ]).then((results) => {
+            if (results[0].error) throw new Error(results[0].error.message);
+            return results;
+          }),
+          { label: "client-health" },
+        );
         if (kpiPayload.error) {
           throw new Error(kpiPayload.error.message);
         }
@@ -151,8 +159,8 @@ export function useClientHealthData(opts: UseClientHealthOptions): ClientHealthD
             nps: Number(wRow.weight_nps) || DEFAULT_WEIGHTS.nps,
           });
         }
-      } catch (e: any) {
-        if (!cancelled) setError(e.message ?? "Erro ao carregar KPIs");
+      } catch (e) {
+        if (!cancelled) setError(notifyError(e, { context: "client-health", toast: false }));
       } finally {
         if (!cancelled) setLoading(false);
       }
