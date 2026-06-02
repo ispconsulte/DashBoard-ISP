@@ -65,6 +65,7 @@ import { taskMatchesConsultantFilter } from "@/modules/tasks/taskConsultantFilte
 import { STATUS_LABELS } from "@/modules/tasks/types";
 import { exportTasksPDF } from "@/lib/exportPdf";
 import ExportPDFModal, { type PDFExportSelection, type TaskIntegrityInfo } from "@/modules/analytics/components/ExportPDFModal";
+import { notifyError } from "@/lib/friendlyError";
 import { FormattedDescription } from "@/modules/tasks/ui/FormattedDescription";
 import { toast } from "sonner";
 
@@ -1569,6 +1570,7 @@ export default function TarefasPage() {
             statusKey: t.statusKey,
           }))}
           onExport={async (sel: PDFExportSelection, incompleteAction) => {
+            try {
             const EMPTY_MARKERS = ["sem título", "sem projeto", "sem consultor", "sem prazo", "sem registro", "sem status", "tarefa sem título", "projeto indefinido", ""];
 
             const isFieldEmpty = (v: string) => EMPTY_MARKERS.includes(v.trim().toLowerCase()) || v.trim() === "" || v.trim() === "—";
@@ -1604,6 +1606,11 @@ export default function TarefasPage() {
               durationLabel: sel.includeDuration ? ((t.durationLabel || "").trim() || "Sem registro") : "—",
             }));
 
+            if (rows.length === 0) {
+              toast.warning("Nenhuma tarefa corresponde às opções selecionadas. Ajuste os filtros e tente novamente.");
+              return;
+            }
+
             await exportTasksPDF({
               tasks: rows,
               stats: {
@@ -1615,6 +1622,13 @@ export default function TarefasPage() {
               },
               generatedBy: session?.name || undefined,
             });
+            } catch (pdfError) {
+              // Detalhe técnico fica apenas no log; o usuário recebe a mensagem amigável.
+              notifyError(pdfError, {
+                context: "tarefas-pdf",
+                message: "Não foi possível gerar o PDF agora. Revise os filtros e tente novamente. Se o problema continuar, acione o suporte.",
+              });
+            }
           }}
         />
       )}

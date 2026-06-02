@@ -12,7 +12,7 @@ export const isTaskDateFilterMode = (value: unknown): value is TaskDateFilterMod
   value === "elapsed_created_date";
 
 export const taskDateFilterOptions: Array<{ value: TaskDateFilterMode; label: string }> = [
-  { value: "elapsed_created_date", label: "Data e tempo gasto" },
+  { value: "elapsed_created_date", label: "Criação + tempo gasto (padrão)" },
   { value: "closed_date", label: "Data de fechamento" },
   { value: "created_date", label: "Data de criação" },
   { value: "deadline", label: "Data de prazo" },

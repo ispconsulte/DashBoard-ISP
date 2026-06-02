@@ -12,6 +12,7 @@ import { supabaseExt as supabase } from "@/lib/supabase";
 import type { BonusConsultantCard } from "@/modules/sprint6/hooks/useBonusRealData";
 import type { AuthSession } from "@/modules/auth/hooks/useAuth";
 import { toast } from "sonner";
+import { notifyError } from "@/lib/friendlyError";
 import {
   averageNumbers,
   BONUS_EVALUATION_CATEGORIES,
@@ -462,7 +463,10 @@ export function BonusEvaluationModal({
         if (!cancelled) {
           setForm(buildDefaultState());
           setLoadedRowCount(0);
-          toast.error(error?.message ?? "Erro ao carregar avaliação do período.");
+          notifyError(error, {
+            context: "bonus-eval-load",
+            message: "Não foi possível carregar a avaliação do período. Os campos foram reiniciados — tente novamente em instantes.",
+          });
         }
       } finally {
         if (!cancelled) setLoadingPeriod(false);
@@ -555,8 +559,8 @@ export function BonusEvaluationModal({
       toast.success(status === "submitted" ? "Avaliação finalizada e salva." : "Rascunho salvo com sucesso.");
       onSaved?.();
       onOpenChange(false);
-    } catch (error: any) {
-      toast.error(error?.message ?? "Erro ao salvar avaliação.");
+    } catch (error) {
+      notifyError(error, { context: "bonus-eval-save", hint: "save" });
     } finally {
       setSaving(false);
     }
@@ -588,8 +592,8 @@ export function BonusEvaluationModal({
       setLoadedRowCount(0);
       toast.success("Avaliação excluída com sucesso.");
       onSaved?.();
-    } catch (error: any) {
-      toast.error(error?.message ?? "Erro ao excluir avaliação.");
+    } catch (error) {
+      notifyError(error, { context: "bonus-eval-delete", hint: "save" });
     } finally {
       setSaving(false);
     }
