@@ -451,7 +451,9 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
         }, null);
 
         if (!filteredData.length && cached?.data?.length) {
-          console.warn("[tasks] vazio da API, usando cache como fallback");
+          // Comportamento esperado (resiliencia): API retornou vazio mas ha cache
+          // valido, entao reaproveitamos o cache. Usamos info para nao parecer erro.
+          console.info("[tasks] vazio da API, usando cache como fallback");
           if (active) {
             setTasks(cached.data);
             setLastUpdated(cached.timestamp ?? timestamp);

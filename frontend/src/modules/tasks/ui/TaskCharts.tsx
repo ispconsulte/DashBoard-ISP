@@ -326,7 +326,7 @@ export function TaskCharts({
             {pieByConsultant.length ? (
               <div className="flex flex-col items-center gap-3 h-full overflow-hidden">
                 <div className="w-full min-w-0" style={{ minHeight: 180 }}>
-                  <ResponsiveContainer width="100%" height={180}>
+                  <ResponsiveContainer width="100%" height={180} minWidth={1} minHeight={1}>
                     <PieChart>
                       <Pie data={pieByConsultant} dataKey="value" nameKey="name" innerRadius="40%" outerRadius="65%" paddingAngle={3} stroke="none" isAnimationActive animationDuration={1200} animationEasing="ease-out" className="cursor-pointer" onClick={(data: { name?: string; payload?: { name?: string } }) => { const name = String(data?.name ?? data?.payload?.name ?? ""); if (name) onPickConsultant?.(name); }}>
                         {pieByConsultant.map((entry, index) => (<Cell key={`${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />))}

@@ -81,7 +81,7 @@ export interface BonusConsultantCard {
   coordinatorScore: number | null;
   automaticScore: number;
   score: number;
-  scoreSource: "coordinator" | "snapshot" | "none";
+  scoreSource: "coordinator" | "snapshot" | "automatic" | "none";
   payout: number | null;
   maxBonus: number;
   hoursTracked: number;
@@ -747,9 +747,19 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
         const persistedScore = persistedSnapshot?.score != null ? Math.round(Number(persistedSnapshot.score)) : null;
         const persistedPayout = persistedSnapshot?.payout_amount != null ? Math.round(Number(persistedSnapshot.payout_amount)) : null;
         const persistedMaxBonus = persistedSnapshot?.max_payout_amount != null ? Math.round(Number(persistedSnapshot.max_payout_amount)) : null;
-        const scoreSource = coordinatorScore != null ? "coordinator" : persistedScore != null ? "snapshot" : "none";
-        const displayScore = coordinatorScore ?? persistedScore ?? 0;
-        const payout = coordinatorScore != null ? Math.round((coordinatorScore / 100) * maxBonus) : persistedPayout;
+        // Fallback final: quem nunca foi avaliado e nao tem snapshot mostra o score
+        // AUTOMATICO (prazo/atraso/horas/saude) em vez de zero, para nao parecer que
+        // o consultor "nao existe". Antes ficava 0 e ele sumia da evolucao/ranking.
+        const automaticScore100 = Math.round(automaticScore.score * 100);
+        const scoreSource = coordinatorScore != null
+          ? "coordinator"
+          : persistedScore != null
+            ? "snapshot"
+            : "automatic";
+        const displayScore = coordinatorScore ?? persistedScore ?? automaticScore100;
+        const payout = coordinatorScore != null
+          ? Math.round((coordinatorScore / 100) * maxBonus)
+          : persistedPayout ?? Math.round((automaticScore100 / 100) * maxBonus);
 
         const card: BonusConsultantCard = {
           userId: matchedUser.id,
@@ -760,7 +770,7 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
           coordinatorUserId,
           coordinatorName,
           coordinatorScore,
-          automaticScore: Math.round(automaticScore.score * 100),
+          automaticScore: automaticScore100,
           score: displayScore,
           scoreSource,
           payout,

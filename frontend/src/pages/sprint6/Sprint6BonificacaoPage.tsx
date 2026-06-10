@@ -12,6 +12,7 @@ import {
   FileText,
   Filter,
   X,
+  BookOpen,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ import { BonusScoreComposition } from "@/modules/sprint6/components/bonus/BonusS
 import { CollapsibleSection } from "@/modules/sprint6/components/bonus/CollapsibleSection";
 import { BonusTeamTab } from "@/modules/sprint6/components/bonus/BonusTeamTab";
 import { BonusUserDetail } from "@/modules/sprint6/components/bonus/BonusUserDetail";
+import { BonusGuideTab } from "@/modules/sprint6/components/bonus/BonusGuideTab";
 
 /* ── Visibility tiers — driven by session permissions, no hardcoded names ─── */
 
@@ -244,8 +246,10 @@ export default function Sprint6BonificacaoPage() {
     if (canSeeAllEvaluations) tabs.push("all-evaluations");
     if (hasOwnEvaluationTab) tabs.push("own-evaluation");
     if (hasTeamTab) tabs.push("my-team");
+    // Aba-guia "Como funciona": sempre por último e só para o responsável geral.
+    if (isFullAccessManager) tabs.push("guide");
     return tabs;
-  }, [canSeeAllEvaluations, canSeeRanking, hasOwnEvaluationTab, hasTeamTab]);
+  }, [canSeeAllEvaluations, canSeeRanking, hasOwnEvaluationTab, hasTeamTab, isFullAccessManager]);
 
   useEffect(() => {
     if (availableTabs.length === 0) return;
@@ -509,6 +513,15 @@ export default function Sprint6BonificacaoPage() {
                       Minha equipe
                     </TabsTrigger>
                   )}
+                  {isFullAccessManager && (
+                    <TabsTrigger
+                      value="guide"
+                      className="min-w-0 justify-center rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=inactive]:text-muted-foreground/60 sm:px-4"
+                    >
+                      <BookOpen className="h-3.5 w-3.5 mr-1.5" />
+                      Como funciona
+                    </TabsTrigger>
+                  )}
                 </TabsList>
 
                 {canSeeRanking && (
@@ -544,6 +557,12 @@ export default function Sprint6BonificacaoPage() {
                       onEvaluate={setEvaluationConsultant}
                       onSendReport={setReportConsultant}
                     />
+                  </TabsContent>
+                )}
+
+                {isFullAccessManager && (
+                  <TabsContent value="guide" className="mt-0">
+                    <BonusGuideTab />
                   </TabsContent>
                 )}
               </Tabs>
@@ -695,10 +714,17 @@ export default function Sprint6BonificacaoPage() {
                   <p className="text-[11px] text-muted-foreground/55 leading-relaxed">
                     {(() => {
                       const withScore = rankingConsultants.filter(c => c.scoreSource !== "none");
-                      const max = withScore.length > 0 ? Math.max(...withScore.map(c => c.score)) : null;
-                      return max !== null
-                        ? `Score mais alto: ${max}%. Para entrar aqui precisa de ≥75%.`
-                        : "Nenhum consultor atingiu ≥75% com entregas em dia.";
+                      if (withScore.length === 0) {
+                        return "Nenhum consultor atingiu ≥75% com entregas em dia.";
+                      }
+                      const top = withScore.reduce((best, c) => (c.score > best.score ? c : best), withScore[0]);
+                      // Para entrar no destaque é preciso score ≥75% E entregas no prazo ≥60%.
+                      // Quando o maior score já passa de 75%, o que barrou foi o prazo —
+                      // deixamos isso explícito em vez de só repetir a regra do score.
+                      if (top.score >= 75 && top.onTimeRate != null && top.onTimeRate < 60) {
+                        return `Score mais alto: ${top.score}%, mas as entregas no prazo (${Math.round(top.onTimeRate)}%) estão abaixo dos 60% exigidos para o destaque.`;
+                      }
+                      return `Score mais alto: ${top.score}%. Para entrar aqui precisa de ≥75% com ao menos 60% de entregas no prazo.`;
                     })()}
                   </p>
                 </div>
