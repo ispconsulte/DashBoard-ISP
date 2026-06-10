@@ -542,23 +542,17 @@ export function useAuth() {
   }, []);
 
   const logout = useCallback(async () => {
-    if (session?.accessToken) {
-      try {
-        const base = SUPABASE_URL.replace(/\/$/, "");
-        await fetch(`${base}/auth/v1/logout`, {
-          method: "POST",
-          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json" },
-        });
-      } catch { /* best-effort */ }
-    }
-    supabaseExt.auth.signOut().catch(() => {});
+    // Deixamos o SDK encerrar a sessao. Ele lida graciosamente com token ja
+    // expirado; o fetch manual anterior a /auth/v1/logout com o accessToken em
+    // cache disparava 403 ruidoso no console quando o token ja havia vencido.
+    await supabaseExt.auth.signOut().catch(() => {});
     setAuthStore({ session: null, loading: false });
     persistSession(null);
 
     // Clear cached data to prevent leakage to the next user on the same device
     const cacheKeys = storage.keys("cache:");
     cacheKeys.forEach((key) => storage.remove(key));
-  }, [session?.accessToken, persistSession]);
+  }, [persistSession]);
 
   const canAccess = useCallback(
     (area: AccessArea, roleOverride?: UserRole) => {

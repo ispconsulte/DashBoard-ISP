@@ -177,12 +177,34 @@ function ConsultantTrendList({
 export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonetary = false }: BonusTrendsSectionProps) {
   const [scoreAnimated, setScoreAnimated] = useState(false);
   const [payoutAnimated, setPayoutAnimated] = useState(false);
+  // "" = visão geral (média da equipe). Caso contrário, filtra a evolução por consultor.
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+
+  // Consultores que possuem ao menos um período registrado (para o seletor).
+  const consultantOptions = useMemo(() => {
+    const idsWithHistory = new Set(
+      consultantSnapshots
+        .filter((snap) => snap.period_type === "month" && snap.user_id != null)
+        .map((snap) => String(snap.user_id)),
+    );
+    return consultants
+      .filter((c) => c.userId && idsWithHistory.has(c.userId))
+      .map((c) => ({ id: c.userId as string, name: c.name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [consultants, consultantSnapshots]);
+
+  const selectedConsultantName = selectedUserId
+    ? consultantOptions.find((c) => c.id === selectedUserId)?.name ?? null
+    : null;
 
   const trendData = useMemo(() => {
     const periodMap = new Map<string, { scores: number[]; payouts: number[]; count: number }>();
 
     consultantSnapshots.forEach((snap) => {
       if (snap.period_type !== "month") return;
+      // Quando um consultor esta selecionado, consideramos apenas os snapshots dele,
+      // mostrando a linha de evolucao individual ao longo de todos os periodos.
+      if (selectedUserId && String(snap.user_id) !== selectedUserId) return;
       const existing = periodMap.get(snap.period_key) ?? { scores: [], payouts: [], count: 0 };
       existing.scores.push(Number(snap.score));
       existing.payouts.push(Number(snap.payout_amount));
@@ -199,7 +221,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
         totalPayout: Math.round(data.payouts.reduce((s, v) => s + v, 0)),
         consultantCount: data.count,
       }));
-  }, [consultants, consultantSnapshots]);
+  }, [consultantSnapshots, selectedUserId]);
 
   const consultantChanges = useMemo(() => {
     const byUser = new Map<string, Array<{ period: string; score: number }>>();
@@ -271,10 +293,40 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
   }, [trendData]);
 
   return (
-    <motion.div {...fadeUp} transition={{ duration: 0.35 }} className="grid gap-4 xl:grid-cols-2">
+    <motion.div {...fadeUp} transition={{ duration: 0.35 }} className="space-y-4">
+
+      {/* ── Cabeçalho: filtro por consultor + explicação do período ── */}
+      <div className="flex flex-col gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[13px] font-semibold text-white/80">
+            {selectedConsultantName
+              ? `Evolução de ${selectedConsultantName}`
+              : "Evolução de toda a equipe"}
+          </p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-white/40">
+            Acompanha todos os períodos (meses) com dados registrados ao longo do tempo.
+            {consultantOptions.length > 0 && " Selecione um consultor para ver a linha individual dele."}
+          </p>
+        </div>
+        {consultantOptions.length > 0 && (
+          <select
+            value={selectedUserId}
+            onChange={(e) => setSelectedUserId(e.target.value)}
+            className="h-9 w-full shrink-0 rounded-lg border border-white/[0.08] bg-[hsl(var(--task-surface))] px-3 text-[12px] font-medium text-white/70 outline-none transition hover:border-white/[0.15] focus:border-primary/40 sm:w-56 [color-scheme:dark]"
+            aria-label="Filtrar evolução por consultor"
+          >
+            <option value="">Toda a equipe (média)</option>
+            {consultantOptions.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
 
       {/* ── Score Evolution ── */}
-      <SectionCard title="Evolução do Score" icon={BarChart3}>
+      <SectionCard title={selectedConsultantName ? "Evolução do Score (consultor)" : "Evolução do Score"} icon={BarChart3}>
         {hasHistory ? (
           <div className="space-y-4">
             {/* KPI row */}
@@ -283,7 +335,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
                 <p className="text-3xl font-extrabold text-white/90 tabular-nums leading-none">
                   {currentPoint?.avgScore ?? 0}%
                 </p>
-                <p className="mt-1 text-[11px] text-white/40">Score médio atual</p>
+                <p className="mt-1 text-[11px] text-white/40">{selectedConsultantName ? "Score atual" : "Score médio atual"}</p>
               </div>
               <div className="text-right">
                 <TrendIndicator current={currentPoint?.avgScore ?? 0} previous={previousPoint?.avgScore ?? null} />
@@ -360,7 +412,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
 
       {/* ── Payout Evolution — payment manager only ── */}
       {!hideMonetary && (
-      <SectionCard title="Evolução do Payout" icon={Wallet}>
+      <SectionCard title={selectedConsultantName ? "Evolução do Payout (consultor)" : "Evolução do Payout"} icon={Wallet}>
         {hasHistory ? (
           <div className="space-y-4">
             {/* KPI row */}
@@ -369,7 +421,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
                 <p className="text-3xl font-extrabold text-emerald-400 tabular-nums leading-none">
                   {money(currentPoint?.totalPayout ?? 0)}
                 </p>
-                <p className="mt-1 text-[11px] text-white/40">Payout total atual</p>
+                <p className="mt-1 text-[11px] text-white/40">{selectedConsultantName ? "Payout atual" : "Payout total atual"}</p>
               </div>
               <div className="text-right">
                 <TrendIndicator current={currentPoint?.totalPayout ?? 0} previous={previousPoint?.totalPayout ?? null} />
@@ -484,6 +536,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
       </SectionCard>
       )}
 
+      </div>
     </motion.div>
   );
 }

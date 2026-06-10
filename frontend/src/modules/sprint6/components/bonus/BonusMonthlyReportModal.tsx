@@ -4,7 +4,7 @@ import {
   User, Trophy, Clock, TrendingUp, ChevronDown, Award, Search, Download, ShieldAlert,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -436,9 +436,9 @@ export function BonusMonthlyReportModal({
             </div>
             <DialogHeader className="space-y-1.5">
               <DialogTitle className="text-base font-bold text-foreground">Acesso restrito</DialogTitle>
-              <p className="text-sm text-muted-foreground/60">
+              <DialogDescription className="text-sm text-muted-foreground/60">
                 Você não tem permissão para enviar relatórios deste consultor.
-              </p>
+              </DialogDescription>
             </DialogHeader>
             <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="mt-2">
               Fechar
@@ -496,11 +496,11 @@ export function BonusMonthlyReportModal({
                 <DialogTitle className="text-base font-bold tracking-tight text-foreground sm:text-lg">
                   Relatório de Bonificação
                 </DialogTitle>
-                <p className="text-[13px] text-muted-foreground/50 leading-snug">
+                <DialogDescription className="text-[13px] text-muted-foreground/50 leading-snug">
                   <span className="font-medium text-foreground/70">{consultant?.name ?? "Colaborador"}</span>
                   <span className="mx-1.5 text-border/30">·</span>
                   Revise as métricas e envie ao colaborador
-                </p>
+                </DialogDescription>
               </div>
             </DialogHeader>
           </motion.div>

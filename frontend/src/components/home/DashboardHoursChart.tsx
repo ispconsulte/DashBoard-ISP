@@ -69,7 +69,7 @@ function DashboardHoursChartInner({ projects, loading }: Props) {
             Sem registro de horas
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={Math.max(200, data.length * 36 + 20)}>
+          <ResponsiveContainer width="100%" height={Math.max(200, data.length * 36 + 20)} minWidth={1} minHeight={1}>
             <BarChart data={data} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 4 }}>
               <XAxis
                 type="number"

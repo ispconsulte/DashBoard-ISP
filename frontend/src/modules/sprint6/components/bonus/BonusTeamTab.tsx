@@ -160,7 +160,7 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
                       <div className="grid min-w-0 grid-cols-1 gap-2 min-[430px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                         {[
                           { label: "Nota do coordenador", value: hasCoordinatorScore ? `${consultant.score}%` : null, placeholder: "Pendente de nota" },
-                          { label: "Score registrado", value: !hasCoordinatorScore && hasDisplayScore ? `${consultant.score}%` : null, placeholder: null },
+                          { label: "Score registrado", value: consultant.scoreSource === "snapshot" ? `${consultant.score}%` : null, placeholder: null },
                           { label: "Score automático", value: `${consultant.automaticScore}%`, placeholder: null },
                           { label: "No Prazo", value: consultant.onTimeRate != null ? `${Math.round(consultant.onTimeRate)}%` : null, placeholder: null },
                           { label: "Utilização", value: consultant.utilization != null ? `${Math.round(consultant.utilization)}%` : null, placeholder: null },

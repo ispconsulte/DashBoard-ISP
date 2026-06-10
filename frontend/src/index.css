@@ -28,6 +28,11 @@ html body[data-scroll-locked] {
   padding-right: 0 !important;
   padding-left: 0 !important;
   padding-top: 0 !important;
+  /* O react-remove-scroll também alterna o overflow do body ao abrir/fechar
+     (Radix Select/Dialog). Como a rolagem real fica no <html> (overflow-y: scroll),
+     manter o body visível evita o reflow vertical que fazia a tela "pulsar"
+     ao abrir o dropdown de responsável na Bonificação. */
+  overflow: visible !important;
 }
 
 
