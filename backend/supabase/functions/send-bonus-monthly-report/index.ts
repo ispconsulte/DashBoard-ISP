@@ -53,11 +53,13 @@ serve(async (req) => {
       supabase.from("bonus_settings").select("value").eq("key", "payment_manager_user_id").limit(1),
     ]);
 
-    // Enforce monetary visibility server-side: only payment_manager or admin sees payout values
+    // Enforce monetary visibility server-side: ONLY the configured payment manager
+    // (bonus_settings.payment_manager_user_id) may see payout values. Role alone —
+    // including admin — never grants it. Coordinators never see payout, not even for
+    // themselves. This mirrors the page gate (hideMonetary = !isFullAccessManager).
     const pmUserId = pmSetting?.[0]?.value ?? null;
     const senderIsPaymentManager = pmUserId !== null && String(sender?.id) === String(pmUserId);
-    const senderIsAdmin = sender?.role === "admin";
-    const hideMonetary = !senderIsPaymentManager && !senderIsAdmin;
+    const hideMonetary = !senderIsPaymentManager;
 
     const snapshot = snapshotRows?.[0] ?? null;
     const evalList = evaluationRows ?? [];

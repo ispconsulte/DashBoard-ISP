@@ -770,6 +770,7 @@ export default function Sprint6BonificacaoPage() {
           }
         >
           <BonusTrendsSection
+            hideMonetary={hideMonetary}
             consultants={visibleConsultants}
             consultantSnapshots={bonus.persistence.consultantSnapshots.filter((snapshot) =>
               !snapshot.user_id ||
