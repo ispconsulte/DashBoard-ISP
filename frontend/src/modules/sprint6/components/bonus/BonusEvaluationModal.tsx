@@ -526,17 +526,16 @@ export function BonusEvaluationModal({
         })),
       );
 
-      const { error: deleteError } = await supabase
+      // Atomic save: upsert on the consultant identity unique index
+      // (period_year, period_month, user_id, evaluator_user_id, category, subtopic).
+      // The form always emits the full fixed set of category×subtopic rows, so every
+      // existing row for this evaluation is overwritten — no delete-then-insert window
+      // that could lose data if the write fails midway.
+      const { error } = await supabase
         .from("bonus_internal_evaluations")
-        .delete()
-        .eq("evaluation_scope", "consultant")
-        .eq("period_year", periodYear)
-        .eq("period_month", periodMonth)
-        .eq("user_id", consultant.userId)
-        .eq("evaluator_user_id", session.userId);
-      if (deleteError) throw deleteError;
-
-      const { error } = await supabase.from("bonus_internal_evaluations").insert(rows);
+        .upsert(rows, {
+          onConflict: "period_year,period_month,user_id,evaluator_user_id,category,subtopic",
+        });
       if (error) throw error;
 
       if (status === "submitted") {

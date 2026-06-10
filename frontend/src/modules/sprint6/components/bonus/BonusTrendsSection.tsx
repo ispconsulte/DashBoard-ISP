@@ -38,6 +38,9 @@ interface ConsultantTrendChange {
 interface BonusTrendsSectionProps {
   consultants: BonusConsultantCard[];
   consultantSnapshots: BonusScoreSnapshotRow[];
+  /** When true, the payout (R$) evolution section is hidden entirely.
+      Only the payment manager may see monetary values. */
+  hideMonetary?: boolean;
 }
 
 /* ── Helpers ───────────────────────────────────────────────────────── */
@@ -171,7 +174,7 @@ function ConsultantTrendList({
 }
 
 /* ── Main Component ────────────────────────────────────────────────── */
-export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTrendsSectionProps) {
+export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonetary = false }: BonusTrendsSectionProps) {
   const [scoreAnimated, setScoreAnimated] = useState(false);
   const [payoutAnimated, setPayoutAnimated] = useState(false);
 
@@ -355,7 +358,8 @@ export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTr
         )}
       </SectionCard>
 
-      {/* ── Payout Evolution ── */}
+      {/* ── Payout Evolution — payment manager only ── */}
+      {!hideMonetary && (
       <SectionCard title="Evolução do Payout" icon={Wallet}>
         {hasHistory ? (
           <div className="space-y-4">
@@ -478,6 +482,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots }: BonusTr
           <EmptyInsight text="Os valores de payout são gravados automaticamente. A partir do segundo período registrado, o gráfico de evolução vai aparecer aqui." />
         )}
       </SectionCard>
+      )}
 
     </motion.div>
   );
