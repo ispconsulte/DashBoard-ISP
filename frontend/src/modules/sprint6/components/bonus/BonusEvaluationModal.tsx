@@ -393,6 +393,11 @@ export function BonusEvaluationModal({
   const [periodYear, setPeriodYear] = useState<number>(new Date().getFullYear());
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [loadedRowCount, setLoadedRowCount] = useState(0);
+  // Vira true quando o avaliador realmente mexe em algo. O formulario inicia com
+  // notas 5 pre-setadas, entao sem isso o "Finalizar" salvaria uma avaliacao que o
+  // usuario nunca preencheu de fato.
+  const [touched, setTouched] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const periodKey = `${periodYear}-${String(periodMonth).padStart(2, "0")}`;
 
@@ -458,11 +463,12 @@ export function BonusEvaluationModal({
           };
         });
 
-        if (!cancelled) setForm(next);
+        if (!cancelled) { setForm(next); setTouched(false); }
       } catch (error: any) {
         if (!cancelled) {
           setForm(buildDefaultState());
           setLoadedRowCount(0);
+          setTouched(false);
           notifyError(error, {
             context: "bonus-eval-load",
             message: "Não foi possível carregar a avaliação do período. Os campos foram reiniciados — tente novamente em instantes.",
@@ -489,6 +495,7 @@ export function BonusEvaluationModal({
 
   const updateField = useCallback(
     (category: BonusEvaluationCategory, subtopic: string, patch: Partial<SubtopicValue>) => {
+      setTouched(true);
       setForm((cur) => ({
         ...cur,
         [category]: { ...cur[category], [subtopic]: { ...cur[category][subtopic], ...patch } },
@@ -500,6 +507,12 @@ export function BonusEvaluationModal({
   const handleSave = async (status: BonusEvaluationStatus) => {
     if (!consultant?.userId || !session?.userId) return;
     if (!hasPermission) { toast.error("Você não tem permissão para esta ação."); return; }
+    // Evita "salvar" uma avaliacao que o usuario nunca preencheu: o form inicia com
+    // notas 5 pre-setadas. Se nao havia avaliacao no banco e nada foi alterado, barra.
+    if (loadedRowCount === 0 && !touched) {
+      toast.warning("Preencha ao menos uma nota antes de salvar ou enviar a avaliação.");
+      return;
+    }
     setSaving(true);
     try {
       const rows = categoryKeys.flatMap((category) =>
@@ -565,15 +578,19 @@ export function BonusEvaluationModal({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!consultant?.userId || !session?.userId) return;
     if (!hasPermission) {
       toast.error("Você não tem permissão para esta ação.");
       return;
     }
     if (!loadedRowCount) return;
-    if (!window.confirm(`Excluir a avaliação de ${consultant.name} para ${periodKey}?`)) return;
+    setConfirmDeleteOpen(true);
+  };
 
+  const doDelete = async () => {
+    if (!consultant?.userId || !session?.userId) return;
+    setConfirmDeleteOpen(false);
     setSaving(true);
     try {
       const { error } = await supabase
@@ -682,6 +699,7 @@ export function BonusEvaluationModal({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[100dvh] sm:max-h-[92vh] w-full sm:w-[95vw] max-w-3xl overflow-hidden border-white/[0.06] bg-[linear-gradient(180deg,hsl(224_35%_10%/0.98),hsl(229_33%_8%/0.98))] p-0 shadow-2xl shadow-black/50 flex flex-col sm:rounded-lg rounded-none">
 
@@ -883,5 +901,31 @@ export function BonusEvaluationModal({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Confirmação de exclusão — substitui o window.confirm nativo */}
+    <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+      <DialogContent className="max-w-sm border-red-500/20 bg-[linear-gradient(180deg,hsl(224_35%_10%/0.99),hsl(229_33%_8%/0.99))] sm:rounded-2xl">
+        <DialogHeader className="space-y-2">
+          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10">
+            <Trash2 className="h-5 w-5 text-red-400" />
+          </div>
+          <DialogTitle className="text-center text-base font-bold text-foreground">Excluir avaliação?</DialogTitle>
+          <DialogDescription className="text-center text-[13px] leading-relaxed text-muted-foreground/70">
+            A avaliação de <span className="font-semibold text-foreground/85">{consultant?.name}</span> do período{" "}
+            <span className="font-semibold text-foreground/85">{periodKey}</span> será removida. Esta ação não pode ser desfeita.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-2 flex gap-2">
+          <Button variant="outline" size="default" onClick={() => setConfirmDeleteOpen(false)} disabled={saving} className="flex-1 rounded-xl border-border/15 text-sm">
+            Cancelar
+          </Button>
+          <Button variant="destructive" size="default" onClick={() => void doDelete()} disabled={saving} className="flex-1 rounded-xl gap-2 text-sm">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Excluir
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

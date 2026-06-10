@@ -6,10 +6,11 @@ import {
   HelpCircle,
   Sparkles,
 } from "lucide-react";
-import { SectionCard } from "./BonusSharedCards";
+import { CollapsibleSection } from "./CollapsibleSection";
 
 /**
  * Aba "Como funciona" — visível apenas para o responsável geral pela bonificação.
+ * Cada tópico é um dropdown (accordion): o usuário abre só o que quiser ler.
  * Linguagem simples, direta e com exemplos. Sem termos técnicos.
  */
 
@@ -35,17 +36,22 @@ function B({ children }: { children: React.ReactNode }) {
 
 export function BonusGuideTab() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Intro curta */}
       <div className="rounded-2xl border border-primary/15 bg-[linear-gradient(135deg,hsl(234_89%_64%/0.10),transparent_60%)] p-5">
         <h2 className="text-[15px] font-bold text-foreground">Entenda esta tela em 1 minuto</h2>
         <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground/75">
-          Aqui vai, de um jeito simples, de onde vem cada número. Sem complicação.
+          Toque em cada tópico abaixo para abrir e ver de onde vem cada número. Sem complicação.
         </p>
       </div>
 
       {/* 1. Por que aparece valor sem nota */}
-      <SectionCard title="Por que aparece valor mesmo sem nota do coordenador?" icon={Wallet} compact>
+      <CollapsibleSection
+        title="Por que aparece valor mesmo sem nota do coordenador?"
+        icon={Wallet}
+        summary="A tela nunca fica vazia — o sistema calcula sozinho"
+        defaultOpen
+      >
         <div className="space-y-2.5">
           <Q>
             Porque a tela <B>nunca fica vazia</B>. Se um coordenador ainda não deu nota,
@@ -61,10 +67,14 @@ export function BonusGuideTab() {
             prévia de <B>75%</B> com base no trabalho dele — não fica zerado.
           </Example>
         </div>
-      </SectionCard>
+      </CollapsibleSection>
 
       {/* 2. Como calcula o score */}
-      <SectionCard title="Como o score (a nota de 0 a 100%) é calculado" icon={Gauge} compact>
+      <CollapsibleSection
+        title="Como o score (a nota de 0 a 100%) é calculado"
+        icon={Gauge}
+        summary="Mistura trabalho no prazo + notas do coordenador"
+      >
         <div className="space-y-3">
           <Q><B>Quando o coordenador avalia</B>, a nota é uma mistura de:</Q>
           <div className="rounded-xl border border-border/15 bg-card/40 p-3 text-[13px]">
@@ -82,10 +92,14 @@ export function BonusGuideTab() {
             Resultado: score por volta de <B>85%</B>.
           </Example>
         </div>
-      </SectionCard>
+      </CollapsibleSection>
 
       {/* 3. Score médio e payout do topo */}
-      <SectionCard title="Os números grandes lá em cima (Score médio e Payout)" icon={Wallet} compact>
+      <CollapsibleSection
+        title="Os números grandes lá em cima (Score médio e Payout)"
+        icon={Wallet}
+        summary="Média da equipe e a nota virando dinheiro"
+      >
         <div className="space-y-2.5">
           <Q><B>Score médio:</B> é a média das notas de todo mundo. Mostra como a equipe está, no geral.</Q>
           <Q><B>Payout (R$):</B> a nota vira dinheiro, proporcional ao teto do nível da pessoa.</Q>
@@ -96,10 +110,14 @@ export function BonusGuideTab() {
           <Q><B>Payout Total:</B> soma o bônus de todos + a parte de receita (comercial),
             que é automática. Por isso o total nunca zera só porque falta uma avaliação.</Q>
         </div>
-      </SectionCard>
+      </CollapsibleSection>
 
       {/* 4. Sinais rápidos */}
-      <SectionCard title="Os sinais rápidos (em alta / precisa de atenção)" icon={Zap} compact>
+      <CollapsibleSection
+        title="Os sinais rápidos (em alta / precisa de atenção)"
+        icon={Zap}
+        summary="Quem se destaca e quem precisa de atenção"
+      >
         <div className="space-y-2.5">
           <Q><B>Em destaque:</B> precisa de <B>nota ≥ 75%</B> E <B>pelo menos 60% das entregas no prazo</B>.
             As duas coisas juntas.</Q>
@@ -109,17 +127,21 @@ export function BonusGuideTab() {
             destaque — o prazo ainda está baixo.
           </Example>
         </div>
-      </SectionCard>
+      </CollapsibleSection>
 
       {/* 5. Ranking */}
-      <SectionCard title="Como o ranking é ordenado" icon={Crown} compact>
+      <CollapsibleSection
+        title="Como o ranking é ordenado"
+        icon={Crown}
+        summary="Nota → bônus → horas registradas"
+      >
         <Q>
           Primeiro pela <B>nota</B> (maior para menor). Se empatar, vale o <B>maior bônus</B>.
           Se ainda empatar, vale quem <B>registrou mais horas</B>.
         </Q>
-      </SectionCard>
+      </CollapsibleSection>
 
-      {/* Fecho */}
+      {/* Fecho (sempre visível) */}
       <div className="flex items-start gap-3 rounded-2xl border border-amber-500/15 bg-amber-500/[0.05] p-4">
         <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
         <p className="text-[13px] leading-relaxed text-muted-foreground/85">

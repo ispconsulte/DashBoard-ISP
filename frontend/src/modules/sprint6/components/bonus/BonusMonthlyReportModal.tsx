@@ -325,6 +325,12 @@ export function BonusMonthlyReportModal({
   const sendReport = async () => {
     if (!consultant?.userId || !recipientEmail.trim() || !session?.accessToken) return;
     if (!hasPermission) { toast.error("Você não tem permissão para esta ação."); return; }
+    // Sem avaliacao submetida nao ha relatorio para enviar — avisa de forma clara
+    // em vez de chamar o servico de e-mail e cair na mensagem generica de falha.
+    if (previewRows.length === 0) {
+      toast.warning(`Não há avaliação registrada para ${monthLabel}. Avalie o consultor antes de enviar o relatório.`);
+      return;
+    }
     setSending(true);
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-bonus-monthly-report`, {
@@ -754,7 +760,7 @@ export function BonusMonthlyReportModal({
             <Button variant="outline" size="default" onClick={() => onOpenChange(false)} className="w-full rounded-xl border-border/10 hover:bg-white/[0.04] text-sm sm:w-auto">
               Cancelar
             </Button>
-            <Button size="default" onClick={sendReport} disabled={sending || !recipientEmail.trim()} className="w-full rounded-xl gap-2 text-sm sm:w-auto">
+            <Button size="default" onClick={sendReport} disabled={sending || !recipientEmail.trim() || previewLoading || previewRows.length === 0} className="w-full rounded-xl gap-2 text-sm sm:w-auto">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4" />}
               Enviar por e-mail
             </Button>
