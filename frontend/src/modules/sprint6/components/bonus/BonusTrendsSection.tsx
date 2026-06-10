@@ -9,12 +9,13 @@ import {
   Area,
   AreaChart,
 } from "recharts";
-import { TrendingUp, TrendingDown, Minus, BarChart3, Wallet, Calendar } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, BarChart3, Wallet, Calendar, User } from "lucide-react";
 import type { BonusConsultantCard } from "@/modules/sprint6/hooks/useBonusRealData";
 import type { BonusScoreSnapshotRow } from "@/modules/sprint6/hooks/useBonusPersistenceData";
 import { money } from "./BonusHelpers";
 import { fadeUp } from "./BonusAnimations";
 import { SectionCard, EmptyInsight } from "./BonusSharedCards";
+import { CustomSelect } from "@/modules/shared/FilterDropdowns";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 interface TrendPoint {
@@ -177,8 +178,9 @@ function ConsultantTrendList({
 export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonetary = false }: BonusTrendsSectionProps) {
   const [scoreAnimated, setScoreAnimated] = useState(false);
   const [payoutAnimated, setPayoutAnimated] = useState(false);
-  // "" = visão geral (média da equipe). Caso contrário, filtra a evolução por consultor.
-  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  // "all" = visão geral (média da equipe). Caso contrário, filtra a evolução por consultor.
+  // Usamos "all" (e não "") para casar com o reset nativo do CustomSelect.
+  const [selectedUserId, setSelectedUserId] = useState<string>("all");
 
   // Consultores que possuem ao menos um período registrado (para o seletor).
   const consultantOptions = useMemo(() => {
@@ -193,7 +195,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [consultants, consultantSnapshots]);
 
-  const selectedConsultantName = selectedUserId
+  const selectedConsultantName = selectedUserId !== "all"
     ? consultantOptions.find((c) => c.id === selectedUserId)?.name ?? null
     : null;
 
@@ -204,7 +206,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
       if (snap.period_type !== "month") return;
       // Quando um consultor esta selecionado, consideramos apenas os snapshots dele,
       // mostrando a linha de evolucao individual ao longo de todos os periodos.
-      if (selectedUserId && String(snap.user_id) !== selectedUserId) return;
+      if (selectedUserId !== "all" && String(snap.user_id) !== selectedUserId) return;
       const existing = periodMap.get(snap.period_key) ?? { scores: [], payouts: [], count: 0 };
       existing.scores.push(Number(snap.score));
       existing.payouts.push(Number(snap.payout_amount));
@@ -309,17 +311,17 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
           </p>
         </div>
         {consultantOptions.length > 0 && (
-          <select
-            value={selectedUserId}
-            onChange={(e) => setSelectedUserId(e.target.value)}
-            className="h-9 w-full shrink-0 rounded-lg border border-white/[0.08] bg-[hsl(var(--task-surface))] px-3 text-[12px] font-medium text-white/70 outline-none transition hover:border-white/[0.15] focus:border-primary/40 sm:w-56 [color-scheme:dark]"
-            aria-label="Filtrar evolução por consultor"
-          >
-            <option value="">Toda a equipe (média)</option>
-            {consultantOptions.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <div className="w-full shrink-0 sm:w-56">
+            <CustomSelect
+              value={selectedUserId}
+              onChange={setSelectedUserId}
+              options={consultantOptions.map((c) => ({ value: c.id, label: c.name }))}
+              placeholder="Toda a equipe (média)"
+              icon={User}
+              accentVar="--task-purple"
+              surfaceVar="--task-surface"
+            />
+          </div>
         )}
       </div>
 
@@ -353,12 +355,12 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
               transition={{ duration: 0.5, delay: 0.1 }}
               onAnimationComplete={() => setScoreAnimated(true)}
             >
-              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+              <ResponsiveContainer width="100%" height={176} minWidth={1} minHeight={1}>
                 <AreaChart data={trendData} margin={{ top: 8, right: 4, left: -22, bottom: 0 }}>
                   <defs>
                     <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
-                      <stop offset="85%" stopColor="hsl(var(--primary))" stopOpacity={0.03} />
+                      <stop offset="0%" stopColor="hsl(var(--task-purple))" stopOpacity={0.35} />
+                      <stop offset="85%" stopColor="hsl(var(--task-purple))" stopOpacity={0.03} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
@@ -369,11 +371,11 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
                     type="monotone"
                     dataKey="avgScore"
                     name="Score médio"
-                    stroke="hsl(var(--primary))"
+                    stroke="hsl(var(--task-purple))"
                     strokeWidth={2.5}
                     fill="url(#scoreGradient)"
-                    dot={{ r: 3.5, fill: "hsl(var(--primary))", strokeWidth: 0 }}
-                    activeDot={{ r: 5, fill: "hsl(var(--primary))", strokeWidth: 2, stroke: "hsl(var(--background))" }}
+                    dot={{ r: 3.5, fill: "hsl(var(--task-purple))", strokeWidth: 0 }}
+                    activeDot={{ r: 5, fill: "hsl(var(--task-purple))", strokeWidth: 2, stroke: "hsl(222 47% 8%)" }}
                     isAnimationActive={!scoreAnimated}
                     animationDuration={900}
                     animationEasing="ease-out"
@@ -439,7 +441,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
               transition={{ duration: 0.5, delay: 0.15 }}
               onAnimationComplete={() => setPayoutAnimated(true)}
             >
-              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+              <ResponsiveContainer width="100%" height={176} minWidth={1} minHeight={1}>
                 <AreaChart data={trendData} margin={{ top: 8, right: 4, left: -8, bottom: 0 }}>
                   <defs>
                     <linearGradient id="payoutGradient" x1="0" y1="0" x2="0" y2="1">
@@ -459,7 +461,7 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
                     strokeWidth={2.5}
                     fill="url(#payoutGradient)"
                     dot={{ r: 3.5, fill: "hsl(142,71%,45%)", strokeWidth: 0 }}
-                    activeDot={{ r: 5, fill: "hsl(142,71%,45%)", strokeWidth: 2, stroke: "hsl(var(--background))" }}
+                    activeDot={{ r: 5, fill: "hsl(142,71%,45%)", strokeWidth: 2, stroke: "hsl(222 47% 8%)" }}
                     isAnimationActive={!payoutAnimated}
                     animationDuration={900}
                     animationEasing="ease-out"

@@ -90,7 +90,7 @@ function drawFooter(doc: jsPDF, pageW: number, now: string) {
   doc.setFontSize(7.5);
   doc.setTextColor(...TEXT_DIM);
   doc.text(san(`ISP Consulte — ${now}`), 14, pageH - 6);
-  doc.text(`Pagina ${doc.getCurrentPageInfo().pageNumber}`, pageW - 14, pageH - 6, { align: "right" });
+  doc.text(san(`Página ${doc.getCurrentPageInfo().pageNumber}`), pageW - 14, pageH - 6, { align: "right" });
 }
 
 function ensureSpace(doc: jsPDF, y: number, need: number, margin = 14): number {
@@ -129,7 +129,7 @@ function drawCover(doc: jsPDF, data: BonusPdfData, logo: string | null, now: str
   doc.setFontSize(26);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...TEXT_BRIGHT);
-  doc.text(san("Relatorio de Bonificacao"), cx, 66, { align: "center" });
+  doc.text(san("Relatório de Bonificação"), cx, 66, { align: "center" });
 
   // Accent line
   doc.setFillColor(...ACCENT);
@@ -139,7 +139,7 @@ function drawCover(doc: jsPDF, data: BonusPdfData, logo: string | null, now: str
   doc.setFontSize(12);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(...TEXT_MID);
-  doc.text(san(`Periodo: ${data.monthLabel}`), cx, 82, { align: "center" });
+  doc.text(san(`Período: ${data.monthLabel}`), cx, 82, { align: "center" });
 
   // Collaborator card
   const cardY = 96;
@@ -255,9 +255,9 @@ function drawCover(doc: jsPDF, data: BonusPdfData, logo: string | null, now: str
   // ── Introductory message ──
   const introY = metricsY + 32;
   const introMessages = [
-    "Este relatorio reflete o nosso compromisso com o seu crescimento. Cada avaliacao e uma oportunidade de evoluir juntos, como equipe.",
-    "Acreditamos que crescer e um processo coletivo. Este documento foi preparado para reconhecer conquistas e apontar caminhos de evolucao.",
-    "Nosso objetivo com este relatorio e fortalecer a parceria e o desenvolvimento continuo. Valorizamos cada passo da sua trajetoria conosco.",
+    "Este relatório reflete o nosso compromisso com o seu crescimento. Cada avaliação é uma oportunidade de evoluir juntos, como equipe.",
+    "Acreditamos que crescer é um processo coletivo. Este documento foi preparado para reconhecer conquistas e apontar caminhos de evolução.",
+    "Nosso objetivo com este relatório é fortalecer a parceria e o desenvolvimento contínuo. Valorizamos cada passo da sua trajetória conosco.",
   ];
   // Pick message based on month to vary across reports
   const msgIndex = (Number(data.monthLabel.split("/")[0]) || 0) % introMessages.length;
@@ -282,7 +282,7 @@ function drawCover(doc: jsPDF, data: BonusPdfData, logo: string | null, now: str
   doc.rect(0, H - 3, W, 3, "F");
   doc.setFontSize(7.5);
   doc.setTextColor(120, 120, 160);
-  doc.text(san("Relatorio gerado pela ISP Consulte. Todos os direitos reservados."), cx, H - 8, { align: "center" });
+  doc.text(san("Relatório gerado pela ISP Consulte. Todos os direitos reservados."), cx, H - 8, { align: "center" });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -305,7 +305,7 @@ function drawEvaluations(doc: jsPDF, data: BonusPdfData, logo: string | null, no
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...TEXT_MID);
-  doc.text(san("Detalhamento das Avaliacoes"), margin, 14);
+  doc.text(san("Detalhamento das Avaliações"), margin, 14);
 
   if (logo) {
     try {
@@ -336,7 +336,7 @@ function drawEvaluations(doc: jsPDF, data: BonusPdfData, logo: string | null, no
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(...TEXT_MID);
-      doc.text(san("Detalhamento das Avaliacoes (cont.)"), margin, 14);
+      doc.text(san("Detalhamento das Avaliações (cont.)"), margin, 14);
       if (logo) {
         try {
           const h = 12;
@@ -361,7 +361,7 @@ function drawEvaluations(doc: jsPDF, data: BonusPdfData, logo: string | null, no
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...TEXT_DIM);
-    doc.text(san(`Media: ${avg}/100`), W - margin - 4, y + 6.5, { align: "right" });
+    doc.text(san(`Média: ${avg}/100`), W - margin - 4, y + 6.5, { align: "right" });
     y += 14;
 
     // Each subtopic
@@ -381,7 +381,7 @@ function drawEvaluations(doc: jsPDF, data: BonusPdfData, logo: string | null, no
         doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...TEXT_MID);
-        doc.text(san("Detalhamento das Avaliacoes (cont.)"), margin, 14);
+        doc.text(san("Detalhamento das Avaliações (cont.)"), margin, 14);
         y = 30;
       }
 
