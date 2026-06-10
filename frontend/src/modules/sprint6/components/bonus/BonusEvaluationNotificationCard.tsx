@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ClipboardCheck, X } from "lucide-react";
+import { motion } from "framer-motion";
+import { ClipboardCheck, X, ArrowRight } from "lucide-react";
 import type { BonusNotificationItem } from "@/modules/sprint6/hooks/useBonusEvaluationNotifier";
 import { supabaseExt as supabase } from "@/lib/supabase";
 
@@ -9,20 +10,6 @@ interface Props {
   onDismiss: (id: string) => void;
   /** Auto-dismiss after this many ms. Default: 30s */
   autoHideMs?: number;
-}
-
-function formatDateTime(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
 }
 
 export function BonusEvaluationNotificationCard({
@@ -40,72 +27,72 @@ export function BonusEvaluationNotificationCard({
     };
   }, [notification.id, autoHideMs, onDismiss]);
 
-  const markOpenedAndNavigate = async () => {
-    onDismiss(notification.id);
-    await supabase
-      .from("bonus_evaluation_notifications")
-      .update({
-        opened_at: new Date().toISOString(),
-        read_at: new Date().toISOString(),
-      })
-      .eq("id", notification.id);
+  const markOpenedAndNavigate = () => {
+    // Navega primeiro: o onDismiss desmonta este card, entao qualquer await antes
+    // do navigate impedia a navegacao de acontecer. O update do banco vira
+    // fire-and-forget (nao bloqueia a ida para a tela da avaliacao).
     navigate("/admin/testes/bonificacao");
+    const now = new Date().toISOString();
+    void supabase
+      .from("bonus_evaluation_notifications")
+      .update({ opened_at: now, read_at: now })
+      .eq("id", notification.id)
+      .then(() => {}, () => {});
+    onDismiss(notification.id);
   };
 
   return (
-    <div
-      className="pointer-events-auto w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-primary/20 bg-[linear-gradient(135deg,hsl(234_45%_10%/0.97),hsl(260_40%_12%/0.97))] shadow-2xl shadow-black/60 backdrop-blur-md overflow-hidden"
+    <motion.div
+      initial={{ opacity: 0, y: 16, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 16, scale: 0.96 }}
+      transition={{ type: "spring", stiffness: 320, damping: 26 }}
+      className="pointer-events-auto w-[20rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-primary/25 bg-[linear-gradient(150deg,hsl(234_48%_11%/0.98),hsl(258_42%_13%/0.98))] shadow-2xl shadow-black/60 backdrop-blur-md"
       role="alert"
       aria-live="polite"
     >
       {/* Accent strip */}
-      <div className="h-0.5 w-full bg-gradient-to-r from-primary/60 via-primary to-primary/40" />
+      <div className="h-1 w-full bg-gradient-to-r from-primary/70 via-primary to-primary/50" />
 
-      <div className="p-4 space-y-3">
+      <div className="p-3.5">
         {/* Header row */}
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/12 border border-primary/20">
-            <ClipboardCheck className="h-4.5 w-4.5 text-primary" />
-          </div>
+        <div className="flex items-center gap-3">
+          <motion.div
+            initial={{ scale: 0.7, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.08, type: "spring", stiffness: 400, damping: 18 }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 border border-primary/25 shadow-inner shadow-primary/10"
+          >
+            <ClipboardCheck className="h-5 w-5 text-primary" />
+          </motion.div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-foreground leading-tight">Nova avaliação recebida</p>
-            {notification.evaluatorName && (
-              <p className="mt-0.5 text-[11px] text-muted-foreground/60 truncate">
-                por {notification.evaluatorName}
-              </p>
-            )}
+            <p className="text-[13px] font-bold text-foreground leading-tight">Nova avaliação recebida</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground/60 truncate">
+              {notification.evaluatorName ? `por ${notification.evaluatorName}` : "Sua avaliação está disponível"}
+              {" · "}
+              <span className="text-muted-foreground/45">{notification.period_key}</span>
+            </p>
           </div>
           <button
             type="button"
             onClick={() => onDismiss(notification.id)}
-            className="shrink-0 rounded-lg p-1 text-muted-foreground/40 hover:text-foreground/70 hover:bg-white/[0.06] transition-colors"
+            className="shrink-0 rounded-lg p-1.5 text-muted-foreground/40 hover:text-foreground/70 hover:bg-white/[0.06] transition-colors"
             aria-label="Fechar notificação"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
-        </div>
-
-        {/* Details */}
-        <div className="rounded-xl border border-border/10 bg-white/[0.025] px-3.5 py-2.5 space-y-1">
-          <div className="flex justify-between items-center gap-2">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/40 font-semibold">Período</span>
-            <span className="text-xs font-semibold text-foreground/80">{notification.period_key}</span>
-          </div>
-          <div className="flex justify-between items-center gap-2">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/40 font-semibold">Recebida em</span>
-            <span className="text-xs text-muted-foreground/60">{formatDateTime(notification.created_at)}</span>
-          </div>
         </div>
 
         {/* CTA */}
         <button
           type="button"
           onClick={markOpenedAndNavigate}
-          className="w-full rounded-xl bg-primary/12 border border-primary/25 py-2 text-xs font-semibold text-primary hover:bg-primary/18 transition-colors"
+          className="group mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-xs font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:brightness-110 active:scale-[0.98]"
         >
           Ver avaliação completa
+          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, Info, Target, TrendingDown, TrendingUp, User, X } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Info, Target, TrendingDown, TrendingUp, User, X } from "lucide-react";
 import type { BonusConsultantCard } from "@/modules/sprint6/hooks/useBonusRealData";
 import { money } from "./BonusHelpers";
 import { SectionCard } from "./BonusSharedCards";
+import { CustomSelect } from "@/modules/shared/FilterDropdowns";
 
 function FactorBar({
   title,
@@ -108,7 +108,6 @@ interface BonusScoreCompositionProps {
 
 export function BonusScoreComposition({ consultants }: BonusScoreCompositionProps) {
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [selectorOpen, setSelectorOpen] = useState(false);
   const [expandedFactor, setExpandedFactor] = useState<string | null>(null);
 
   const selected = consultants[selectedIdx] ?? null;
@@ -147,37 +146,20 @@ export function BonusScoreComposition({ consultants }: BonusScoreCompositionProp
       icon={Target}
       badge={
         hasData ? (
-          <Popover open={selectorOpen} onOpenChange={setSelectorOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 rounded-lg border border-border/12 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-white/[0.08]"
-              >
-                <User className="h-3 w-3 text-muted-foreground/50" />
-                <span className="max-w-[120px] truncate">{selected.name}</span>
-                <ChevronDown className="h-3 w-3 text-muted-foreground/40" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="max-h-64 w-56 overflow-y-auto rounded-xl border-border/15 bg-card/95 p-1.5 backdrop-blur-xl">
-              {consultants.map((consultant, index) => (
-                <button
-                  key={consultant.name}
-                  type="button"
-                  onClick={() => {
-                    setSelectedIdx(index);
-                    setSelectorOpen(false);
-                    setExpandedFactor(null);
-                  }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-all ${index === selectedIdx ? "bg-primary/15 font-semibold text-primary" : "text-muted-foreground hover:bg-card/80 hover:text-foreground"}`}
-                >
-                  <span className="truncate">{consultant.name}</span>
-                  <span className="ml-2 shrink-0 text-[11px] font-medium">
-                    {consultant.scoreSource !== "none" ? `${consultant.score}%` : "Pendente"}
-                  </span>
-                </button>
-              ))}
-            </PopoverContent>
-          </Popover>
+          <div className="w-52">
+            <CustomSelect
+              value={String(selectedIdx)}
+              onChange={(v) => { const i = Number(v); if (Number.isInteger(i) && i >= 0 && i < consultants.length) { setSelectedIdx(i); setExpandedFactor(null); } }}
+              options={consultants.map((c, index) => ({
+                value: String(index),
+                label: `${c.name}${c.scoreSource !== "none" ? ` — ${c.score}%` : " — Pendente"}`,
+              }))}
+              placeholder="Selecionar consultor"
+              icon={User}
+              accentVar="--task-purple"
+              surfaceVar="--task-surface"
+            />
+          </div>
         ) : undefined
       }
     >

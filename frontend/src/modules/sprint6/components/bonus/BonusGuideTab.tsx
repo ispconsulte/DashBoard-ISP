@@ -5,6 +5,7 @@ import {
   Zap,
   HelpCircle,
   Sparkles,
+  Layers,
 } from "lucide-react";
 import { CollapsibleSection } from "./CollapsibleSection";
 
@@ -37,20 +38,11 @@ function B({ children }: { children: React.ReactNode }) {
 export function BonusGuideTab() {
   return (
     <div className="space-y-3">
-      {/* Intro curta */}
-      <div className="rounded-2xl border border-primary/15 bg-[linear-gradient(135deg,hsl(234_89%_64%/0.10),transparent_60%)] p-5">
-        <h2 className="text-[15px] font-bold text-foreground">Entenda esta tela em 1 minuto</h2>
-        <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground/75">
-          Toque em cada tópico abaixo para abrir e ver de onde vem cada número. Sem complicação.
-        </p>
-      </div>
-
       {/* 1. Por que aparece valor sem nota */}
       <CollapsibleSection
         title="Por que aparece valor mesmo sem nota do coordenador?"
         icon={Wallet}
         summary="A tela nunca fica vazia — o sistema calcula sozinho"
-        defaultOpen
       >
         <div className="space-y-2.5">
           <Q>
@@ -90,6 +82,45 @@ export function BonusGuideTab() {
           <Example>
             Maria recebeu nota alta do coordenador em qualidade e postura, e entrega no prazo.
             Resultado: score por volta de <B>85%</B>.
+          </Example>
+        </div>
+      </CollapsibleSection>
+
+      {/* 2b. Composição do score (quando ninguém avaliou) */}
+      <CollapsibleSection
+        title="A barra de composição (Entregas, Atraso, Aproveitamento, Saúde)"
+        icon={Layers}
+        summary="O que cada pedaço da barra significa na prévia automática"
+      >
+        <div className="space-y-3">
+          <Q>
+            Quando ainda <B>não há nota do coordenador</B>, abrimos a nota automática em 4 pedaços.
+            Cada um tem um peso e contribui com uma parte dos pontos:
+          </Q>
+          <div className="space-y-2">
+            <div className="rounded-xl border border-emerald-500/15 bg-emerald-500/[0.05] p-3">
+              <p className="text-[13px] font-semibold text-foreground">Entregas no prazo · <span className="text-emerald-300">peso 38%</span></p>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground/80">Quantas tarefas foram concluídas dentro do prazo. É o que mais pesa.</p>
+            </div>
+            <div className="rounded-xl border border-sky-500/15 bg-sky-500/[0.05] p-3">
+              <p className="text-[13px] font-semibold text-foreground">Risco de atraso · <span className="text-sky-300">peso 22%</span></p>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground/80">Quanto menos tarefas atrasadas, maior a contribuição.</p>
+            </div>
+            <div className="rounded-xl border border-amber-500/15 bg-amber-500/[0.05] p-3">
+              <p className="text-[13px] font-semibold text-foreground">Aproveitamento · <span className="text-amber-300">peso 20%</span></p>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground/80">Compara as horas registradas com a capacidade disponível da pessoa.</p>
+            </div>
+            <div className="rounded-xl border border-purple-500/15 bg-purple-500/[0.05] p-3">
+              <p className="text-[13px] font-semibold text-foreground">Saúde da carteira · <span className="text-purple-300">peso 20%</span></p>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground/80">Avalia a saúde dos clientes ligados à pessoa.</p>
+            </div>
+          </div>
+          <Q>
+            Cada fração mostra a <B>contribuição</B> (ex.: "15 de 38 pts") e a <B>eficiência</B>
+            {" "}(o quão perto do máximo aquele fator está). Somando os 4, chega-se à nota da prévia.
+          </Q>
+          <Example>
+            Entregas 15 + Atraso 12 + Aproveitamento 12 + Saúde 13 = <B>52 pts → 51%</B> de prévia.
           </Example>
         </div>
       </CollapsibleSection>

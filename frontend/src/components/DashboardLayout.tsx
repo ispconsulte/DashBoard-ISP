@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, useMemo, useEffect, useDeferredValue, useRef } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
 
 import { useAuth, type AccessArea } from "@/modules/auth/hooks/useAuth";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
@@ -362,14 +363,17 @@ function DashboardInner() {
       <AssistantReminder notifTasks={notifTasks} statusAlert={statusAlert} onDismissAlert={dismissAlert} />
 
       {/* Bonus evaluation notification card (fixed bottom-right) */}
-      {bonusNotif && (
-        <div className="fixed bottom-6 right-6 z-50 pointer-events-none">
-          <BonusEvaluationNotificationCard
-            notification={bonusNotif}
-            onDismiss={dismissBonusNotif}
-          />
-        </div>
-      )}
+      <div className="fixed bottom-6 right-6 z-50 pointer-events-none">
+        <AnimatePresence>
+          {bonusNotif && (
+            <BonusEvaluationNotificationCard
+              key={bonusNotif.id}
+              notification={bonusNotif}
+              onDismiss={dismissBonusNotif}
+            />
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* First-access welcome modal */}
       {session?.email && <WelcomeTasksModal userEmail={session.email} />}
