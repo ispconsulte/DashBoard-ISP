@@ -404,14 +404,14 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
                   {suggestedProjects.length === 0 ? (
                     <p className="text-center text-xs text-muted-foreground py-8">Nenhum projeto encontrado.</p>
                   ) : (
-                    <div className="p-1.5 pr-3.5 space-y-0.5">
+                    <div className="p-1.5 pr-4 space-y-0.5">
                       {suggestedProjects.map((p) => {
                         const checked = linkedProjectIds.has(p.id);
                         const projectType = normalizeProjectType(p);
                         return (
                           <label
                             key={p.id}
-                            className={`flex items-center gap-2 rounded-lg pl-3 pr-2 min-h-9 py-1.5 text-xs cursor-pointer transition-colors ${
+                            className={`flex items-center gap-2 rounded-lg pl-3 pr-2.5 min-h-9 py-1.5 text-xs cursor-pointer transition-colors ${
                               checked ? "bg-primary/8 text-foreground" : "hover:bg-white/[0.04] text-muted-foreground"
                             }`}
                           >
