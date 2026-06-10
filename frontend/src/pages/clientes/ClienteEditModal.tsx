@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabaseExt } from "@/lib/supabase";
 import { toast } from "sonner";
 import { Save, Loader2, Search, FolderOpen, Building2, X, Trash2 } from "lucide-react";
@@ -399,19 +398,21 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
               </div>
             ) : (
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px]">
-                {/* Available projects */}
-                <ScrollArea className="h-[250px] rounded-xl border border-white/[0.05] bg-white/[0.02] xl:h-[280px]">
+                {/* Available projects — scroll nativo (custom-scrollbar) para a barra
+                    ocupar espaco proprio e nunca cobrir os badges. */}
+                <div className="custom-scrollbar h-[250px] overflow-y-auto rounded-xl border border-white/[0.05] bg-white/[0.02] xl:h-[280px]">
                   {suggestedProjects.length === 0 ? (
                     <p className="text-center text-xs text-muted-foreground py-8">Nenhum projeto encontrado.</p>
                   ) : (
-                    <div className="p-1.5 pr-4 space-y-0.5">
+                    <div className="p-1.5 space-y-0.5">
                       {suggestedProjects.map((p) => {
                         const checked = linkedProjectIds.has(p.id);
                         const projectType = normalizeProjectType(p);
+                        const isOther = p.cliente_id != null && p.cliente_id !== cliente?.cliente_id;
                         return (
                           <label
                             key={p.id}
-                            className={`flex items-center gap-2 rounded-lg pl-3 pr-2.5 min-h-9 py-1.5 text-xs cursor-pointer transition-colors ${
+                            className={`flex items-center gap-2 rounded-lg px-2.5 min-h-9 py-1.5 text-xs cursor-pointer transition-colors ${
                               checked ? "bg-primary/8 text-foreground" : "hover:bg-white/[0.04] text-muted-foreground"
                             }`}
                           >
@@ -421,23 +422,25 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
                               className="border-white/[0.1] data-[state=checked]:bg-primary data-[state=checked]:border-primary shrink-0"
                             />
                             <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                            <Badge variant="outline" title={projectType} className={`border text-[9px] font-medium shrink-0 whitespace-nowrap leading-none py-0.5 px-1.5 ${getProjectTypeBadgeClass(projectType)}`}>
-                              {projectType === "Grupo de Trabalho" ? "Grupo" : projectType}
-                            </Badge>
-                            {p.cliente_id != null && p.cliente_id !== cliente?.cliente_id && (
-                              <Badge variant="outline" className="border-white/[0.08] bg-white/[0.04] text-[9px] text-muted-foreground/50 shrink-0 whitespace-nowrap leading-none py-0.5 px-1.5">
-                                Outro
+                            <span className="flex shrink-0 items-center gap-1">
+                              <Badge variant="outline" title={projectType} className={`border text-[9px] font-medium whitespace-nowrap leading-none py-0.5 px-1.5 ${getProjectTypeBadgeClass(projectType)}`}>
+                                {projectType === "Grupo de Trabalho" ? "Grupo" : projectType}
                               </Badge>
-                            )}
+                              {isOther && (
+                                <Badge variant="outline" className="border-white/[0.08] bg-white/[0.04] text-[9px] text-muted-foreground/50 whitespace-nowrap leading-none py-0.5 px-1.5">
+                                  Outro
+                                </Badge>
+                              )}
+                            </span>
                           </label>
                         );
                       })}
                     </div>
                   )}
-                </ScrollArea>
+                </div>
 
                 {/* Selected summary */}
-                <ScrollArea className="h-[210px] rounded-xl border border-white/[0.06] bg-white/[0.035] xl:h-[280px]">
+                <div className="custom-scrollbar h-[210px] overflow-y-auto rounded-xl border border-white/[0.06] bg-white/[0.035] xl:h-[280px]">
                   <div className="p-3">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 mb-2.5">Selecionados</p>
                     {selectedProjects.length === 0 ? (
@@ -459,7 +462,7 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
                       </div>
                     )}
                   </div>
-                </ScrollArea>
+                </div>
               </div>
             )}
           </div>
