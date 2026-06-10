@@ -124,15 +124,6 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
             <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
           </button>
         )}
-
-        {activeCount > 0 && (
-          <button
-            onClick={() => { onChange({ period: "180d", status: "all", projectIds: [], consultant: "" }); setSearchQuery(""); }}
-            className="text-[11px] font-semibold text-white/30 underline decoration-white/10 hover:text-white/50 transition"
-          >
-            Limpar filtros
-          </button>
-        )}
       </div>
 
       {/* Expanded filters panel */}
@@ -147,24 +138,18 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
             className="w-full"
           >
             <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-end justify-center gap-3 sm:gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 sm:p-4 relative z-[100]" style={{ overflow: "visible" }}>
-              {/* Status */}
+              {/* Status — same dropdown pattern as Tarefas */}
               <div className="space-y-1.5 w-full sm:w-auto">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Status</label>
-                <div className="flex gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1 overflow-x-auto">
-                  {STATUSES.map((s) => (
-                    <button
-                      key={s.key}
-                      onClick={() => onChange({ ...filters, status: s.key })}
-                      className={`rounded-xl px-2.5 sm:px-3 py-1.5 min-h-[44px] sm:min-h-0 text-[11px] sm:text-[12px] font-semibold transition-all whitespace-nowrap ${
-                        filters.status === s.key
-                          ? "bg-[hsl(var(--ana-purple))] text-white shadow"
-                          : "text-white/30 hover:text-white/50"
-                      }`}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
+                <CustomSelect
+                  value={filters.status}
+                  onChange={(v) => onChange({ ...filters, status: (v || "all") as AnalyticsFilterState["status"] })}
+                  options={STATUSES.map((s) => ({ value: s.key, label: s.label }))}
+                  placeholder="Todos"
+                  icon={Filter}
+                  accentVar="--ana-purple"
+                  surfaceVar="--ana-surface"
+                />
               </div>
 
               {/* Period dropdown (same as Tarefas) */}
@@ -212,6 +197,21 @@ export default function AnalyticsFilters({ filters, onChange, projects, consulta
                     accentVar="--ana-purple"
                     surfaceVar="--ana-surface"
                   />
+                </div>
+              )}
+
+              {/* Clear filters — same panel pattern as Tarefas */}
+              {activeCount > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-transparent">‎</label>
+                  <button
+                    type="button"
+                    onClick={() => { onChange({ period: "180d", status: "all", projectIds: [], consultant: "" }); setSearchQuery(""); }}
+                    className="flex min-h-[44px] h-9 w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-semibold text-white/40 hover:text-white/60 hover:border-white/[0.15] transition"
+                  >
+                    <X className="h-3 w-3" />
+                    Limpar
+                  </button>
                 </div>
               )}
             </div>

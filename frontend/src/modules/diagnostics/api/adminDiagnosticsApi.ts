@@ -98,6 +98,8 @@ export type IntegrityPayload = {
     configs: IntegrityConfig[];
     latest_tasks_run: IntegrityRun | null;
     latest_times_run: IntegrityRun | null;
+    latest_tasks_success_run?: IntegrityRun | null;
+    latest_times_success_run?: IntegrityRun | null;
     recent_runs: IntegrityRun[];
   };
   problematic_tasks: IntegrityTaskItem[];

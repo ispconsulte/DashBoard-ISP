@@ -286,7 +286,7 @@ function summarizeElapsedProblem(entry: any, taskLookup: Map<number, any>) {
 }
 
 async function loadDiagnostics(adminClient: SupabaseClient) {
-  const [tasks, taskControls, elapsedTimes, elapsedControls, deleteEvents, syncConfigs, syncRuns] = await Promise.all([
+  const [tasks, taskControls, elapsedTimes, elapsedControls, deleteEvents, syncConfigs, syncRuns, tasksSuccessRun, timesSuccessRun] = await Promise.all([
     fetchAllRows(
       adminClient,
       "tasks",
@@ -327,6 +327,20 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
       .select("job_name,status,triggered_by,started_at,finished_at,duration_ms,error_message,details")
       .order("started_at", { ascending: false })
       .limit(12),
+    adminClient
+      .from("sync_job_runs")
+      .select("job_name,status,triggered_by,started_at,finished_at,duration_ms,error_message,details")
+      .eq("job_name", "Get-Projetcs-And-Tasks-Bitrix")
+      .eq("status", "success")
+      .order("started_at", { ascending: false })
+      .limit(1),
+    adminClient
+      .from("sync_job_runs")
+      .select("job_name,status,triggered_by,started_at,finished_at,duration_ms,error_message,details")
+      .eq("job_name", "sync-bitrix-times")
+      .eq("status", "success")
+      .order("started_at", { ascending: false })
+      .limit(1),
   ]);
 
   if (syncConfigs.error) throw new Error(`Erro ao carregar agendamentos: ${syncConfigs.error.message}`);
@@ -437,6 +451,8 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
 
   const latestTasksRun = (syncRuns.data ?? []).find((row: any) => row.job_name === "Get-Projetcs-And-Tasks-Bitrix") ?? null;
   const latestTimesRun = (syncRuns.data ?? []).find((row: any) => row.job_name === "sync-bitrix-times") ?? null;
+  const latestTasksSuccessRun = tasksSuccessRun.data?.[0] ?? null;
+  const latestTimesSuccessRun = timesSuccessRun.data?.[0] ?? null;
 
   return {
     overview: {
@@ -456,6 +472,8 @@ async function loadDiagnostics(adminClient: SupabaseClient) {
       configs: syncConfigs.data ?? [],
       latest_tasks_run: latestTasksRun,
       latest_times_run: latestTimesRun,
+      latest_tasks_success_run: latestTasksSuccessRun,
+      latest_times_success_run: latestTimesSuccessRun,
       recent_runs: syncRuns.data ?? [],
     },
     problematic_tasks: problematicTasks,

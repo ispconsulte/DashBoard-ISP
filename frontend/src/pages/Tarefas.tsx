@@ -445,7 +445,7 @@ export default function TarefasPage() {
 
     setSyncingBitrix(true);
     setSyncNowMs(Date.now());
-    toast.info("Sincronização Bitrix iniciada.");
+    toast.info("Sincronização com o sistema foi iniciada.");
 
     try {
       const result = await triggerIntegritySync(session.accessToken, ["all"], "incremental");

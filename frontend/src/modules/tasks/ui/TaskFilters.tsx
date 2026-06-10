@@ -282,7 +282,7 @@ export function TaskFilters({
                   <button
                     type="button"
                     onClick={onClearFilters}
-                    className="flex h-9 items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-semibold text-white/40 hover:text-white/60 hover:border-white/[0.15] transition"
+                    className="flex min-h-[44px] h-9 w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-semibold text-white/40 hover:text-white/60 hover:border-white/[0.15] transition"
                   >
                     <X className="h-3 w-3" />
                     Limpar
