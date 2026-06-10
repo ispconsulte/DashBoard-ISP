@@ -162,8 +162,10 @@ function syncHealthWarnings(sync?: IntegrityPayload["sync"] | null) {
   const warnings: string[] = [];
   const tasksRun = sync.latest_tasks_run;
   const timesRun = sync.latest_times_run;
-  const tasksSuccess = latestSuccess("Get-Projetcs-And-Tasks-Bitrix");
-  const timesSuccess = latestSuccess("sync-bitrix-times");
+  // Prefer the backend-provided latest success per job (full history scan).
+  // Fall back to scanning recent_runs only when the field is absent (older payloads).
+  const tasksSuccess = sync.latest_tasks_success_run ?? latestSuccess("Get-Projetcs-And-Tasks-Bitrix");
+  const timesSuccess = sync.latest_times_success_run ?? latestSuccess("sync-bitrix-times");
 
   [tasksRun, timesRun].forEach((run) => {
     const startedAt = run?.started_at ? Date.parse(run.started_at) : Number.NaN;
@@ -853,17 +855,17 @@ export default function AdminDiagnostico() {
                 <SectionHeader icon={Bug} title="O que a central está acompanhando" subtitle="Tarefas agrupadas por tipo de problema detectado" />
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   {[
-                    { title: "Sem projeto válido", count: taskInsights.withoutProject, desc: "Sem vínculo a um projeto. Não impactam painéis de produção.", color: "text-orange-300/70" },
-                    { title: "Sem responsável", count: taskInsights.withoutOwner, desc: "Chegaram sem responsável definido. Precisam de revisão.", color: "text-rose-300/70" },
-                    { title: "Sem prazo", count: taskInsights.withoutDeadline, desc: "Sem data de entrega. Compromete leitura de atraso e agenda.", color: "text-amber-300/70" },
-                    { title: "Arquivadas", count: taskInsights.archived, desc: "Arquivadas na origem. Precisam de revisão manual.", color: "text-purple-300/70" },
+                    { title: "Sem projeto válido", count: taskInsights.withoutProject, desc: "Sem vínculo a um projeto. Não impactam painéis de produção.", color: "text-orange-300" },
+                    { title: "Sem responsável", count: taskInsights.withoutOwner, desc: "Chegaram sem responsável definido. Precisam de revisão.", color: "text-rose-300" },
+                    { title: "Sem prazo", count: taskInsights.withoutDeadline, desc: "Sem data de entrega. Compromete leitura de atraso e agenda.", color: "text-amber-300" },
+                    { title: "Arquivadas", count: taskInsights.archived, desc: "Arquivadas na origem. Precisam de revisão manual.", color: "text-purple-300" },
                   ].map((item) => (
-                    <div key={item.title} className={`${INNER} flex flex-col gap-2 p-4`}>
+                    <div key={item.title} className="flex flex-col gap-2 rounded-xl border border-border/15 bg-card/40 p-4 transition-colors hover:border-border/25 hover:bg-card/50">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-[13px] font-semibold text-foreground/90">{item.title}</p>
+                        <p className="text-[13px] font-semibold text-foreground">{item.title}</p>
                         <p className={`text-2xl font-bold tracking-tight ${item.color}`}>{item.count}</p>
                       </div>
-                      <p className="text-[12px] leading-[1.55] text-muted-foreground/55">{item.desc}</p>
+                      <p className="text-[12.5px] leading-[1.6] text-muted-foreground/80">{item.desc}</p>
                     </div>
                   ))}
                 </div>
@@ -873,15 +875,15 @@ export default function AdminDiagnostico() {
                 <SectionHeader icon={Wrench} title="Guia rápido de decisão" subtitle="Como tratar cada caso encontrado" />
                 <div className="mt-5 flex flex-col gap-3">
                   {[
-                    { title: "Manter na central", desc: "Quando ainda precisa de correção ou o histórico deve ser preservado.", dot: "bg-sky-400/60" },
-                    { title: "Liberar para operação", desc: "Caso revisado que faz sentido reaparecer nas telas normais.", dot: "bg-emerald-400/60" },
-                    { title: "Excluir da base local", desc: "Para registros que não fazem mais sentido. Remove apenas desta base.", dot: "bg-red-400/60" },
+                    { title: "Manter na central", desc: "Quando ainda precisa de correção ou o histórico deve ser preservado.", dot: "bg-sky-400" },
+                    { title: "Liberar para operação", desc: "Caso revisado que faz sentido reaparecer nas telas normais.", dot: "bg-emerald-400" },
+                    { title: "Excluir da base local", desc: "Para registros que não fazem mais sentido. Remove apenas desta base.", dot: "bg-red-400" },
                   ].map((item) => (
-                    <div key={item.title} className={`${INNER} flex items-start gap-3 p-4`}>
-                      <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${item.dot}`} />
+                    <div key={item.title} className="flex items-start gap-3 rounded-xl border border-border/15 bg-card/40 p-4 transition-colors hover:border-border/25 hover:bg-card/50">
+                      <span className={`mt-[7px] h-2.5 w-2.5 rounded-full shrink-0 ${item.dot}`} />
                       <div>
-                        <p className="text-[13px] font-semibold text-foreground/90">{item.title}</p>
-                        <p className="mt-1 text-[12px] leading-[1.55] text-muted-foreground/55">{item.desc}</p>
+                        <p className="text-[13px] font-semibold text-foreground">{item.title}</p>
+                        <p className="mt-1 text-[12.5px] leading-[1.6] text-muted-foreground/80">{item.desc}</p>
                       </div>
                     </div>
                   ))}

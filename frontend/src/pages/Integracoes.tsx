@@ -228,7 +228,7 @@ export default function IntegracoesPage() {
     }
 
     setSyncingBitrix(true);
-    toast.info("Sincronização Bitrix iniciada.");
+    toast.info("Sincronização com o sistema foi iniciada.");
 
     try {
       await invokeBitrixSync();
