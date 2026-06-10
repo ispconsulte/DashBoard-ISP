@@ -571,11 +571,11 @@ export default function AdminBonificacaoPage() {
               <div className="space-y-3">
                 <div>
                   <label className="text-[11px] font-semibold text-muted-foreground/55 uppercase tracking-wider">Período</label>
-                  <Input value={editPeriod} onChange={(e) => setEditPeriod(e.target.value)} className="mt-1 h-9 rounded-xl text-sm" placeholder="ex: 2026-05" />
+                  <Input value={editPeriod} onChange={(e) => setEditPeriod(e.target.value)} className="mt-1 h-9 rounded-xl text-sm border-border/15 bg-card/40 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary/40" placeholder="ex: 2026-05" />
                 </div>
                 <div>
                   <label className="text-[11px] font-semibold text-muted-foreground/55 uppercase tracking-wider">Nota (1–10)</label>
-                  <Input type="number" min={1} max={10} value={editScore} onChange={(e) => setEditScore(e.target.value)} className="mt-1 h-9 rounded-xl text-sm" placeholder="1 a 10" />
+                  <Input type="number" min={1} max={10} value={editScore} onChange={(e) => setEditScore(e.target.value)} className="mt-1 h-9 rounded-xl text-sm border-border/15 bg-card/40 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary/40" placeholder="1 a 10" />
                 </div>
                 <div>
                   <label className="text-[11px] font-semibold text-muted-foreground/55 uppercase tracking-wider">Status</label>

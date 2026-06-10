@@ -310,12 +310,13 @@ export function BonusMonthlyReportModal({
   // in bonus_settings, not by role) may send any report; a coordinator may send only
   // for users explicitly linked to them. Role alone never grants access.
   const hasPermission = useMemo(() => {
-    if (session?.isPaymentManager === true) return true;
+    // Admin e responsavel geral (payment manager) podem enviar para qualquer consultor.
+    if (session?.role === "admin" || session?.isPaymentManager === true) return true;
     if (consultant?.userId) {
       return (session?.coordinatorOf ?? []).includes(consultant.userId);
     }
     return false;
-  }, [session?.isPaymentManager, consultant?.userId, session?.coordinatorOf]);
+  }, [session?.isPaymentManager, session?.role, consultant?.userId, session?.coordinatorOf]);
 
   // Friendly fallback shown whenever the e-mail service fails or is unavailable.
   // The PDF export remains available in the footer as the manual alternative.

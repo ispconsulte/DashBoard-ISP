@@ -8,7 +8,9 @@ export type BonusNotificationItem = BonusEvaluationNotificationRow & {
 
 interface Options {
   userId: string | null | undefined;
-  /** Delay in ms before showing deferred (offline) notifications after login. Default: 3 min */
+  /** Delay in ms before showing deferred (offline) notifications after login.
+   *  Mantido curto para o card aparecer logo apos a tela carregar, sem competir
+   *  com o paint inicial. Default: 6s */
   deferredDelayMs?: number;
 }
 
@@ -50,7 +52,7 @@ async function fetchEvaluatorName(evaluatorUserId: string): Promise<string | und
  */
 export function useBonusEvaluationNotifier({
   userId,
-  deferredDelayMs = 3 * 60 * 1000,
+  deferredDelayMs = 6_000,
 }: Options) {
   const [queue, setQueue] = useState<BonusNotificationItem[]>([]);
   const seenRef = useRef<Set<string>>(getSeenIds());

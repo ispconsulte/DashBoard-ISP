@@ -24,6 +24,9 @@ import {
 /* ── Types ──────────────────────────────────────────────────────────── */
 type SubtopicValue = {
   score: number;
+  /** false = ainda nao avaliado (nota nao foi definida pelo usuario). O score 5
+   *  serve apenas como base do slider; a UI mostra "Sem nota" enquanto for false. */
+  scored: boolean;
   justificativa: string;
   justificativa_chips: string[];
   pontos_de_melhoria: string;
@@ -76,7 +79,7 @@ function getSuggestions(subtopicKey: string): Observation[] {
 function buildDefaultState(): EvaluationFormState {
   return categoryKeys.reduce((acc, cat) => {
     acc[cat] = BONUS_EVALUATION_CATEGORIES[cat].subtopics.reduce((inner, sub) => {
-      inner[sub.key] = { score: 5, justificativa: "", justificativa_chips: [], pontos_de_melhoria: "", pontos_de_melhoria_chips: [] };
+      inner[sub.key] = { score: 5, scored: false, justificativa: "", justificativa_chips: [], pontos_de_melhoria: "", pontos_de_melhoria_chips: [] };
       return inner;
     }, {} as EvaluationFormState[BonusEvaluationCategory]);
     return acc;
@@ -131,11 +134,11 @@ function cellColor(n: number) {
 }
 
 /* ── Score selector grid component ──────────────────────────────────── */
-function ScoreGrid({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+function ScoreGrid({ value, onChange, active = true }: { value: number; onChange: (n: number) => void; active?: boolean }) {
   return (
     <div className="grid grid-cols-10 gap-1">
       {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
-        const isSelected = n === value;
+        const isSelected = active && n === value;
         const colors = cellColor(n);
         return (
           <motion.button
@@ -235,7 +238,7 @@ function SubtopicCard({
         onClick={onToggle}
         className="group flex w-full items-center gap-3 px-4 py-3.5 text-left transition-all active:bg-white/[0.03]"
       >
-        <span className={`h-2 w-2 shrink-0 rounded-full transition-shadow ${scoreDot(value.score)}`} />
+        <span className={`h-2 w-2 shrink-0 rounded-full transition-shadow ${value.scored ? scoreDot(value.score) : "bg-muted-foreground/25"}`} />
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-semibold text-foreground/90 leading-snug tracking-tight">{label}</p>
           {!isOpen && (
@@ -244,8 +247,8 @@ function SubtopicCard({
               animate={{ opacity: 1 }}
               className="mt-0.5 text-[11px] text-muted-foreground/40 truncate"
             >
-              {value.score}/10 · {scoreLabel(value.score)}
-              {filled ? " · ✓ Justificativa preenchida" : " · Pré-setado"}
+              {value.scored ? `${value.score}/10 · ${scoreLabel(value.score)}` : "Sem nota definida"}
+              {filled ? " · ✓ Justificativa preenchida" : value.scored ? "" : " · toque para avaliar"}
             </motion.p>
           )}
         </div>
@@ -255,8 +258,8 @@ function SubtopicCard({
               <Check className="h-2.5 w-2.5 text-emerald-400" />
             </div>
           )}
-          <div className={`flex items-center justify-center h-7 min-w-[28px] rounded-lg ring-1 ${scoreRing(value.score)} bg-white/[0.03] px-1.5`}>
-            <span className="text-xs font-bold text-foreground tabular-nums">{value.score}</span>
+          <div className={`flex items-center justify-center h-7 min-w-[28px] rounded-lg ring-1 ${value.scored ? scoreRing(value.score) : "ring-border/15"} bg-white/[0.03] px-1.5`}>
+            <span className={`text-xs font-bold tabular-nums ${value.scored ? "text-foreground" : "text-muted-foreground/40"}`}>{value.scored ? value.score : "—"}</span>
           </div>
           <ChevronDown
             className={`h-3.5 w-3.5 text-muted-foreground/30 transition-transform duration-250 ${isOpen ? "rotate-180" : ""}`}
@@ -307,7 +310,7 @@ function SubtopicCard({
                 </div>
 
                 {/* Score grid */}
-                <ScoreGrid value={value.score} onChange={(n) => onChange({ score: n })} />
+                <ScoreGrid value={value.score} onChange={(n) => onChange({ score: n })} active={value.scored} />
               </div>
 
               {/* ── Justificativa ────────────────────────────────── */}
@@ -456,6 +459,7 @@ export function BonusEvaluationModal({
           const melhoraParsed = parseBracketField(row.pontos_de_melhoria ?? "");
           next[row.category as BonusEvaluationCategory][row.subtopic] = {
             score: Number(row.score_1_10 ?? 5),
+            scored: true,
             justificativa: justParsed.text,
             justificativa_chips: justParsed.chips,
             pontos_de_melhoria: melhoraParsed.text,
@@ -485,7 +489,8 @@ export function BonusEvaluationModal({
 
   const summary = useMemo(() => {
     const calc = (cat: BonusEvaluationCategory) => {
-      const entries = Object.values(form[cat]);
+      // So entram no calculo os subtopicos efetivamente avaliados; sem nenhum, fica pendente.
+      const entries = Object.values(form[cat]).filter((i) => i.scored);
       const avg = averageNumbers(entries.map((i) => i.score * 10));
       const payout = getBonusCategoryPayoutFromScore(cat, avg, consultant?.level ?? null);
       return { average: avg, payout };
@@ -496,9 +501,11 @@ export function BonusEvaluationModal({
   const updateField = useCallback(
     (category: BonusEvaluationCategory, subtopic: string, patch: Partial<SubtopicValue>) => {
       setTouched(true);
+      // Definir a nota marca o subtopico como avaliado.
+      const withScored = "score" in patch ? { ...patch, scored: true } : patch;
       setForm((cur) => ({
         ...cur,
-        [category]: { ...cur[category], [subtopic]: { ...cur[category][subtopic], ...patch } },
+        [category]: { ...cur[category], [subtopic]: { ...cur[category][subtopic], ...withScored } },
       }));
     },
     [],
@@ -618,20 +625,24 @@ export function BonusEvaluationModal({
   /* ── Progress indicator per category ──────────────────────────────── */
   const filledCount = useCallback(
     (cat: BonusEvaluationCategory) => {
-      return Object.values(form[cat]).filter((v) => v.justificativa.trim().length > 0 || (v.justificativa_chips ?? []).length > 0).length;
+      // Conta subtopicos que ja receberam nota (o badge reflete o progresso da avaliacao).
+      return Object.values(form[cat]).filter((v) => v.scored).length;
     },
     [form],
   );
 
   /* ── Permission check ─────────────────────────────────────────────────
-     Evaluation is only allowed when the logged user is explicitly listed
-     as coordinator/responsible for the evaluated user.
-     isPaymentManager and bonusRole alone do NOT grant evaluate permission.
+     Admin e responsavel geral (payment manager) podem avaliar qualquer um.
+     Os demais so podem avaliar quem coordenam explicitamente
+     (user_coordinator_links). bonusRole sozinho nao concede permissao.
   ── */
   const hasPermission = useMemo(() => {
     if (!consultant?.userId || !session?.userId) return false;
+    // Admin e responsavel geral (payment manager) podem avaliar qualquer consultor.
+    if (session?.role === "admin" || session?.isPaymentManager === true) return true;
+    // Demais: apenas se forem o coordenador explicito do consultor.
     return (session?.coordinatorOf ?? []).includes(consultant.userId);
-  }, [consultant?.userId, session?.coordinatorOf, session?.userId]);
+  }, [consultant?.userId, session?.coordinatorOf, session?.userId, session?.role, session?.isPaymentManager]);
 
   const responsibleCoordinatorName = consultant?.coordinatorName ?? null;
 
