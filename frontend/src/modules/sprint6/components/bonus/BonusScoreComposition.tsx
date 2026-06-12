@@ -180,6 +180,51 @@ export function BonusScoreComposition({ consultants }: BonusScoreCompositionProp
             </div>
           </div>
 
+          {/* Comparação Sistema (automático) vs Coordenador — a nota do coordenador, quando existe, é a oficial */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className={`rounded-xl border p-3 transition-colors ${selected.scoreSource === "automatic" ? "border-primary/30 bg-primary/[0.06]" : "border-border/10 bg-white/[0.02]"}`}>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Nota do sistema</p>
+                {selected.scoreSource === "automatic" && (
+                  <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-semibold text-primary">Vale p/ $$</span>
+                )}
+              </div>
+              <p className="mt-1 text-lg font-bold text-foreground">{selected.automaticScore}%</p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground/50">Prazo, atraso, utilização e saúde</p>
+            </div>
+            <div className={`rounded-xl border p-3 transition-colors ${selected.scoreSource === "coordinator" ? "border-emerald-500/30 bg-emerald-500/[0.06]" : "border-border/10 bg-white/[0.02]"}`}>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Nota do coordenador</p>
+                {selected.scoreSource === "coordinator" && (
+                  <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400">Vale p/ $$</span>
+                )}
+              </div>
+              <p className={`mt-1 text-lg font-bold ${selected.coordinatorScore != null ? "text-foreground" : "text-muted-foreground/40"}`}>
+                {selected.coordinatorScore != null ? `${selected.coordinatorScore}%` : "Pendente"}
+              </p>
+              <p className="mt-0.5 text-[10px] text-muted-foreground/50">
+                {selected.coordinatorName ? `Avaliação de ${selected.coordinatorName}` : "Avaliação manual submetida"}
+              </p>
+            </div>
+          </div>
+
+          {selected.coordinatorScore != null && (
+            <div className="flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 text-[11px]">
+              <span className="text-muted-foreground/60">Diferença coordenador − sistema</span>
+              {(() => {
+                const diff = selected.coordinatorScore - selected.automaticScore;
+                const color = diff > 0 ? "text-emerald-400" : diff < 0 ? "text-red-400" : "text-muted-foreground";
+                const Icon = diff > 0 ? TrendingUp : diff < 0 ? TrendingDown : Target;
+                return (
+                  <span className={`flex items-center gap-1 font-bold ${color}`}>
+                    <Icon className="h-3.5 w-3.5" />
+                    {diff > 0 ? "+" : ""}{diff} pts
+                  </span>
+                );
+              })()}
+            </div>
+          )}
+
           {bestFactor && worstFactor && bestFactor.key !== worstFactor.key && (
             <div className="grid grid-cols-2 gap-2">
               <div className="flex items-start gap-2 rounded-lg border border-emerald-500/10 bg-emerald-500/[0.04] p-2.5">
@@ -225,7 +270,7 @@ export function BonusScoreComposition({ consultants }: BonusScoreCompositionProp
 
           <div className="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
             <p className="text-[11px] text-muted-foreground/60">
-              <span className="font-medium text-foreground">Estimativa</span> = nota do coordenador × teto ({money(selected.maxBonus)}) = <span className="font-bold text-primary">{selected.payout == null ? "Pendente" : money(selected.payout)}</span>
+              <span className="font-medium text-foreground">Estimativa</span> = {selected.scoreSource === "coordinator" ? "nota do coordenador" : selected.scoreSource === "snapshot" ? "nota registrada" : "nota do sistema"} ({selected.score}%) × teto ({money(selected.maxBonus)}) = <span className="font-bold text-primary">{selected.payout == null ? "Pendente" : money(selected.payout)}</span>
             </p>
           </div>
         </div>

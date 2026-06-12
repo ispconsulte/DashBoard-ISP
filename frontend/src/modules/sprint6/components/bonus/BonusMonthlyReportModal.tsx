@@ -53,6 +53,16 @@ function scoreDot(score: number) {
   return "bg-red-500";
 }
 
+/* ── Validação de e-mail ────────────────────────────────────────────────
+ * Mesma regra usada no backend (Edge Function). Evita disparar o envio com
+ * algo digitado errado (ex.: "dsa8dhsadhsds"): barra na UI antes do request.
+ * Aceita só um endereço; espaços nas pontas são tolerados (trim no envio).
+ */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function isValidEmail(value: string): boolean {
+  return EMAIL_RE.test(value.trim());
+}
+
 /* ── Evaluation detail accordion ────────────────────────────────────── */
 function EvalDetailCard({
   item,
@@ -176,6 +186,13 @@ export function BonusMonthlyReportModal({
   const [evalSearch, setEvalSearch] = useState("");
 
   const monthLabel = `${String(month).padStart(2, "0")}/${year}`;
+
+  // Validação reativa do destinatário: só acende o erro quando há algo digitado
+  // que não é um e-mail (campo vazio não mostra erro — o botão já fica desabilitado).
+  const trimmedEmail = recipientEmail.trim();
+  const emailIsValid = isValidEmail(trimmedEmail);
+  const emailError = trimmedEmail.length > 0 && !emailIsValid;
+
   const monthOptions = useMemo(
     () => [
       { value: 1, label: "Janeiro" }, { value: 2, label: "Fevereiro" }, { value: 3, label: "Março" },
@@ -324,8 +341,18 @@ export function BonusMonthlyReportModal({
     "Não foi possível enviar o relatório por e-mail no momento. Baixe o PDF e envie manualmente, ou acione o time responsável informando que o envio por e-mail está indisponível.";
 
   const sendReport = async () => {
-    if (!consultant?.userId || !recipientEmail.trim() || !session?.accessToken) return;
+    if (!consultant?.userId || !session?.accessToken) return;
     if (!hasPermission) { toast.error("Você não tem permissão para esta ação."); return; }
+    // Barra e-mail vazio ou inválido antes de chamar o servidor, com mensagem clara.
+    const recipient = recipientEmail.trim();
+    if (!recipient) {
+      toast.warning("Informe o e-mail do destinatário antes de enviar.");
+      return;
+    }
+    if (!isValidEmail(recipient)) {
+      toast.error(`"${recipient}" não parece um e-mail válido. Confira e tente novamente (ex.: nome@empresa.com).`);
+      return;
+    }
     // Sem avaliacao submetida nao ha relatorio para enviar — avisa de forma clara
     // em vez de chamar o servico de e-mail e cair na mensagem generica de falha.
     if (previewRows.length === 0) {
@@ -352,11 +379,22 @@ export function BonusMonthlyReportModal({
       });
 
       if (!res.ok) {
-        // Detalhe técnico fica apenas no log; o usuário recebe a orientação amigável (com PDF como alternativa).
+        // Tenta extrair a mensagem amigável que o servidor já formata (ex.: e-mail
+        // recusado/destinatário inexistente em 422, remetente não autorizado).
         const detail = await res.text().catch(() => "");
+        let serverMessage = "";
+        try {
+          const parsed = JSON.parse(detail) as { error?: string };
+          if (parsed?.error) serverMessage = parsed.error;
+        } catch { /* corpo não-JSON: mantém fallback */ }
+
+        // Para erros de validação do destinatário (422), mostramos a mensagem
+        // específica do servidor — é mais útil que o fallback genérico de "baixe o PDF".
+        const useServerMessage = res.status === 422 && serverMessage.length > 0;
+
         notifyError(detail || `HTTP ${res.status}`, {
           context: "bonus-report-email",
-          message: EMAIL_FALLBACK_MESSAGE,
+          message: useServerMessage ? serverMessage : EMAIL_FALLBACK_MESSAGE,
           duration: 8000,
         });
         return;
@@ -731,16 +769,30 @@ export function BonusMonthlyReportModal({
                   </Select>
                 )}
                 {(selectedRecipient === "__custom__" || recipientOptions.length === 0) && (
-                  <Input
-                    type="email"
-                    value={recipientEmail}
-                    onChange={(e) => {
-                      setRecipientEmail(e.target.value);
-                      setSelectedRecipient("__custom__");
-                    }}
-                    placeholder="novo-email@empresa.com"
-                    className="rounded-lg border-border/8 bg-white/[0.03] text-sm placeholder:text-muted-foreground/25"
-                  />
+                  <>
+                    <Input
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      value={recipientEmail}
+                      onChange={(e) => {
+                        setRecipientEmail(e.target.value);
+                        setSelectedRecipient("__custom__");
+                      }}
+                      placeholder="novo-email@empresa.com"
+                      aria-invalid={emailError}
+                      className={`rounded-lg bg-white/[0.03] text-sm placeholder:text-muted-foreground/25 ${
+                        emailError
+                          ? "border-destructive/50 focus-visible:ring-destructive/30"
+                          : "border-border/8"
+                      }`}
+                    />
+                    {emailError && (
+                      <p className="mt-1.5 text-[11px] leading-snug text-destructive/90">
+                        E-mail inválido. Use o formato nome@empresa.com.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -761,7 +813,7 @@ export function BonusMonthlyReportModal({
             <Button variant="outline" size="default" onClick={() => onOpenChange(false)} className="w-full rounded-xl border-border/10 hover:bg-white/[0.04] text-sm sm:w-auto">
               Cancelar
             </Button>
-            <Button size="default" onClick={sendReport} disabled={sending || !recipientEmail.trim() || previewLoading || previewRows.length === 0} className="w-full rounded-xl gap-2 text-sm sm:w-auto">
+            <Button size="default" onClick={sendReport} disabled={sending || !emailIsValid || previewLoading || previewRows.length === 0} className="w-full rounded-xl gap-2 text-sm sm:w-auto">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizonal className="h-4 w-4" />}
               Enviar por e-mail
             </Button>

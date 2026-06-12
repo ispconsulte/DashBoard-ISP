@@ -637,10 +637,12 @@ export function BonusEvaluationModal({
      (user_coordinator_links). bonusRole sozinho nao concede permissao.
   ── */
   const hasPermission = useMemo(() => {
-    if (!consultant?.userId || !session?.userId) return false;
     // Admin e responsavel geral (payment manager) podem avaliar qualquer consultor.
+    // Esta checagem vem PRIMEIRO e nao depende de session.userId/consultant.userId:
+    // o acesso full nao pode ser barrado por um id ainda nao resolvido (race de fetch).
     if (session?.role === "admin" || session?.isPaymentManager === true) return true;
-    // Demais: apenas se forem o coordenador explicito do consultor.
+    // Demais: precisam do vinculo explicito de coordenacao, logo exigem ambos os ids.
+    if (!consultant?.userId || !session?.userId) return false;
     return (session?.coordinatorOf ?? []).includes(consultant.userId);
   }, [consultant?.userId, session?.coordinatorOf, session?.userId, session?.role, session?.isPaymentManager]);
 
