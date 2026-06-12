@@ -605,13 +605,9 @@ export default function TarefasPage() {
         return true;
       }
 
-      const rawTaskId = task.raw.id ?? task.raw.task_id;
-      const entries = rawTaskId != null ? timeEntriesByTaskId[String(rawTaskId)] : undefined;
       return Boolean(session?.name && taskMatchesConsultantFilter({
         task,
         selectedConsultant: session.name,
-        entries,
-        userNames,
       }));
     };
     const myTasks = sourceTasks.filter(belongsToSessionOrActivity);
@@ -803,13 +799,9 @@ export default function TarefasPage() {
     const byPeriod = scopedTasks;
 
     const visible = byPeriod.filter((task) => {
-      const rawTaskId = task.raw.id ?? task.raw.task_id;
-      const entries = rawTaskId != null ? timeEntriesByTaskId[String(rawTaskId)] : undefined;
       const matchesConsultant = taskMatchesConsultantFilter({
         task,
         selectedConsultant: consultant,
-        entries,
-        userNames,
       });
       const normalizedProject = normalizeComparableText(task.project);
       const matchesProject =

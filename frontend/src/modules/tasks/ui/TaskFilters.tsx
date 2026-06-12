@@ -187,7 +187,7 @@ export function TaskFilters({
           >
             <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-end justify-center gap-3 sm:gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 sm:p-4 relative z-[100]" style={{ overflow: "visible" }}>
               {/* Status */}
-              <div className="space-y-1.5 w-full sm:w-auto">
+              <div className="space-y-1.5 w-full sm:w-[170px]">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Status</label>
                 <CustomSelect
                   value={status}
@@ -199,7 +199,7 @@ export function TaskFilters({
               </div>
 
               {/* Date field dropdown */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 w-full sm:w-[170px]">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Base de data</label>
                 <CustomSelect
                   value={dateFilterMode}
@@ -212,7 +212,7 @@ export function TaskFilters({
               </div>
 
               {/* Period dropdown */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 w-full sm:w-[170px]">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Período</label>
                 <CustomSelect
                   value={period}
@@ -225,7 +225,7 @@ export function TaskFilters({
               </div>
 
               {/* Project dropdown — multi-select */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 w-full sm:w-[170px]">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Projeto</label>
                 <MultiSelectProjects
                   value={project}
@@ -239,7 +239,7 @@ export function TaskFilters({
 
               {/* Consultant dropdown — after project */}
               {consultantOptions.length > 0 && (
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 w-full sm:w-[170px]">
                   <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Consultor</label>
                   <CustomSelect
                     value={consultant}

@@ -439,7 +439,7 @@ export function TaskCharts({
                   <XAxis dataKey="iso" tick={{ fill: "#94a3b8", fontSize: 10 }} tickFormatter={(v: string) => `${v.slice(8, 10)}/${v.slice(5, 7)}`} />
                   <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} width={30} />
                   <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: "#e2e8f0" }} labelStyle={{ color: "#e2e8f0" }} formatter={lineTooltipFormatter} labelFormatter={(label) => formatIsoDatePtBr(String(label ?? ""))} />
-                  <ReferenceLine x={todayIso} stroke="hsl(160 84% 60%)" strokeDasharray="4 4" label={{ position: "insideTopRight", value: "Hoje", fill: "#94a3b8", fontSize: 10, dy: -4 }} />
+                  <ReferenceLine x={todayIso} stroke="hsl(160 84% 60%)" strokeDasharray="4 4" label={{ position: "insideBottomRight", value: "Hoje", fill: "#94a3b8", fontSize: 10, dy: 12 }} />
                   <Line type="monotone" dataKey="count" stroke="#22c55e" strokeWidth={2} dot={false} activeDot={renderActiveDot} isAnimationActive animationDuration={1500} animationEasing="ease-out" />
                 </LineChart>
               </ResponsiveContainer>
