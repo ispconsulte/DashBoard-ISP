@@ -687,13 +687,17 @@ export function useBonusRealData(period: RoiPeriod = "180d", accessToken?: strin
     return Array.from(consultantAcc.entries())
       .map(([, acc]) => {
         const normalizedConsultant = normalizeName(acc.consultantName);
+        // Match por substring so e aceito quando for INEQUIVOCO (exatamente 1 usuario
+        // casa). Se varios casarem (ex.: "Luiz" vs "Luiz Carlos"), nao vinculamos a
+        // ninguem — melhor ficar sem card do que atribuir avaliacao a pessoa errada.
+        const partialMatches = activeUsers.filter((user) => {
+          const normalizedUser = normalizeName(user.name);
+          return normalizedUser.includes(normalizedConsultant) || normalizedConsultant.includes(normalizedUser);
+        });
         const matchedUser =
           (acc.responsibleId ? activeUsersByBitrixId.get(acc.responsibleId) : null) ??
           activeUsersByName.get(normalizedConsultant) ??
-          activeUsers.find((user) => {
-            const normalizedUser = normalizeName(user.name);
-            return normalizedUser.includes(normalizedConsultant) || normalizedConsultant.includes(normalizedUser);
-          }) ??
+          (partialMatches.length === 1 ? partialMatches[0] : null) ??
           null;
 
         if (!matchedUser) return null;

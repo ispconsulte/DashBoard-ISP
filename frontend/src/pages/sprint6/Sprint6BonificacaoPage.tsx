@@ -61,12 +61,16 @@ const PERIOD_OPTIONS: { value: RoiPeriod; label: string }[] = [
   { value: "all", label: "Histórico" },
 ];
 
+// Período padrão da tela: abre no histórico completo para não esconder quem
+// não teve atividade no mês corrente (ex.: tarefas ainda não sincronizadas).
+const DEFAULT_PERIOD: RoiPeriod = "all";
+
 
 export default function Sprint6BonificacaoPage() {
   usePageSEO("Bonificação | Dashboard ISP");
   const { session, loadingSession } = useAuth();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [period, setPeriod] = useState<RoiPeriod>("180d");
+  const [period, setPeriod] = useState<RoiPeriod>(DEFAULT_PERIOD);
   const [filterOpen, setFilterOpen] = useState(false);
   const [consultantFilter, setConsultantFilter] = useState("");
   const [activeMainTab, setActiveMainTab] = useState("ranking");
@@ -120,9 +124,15 @@ export default function Sprint6BonificacaoPage() {
     return scopedConsultants.filter((consultant) => consultant.userId === session?.userId);
   }, [scopedConsultants, canManageTeam, canSeeAllEvaluations, session?.coordinatorOf, session?.userId]);
 
+  // "Minha avaliação" deve ser ESTRITAMENTE o card do proprio usuario logado.
+  // Sem fallback para visibleConsultants[0]: quem nao tem card proprio (ex.: admin/
+  // payment manager que nao e consultor avaliavel) NAO pode ver o card de outra
+  // pessoa como se fosse o dele.
   const myConsultant = useMemo(
-    () => visibleConsultants.find((consultant) => consultant.userId === session?.userId) ?? visibleConsultants[0] ?? null,
-    [visibleConsultants, session?.userId],
+    () => session?.userId != null
+      ? bonus.consultants.find((consultant) => consultant.userId === session.userId) ?? null
+      : null,
+    [bonus.consultants, session?.userId],
   );
 
   const pendingEvaluationNotification = useMemo(() => {
@@ -201,7 +211,9 @@ export default function Sprint6BonificacaoPage() {
   const completionRate = totalTasks > 0 ? Math.round((totalCompletedTasks / totalTasks) * 100) : 0;
   const hasActiveRankingFilters = search.trim().length > 0 || evaluationFilter !== "all";
 
-  const hasOwnEvaluationTab = Boolean(myConsultant);
+  // "Minha avaliação" aparece para qualquer colaborador interno logado (não cliente),
+  // mesmo sem card no período — nesse caso mostra um aviso, NUNCA o card de outra pessoa.
+  const hasOwnEvaluationTab = session?.userId != null && session?.role !== "cliente";
   const hasTeamTab = subordinateConsultants.length > 0;
   const bonusReminder = useMemo(() => {
     if (isFullAccessManager) {
@@ -335,9 +347,9 @@ export default function Sprint6BonificacaoPage() {
                       >
                         <Filter className="h-3.5 w-3.5 opacity-60" />
                         Filtros
-                        {(period !== "180d" || consultantFilter) && (
+                        {(period !== DEFAULT_PERIOD || consultantFilter) && (
                           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-400/20 text-[10px] font-bold text-amber-400">
-                            {[period !== "180d", !!consultantFilter].filter(Boolean).length}
+                            {[period !== DEFAULT_PERIOD, !!consultantFilter].filter(Boolean).length}
                           </span>
                         )}
                       </Button>
@@ -390,10 +402,10 @@ export default function Sprint6BonificacaoPage() {
                       )}
 
                       {/* Clear */}
-                      {(period !== "180d" || consultantFilter) && (
+                      {(period !== DEFAULT_PERIOD || consultantFilter) && (
                         <button
                           type="button"
-                          onClick={() => { setPeriod("180d"); setConsultantFilter(""); }}
+                          onClick={() => { setPeriod(DEFAULT_PERIOD); setConsultantFilter(""); }}
                           className="w-full rounded-lg border border-border/10 bg-secondary/20 py-2 text-xs font-semibold text-muted-foreground/60 hover:text-foreground/80 transition-colors"
                         >
                           Limpar filtros
@@ -405,9 +417,9 @@ export default function Sprint6BonificacaoPage() {
               </div>
 
               {/* Active filter summary */}
-              {(period !== "180d" || consultantFilter) && (
+              {(period !== DEFAULT_PERIOD || consultantFilter) && (
                 <p className="text-[11px] text-muted-foreground/40 pl-[3.375rem]">
-                  {PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? "Semestral"}
+                  {PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? "Histórico"}
                   {consultantFilter && ` · ${consultantFilter}`}
                 </p>
               )}
@@ -545,6 +557,7 @@ export default function Sprint6BonificacaoPage() {
                       subordinates={scopedConsultants}
                       session={session}
                       periodLabel={periodLabel(period)}
+                      hideMonetary={hideMonetary}
                       onEvaluate={setEvaluationConsultant}
                       onSendReport={setReportConsultant}
                     />
@@ -563,6 +576,7 @@ export default function Sprint6BonificacaoPage() {
                       subordinates={subordinateConsultants}
                       session={session}
                       periodLabel={periodLabel(period)}
+                      hideMonetary={hideMonetary}
                       onEvaluate={setEvaluationConsultant}
                       onSendReport={setReportConsultant}
                     />
@@ -643,14 +657,12 @@ export default function Sprint6BonificacaoPage() {
           <p className="text-sm font-semibold text-foreground/70">
             {waitingFirstSync
               ? "Os dados ainda estão sendo carregados"
-              : noVisibleConsultantsForPermission
-              ? "Nenhum dado visível para este perfil"
-              : "Seus dados ainda não estão disponíveis"}
+              : "Você ainda não tem tarefas neste período"}
           </p>
           <p className="text-xs text-muted-foreground/50 max-w-md mx-auto leading-relaxed">
             {waitingFirstSync
               ? "A primeira carga de tarefas e horas acontece automaticamente. Assim que estiver pronta, seus dados aparecerão aqui."
-              : "Quando houver tarefas e horas vinculadas ao seu usuário no período selecionado, este painel será preenchido automaticamente."}
+              : "Sua avaliação aparece aqui assim que houver tarefas e horas vinculadas ao seu usuário no período selecionado. Tente outro período no filtro acima."}
           </p>
         </div>
       );

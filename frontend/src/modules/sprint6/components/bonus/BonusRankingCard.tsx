@@ -461,7 +461,11 @@ export function RankingCard({
                         className="group/btn relative inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/8 px-4 py-2 text-xs font-semibold text-primary shadow-[0_0_12px_hsl(var(--primary)/0.06)] outline-none transition-all duration-200 hover:-translate-y-px hover:border-primary/35 hover:bg-primary/12 hover:shadow-[0_0_20px_hsl(var(--primary)/0.1)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/35 focus-visible:border-primary/40 active:translate-y-0 active:shadow-[0_0_8px_hsl(var(--primary)/0.08)] sm:flex-none"
                       >
                         <ClipboardCheck className="h-3.5 w-3.5 transition-transform duration-200 group-hover/btn:scale-110" />
-                        Avaliar
+                        {consultant.manualEvaluation.status === "submitted"
+                          ? "Revisar Avaliação"
+                          : consultant.manualEvaluation.status === "draft"
+                          ? "Continuar Avaliação"
+                          : "Avaliar"}
                       </button>
                     )}
                     {canSendReport && (

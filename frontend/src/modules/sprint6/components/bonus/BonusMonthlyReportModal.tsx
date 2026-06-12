@@ -63,6 +63,22 @@ function isValidEmail(value: string): boolean {
   return EMAIL_RE.test(value.trim());
 }
 
+const MONTH_NAMES_PT = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/* Mensagem inicial pronta (editável) para o comentário do coordenador. */
+function buildDefaultCoordinatorMessage(fullName: string | undefined, month: number, year: number): string {
+  const firstName = String(fullName ?? "").trim().split(/\s+/)[0] || "colaborador";
+  const monthLabel = MONTH_NAMES_PT[month - 1] ?? String(month);
+  return (
+    `Olá, ${firstName}!\n\n` +
+    `Segue o seu relatório de bonificação referente a ${monthLabel} de ${year}, com o resumo do seu desempenho e da avaliação do período.\n\n` +
+    `Qualquer dúvida sobre as notas ou os critérios, fico à disposição.`
+  );
+}
+
 /* ── Evaluation detail accordion ────────────────────────────────────── */
 function EvalDetailCard({
   item,
@@ -211,15 +227,20 @@ export function BonusMonthlyReportModal({
     const defaultEmail = consultant?.email ?? session?.email ?? "";
     setRecipientEmail(defaultEmail);
     setSelectedRecipient(defaultEmail || "__custom__");
-    setCoordinatorMessage("");
+    // Mensagem inicial pronta (editável): usa o periodo da avaliacao, se houver.
+    let msgMonth = new Date().getMonth() + 1;
+    let msgYear = new Date().getFullYear();
     const latestPeriod = consultant?.manualEvaluation.periodKey;
     if (latestPeriod) {
       const [nextYear, nextMonth] = latestPeriod.split("-").map(Number);
       if (nextYear && nextMonth) {
         setYear(nextYear);
         setMonth(nextMonth);
+        msgYear = nextYear;
+        msgMonth = nextMonth;
       }
     }
+    setCoordinatorMessage(buildDefaultCoordinatorMessage(consultant?.name, msgMonth, msgYear));
   }, [consultant, session?.email]);
 
   const recipientOptions = useMemo(() => {
