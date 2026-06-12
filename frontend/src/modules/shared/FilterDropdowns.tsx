@@ -68,13 +68,11 @@ function SearchInput({
   onChange,
   inputRef,
   surfaceVar = "--task-surface",
-  accentVar = "--task-purple",
 }: {
   value: string;
   onChange: (v: string) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
   surfaceVar?: string;
-  accentVar?: string;
 }) {
   return (
     <div
@@ -88,7 +86,7 @@ function SearchInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Buscar..."
-          className={`h-8 w-full rounded-md border border-white/[0.08] bg-white/[0.04] pl-7 pr-3 text-[11px] text-white/70 outline-none focus:border-[hsl(var(${accentVar})/0.4)] placeholder:text-white/25`}
+          className="h-8 w-full rounded-md border-0 bg-white/[0.04] pl-7 pr-3 text-[11px] text-white/70 outline-none ring-0 focus:outline-none focus:ring-0 placeholder:text-white/25"
         />
       </div>
     </div>
@@ -171,7 +169,7 @@ export function CustomSelect({
 
       <DropdownPanel open={open} surfaceVar={surfaceVar} maxHeight="min(260px,70vh)" width="min(220px,calc(100vw-1.5rem))">
         {options.length > 5 && (
-          <SearchInput value={search} onChange={setSearch} inputRef={inputRef} surfaceVar={surfaceVar} accentVar={accentVar} />
+          <SearchInput value={search} onChange={setSearch} inputRef={inputRef} surfaceVar={surfaceVar} />
         )}
         <div className="overflow-y-auto flex-1 p-1.5 flex flex-col gap-0.5">
           {!hasResetOption && (
@@ -353,7 +351,7 @@ export function MultiSelectProjects({
 
       <DropdownPanel open={open} surfaceVar={surfaceVar} maxHeight="min(300px,70vh)" width="min(260px,calc(100vw-1.5rem))">
         {options.length > 5 && (
-          <SearchInput value={search} onChange={setSearch} inputRef={inputRef} surfaceVar={surfaceVar} accentVar={accentVar} />
+          <SearchInput value={search} onChange={setSearch} inputRef={inputRef} surfaceVar={surfaceVar} />
         )}
         <div className="overflow-y-auto flex-1 p-1.5 flex flex-col gap-0.5">
           <button
