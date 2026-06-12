@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { taskMatchesConsultantFilter } from "./taskConsultantFilter";
-import type { ElapsedTimeRecord, TaskView } from "./types";
+import type { TaskView } from "./types";
 
 const task = (overrides: Partial<TaskView> = {}): TaskView =>
   ({
@@ -10,7 +10,7 @@ const task = (overrides: Partial<TaskView> = {}): TaskView =>
   }) as TaskView;
 
 describe("taskMatchesConsultantFilter", () => {
-  it("matches the selected consultant by task responsible", () => {
+  it("matches when task responsible equals selected consultant", () => {
     expect(
       taskMatchesConsultantFilter({
         task: task({ consultant: "Raphael Morais de Jesus Schultz" }),
@@ -19,15 +19,29 @@ describe("taskMatchesConsultantFilter", () => {
     ).toBe(true);
   });
 
-  it("matches the selected consultant by elapsed time author even when task responsible is another user", () => {
-    const entries: ElapsedTimeRecord[] = [{ task_id: 24, user_id: 8, seconds: 547200 }];
+  it("does not match when task responsible is a different person", () => {
+    expect(
+      taskMatchesConsultantFilter({
+        task: task({ consultant: "Kaio Jordan Oliveira" }),
+        selectedConsultant: "Raphael Morais de Jesus Schultz",
+      }),
+    ).toBe(false);
+  });
 
+  it("returns true for 'all'", () => {
     expect(
       taskMatchesConsultantFilter({
         task: task(),
-        selectedConsultant: "Raphael Morais de Jesus Schultz",
-        entries,
-        userNames: { "8": "Raphael Morais de Jesus Schultz" },
+        selectedConsultant: "all",
+      }),
+    ).toBe(true);
+  });
+
+  it("compares ignoring case and accents", () => {
+    expect(
+      taskMatchesConsultantFilter({
+        task: task({ consultant: "José Silva" }),
+        selectedConsultant: "jose silva",
       }),
     ).toBe(true);
   });

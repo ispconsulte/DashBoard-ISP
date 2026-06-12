@@ -152,11 +152,11 @@ export function CustomSelect({
   const others = mineSet ? sortedOptions.filter((o) => !mineSet.has(o.value)) : sortedOptions;
 
   return (
-    <div ref={ref} className="relative w-full sm:w-auto">
+    <div ref={ref} className="relative w-full">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex min-h-[44px] h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
+        className={`flex min-h-[44px] h-9 w-full sm:min-w-[170px] max-w-full items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
           isActive && !subtleSelection
             ? `border-[hsl(var(${accentVar})/0.4)] bg-[hsl(var(${accentVar})/0.1)] text-white/80`
             : `border-white/[0.08] bg-[hsl(var(${surfaceVar}))] text-white/50`
@@ -329,11 +329,11 @@ export function MultiSelectProjects({
   };
 
   return (
-    <div ref={ref} className="relative w-full sm:w-auto">
+    <div ref={ref} className="relative w-full">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex min-h-[44px] h-9 w-full sm:w-auto sm:min-w-[170px] items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
+        className={`flex min-h-[44px] h-9 w-full sm:min-w-[170px] max-w-full items-center gap-2 rounded-xl border px-3 text-[12px] font-semibold transition-all ${
           !isAll
             ? `border-[hsl(var(${accentVar})/0.4)] bg-[hsl(var(${accentVar})/0.1)] text-white/80`
             : `border-white/[0.08] bg-[hsl(var(${surfaceVar}))] text-white/50`

@@ -1,4 +1,4 @@
-import type { ElapsedTimeRecord, TaskView } from "./types";
+import type { TaskView } from "./types";
 
 export const normalizeComparableText = (value: unknown) =>
   String(value ?? "")
@@ -10,26 +10,16 @@ export const normalizeComparableText = (value: unknown) =>
 type TaskMatchesConsultantFilterInput = {
   task: TaskView;
   selectedConsultant: string;
-  entries?: ElapsedTimeRecord[];
-  userNames?: Record<string, string>;
 };
 
 export function taskMatchesConsultantFilter({
   task,
   selectedConsultant,
-  entries = [],
-  userNames = {},
 }: TaskMatchesConsultantFilterInput) {
   if (selectedConsultant === "all") return true;
 
   const selected = normalizeComparableText(selectedConsultant);
   if (!selected) return true;
 
-  const responsible = normalizeComparableText(task.consultant);
-  if (responsible === selected) return true;
-
-  return entries.some((entry) => {
-    const userName = userNames[String(entry.user_id ?? "")];
-    return normalizeComparableText(userName) === selected;
-  });
+  return normalizeComparableText(task.consultant) === selected;
 }
