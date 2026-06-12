@@ -85,6 +85,9 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
   const [linkedProjectIds, setLinkedProjectIds] = useState<Set<number>>(new Set());
   const [projectSearch, setProjectSearch] = useState("");
   const [loadingProjects, setLoadingProjects] = useState(false);
+  // Mapa cliente_id -> nome, usado para avisar de qual cliente um projeto sera
+  // transferido ao marca-lo (um projeto so pode pertencer a um cliente por vez).
+  const [clienteNameById, setClienteNameById] = useState<Map<number, string>>(new Map());
   const selectedProjects = useMemo(
     () => allProjects.filter((project) => linkedProjectIds.has(project.id)),
     [allProjects, linkedProjectIds],
@@ -134,6 +137,17 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
         } else {
           setLinkedProjectIds(new Set());
         }
+
+        // Nomes dos clientes para o aviso de transferencia.
+        const clientesRes = await (supabaseExt as any)
+          .from("clientes").select("cliente_id, nome");
+        if (!clientesRes.error) {
+          const map = new Map<number, string>();
+          (clientesRes.data ?? []).forEach((row: { cliente_id: number; nome: string }) => {
+            map.set(Number(row.cliente_id), String(row.nome ?? "").trim());
+          });
+          setClienteNameById(map);
+        }
       } catch (e: any) {
         console.error("Erro ao carregar projetos:", e);
       } finally {
@@ -159,10 +173,27 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
   const toggleProject = useCallback((projectId: number) => {
     setLinkedProjectIds((prev) => {
       const next = new Set(prev);
-      next.has(projectId) ? next.delete(projectId) : next.add(projectId);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+        return next;
+      }
+      // Marcando: se o projeto ja pertence a OUTRO cliente, confirmar a transferencia,
+      // pois salvar vai mover o projeto (ele some do cliente atual).
+      const project = allProjects.find((p) => p.id === projectId);
+      const ownerId = project?.cliente_id ?? null;
+      const isFromOther = ownerId != null && ownerId !== cliente?.cliente_id;
+      if (isFromOther) {
+        const ownerName = clienteNameById.get(ownerId) ?? `cliente #${ownerId}`;
+        const ok = window.confirm(
+          `O projeto "${project?.name ?? projectId}" já pertence a ${ownerName}.\n\n` +
+          `Ao salvar, ele será TRANSFERIDO para este cliente e deixará de aparecer em ${ownerName}.\n\nDeseja continuar?`,
+        );
+        if (!ok) return prev;
+      }
+      next.add(projectId);
       return next;
     });
-  }, []);
+  }, [allProjects, cliente?.cliente_id, clienteNameById]);
 
   const handleSave = async () => {
     if (!nome.trim()) { toast.error("O nome do cliente é obrigatório."); return; }
@@ -427,8 +458,12 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
                                 {projectType === "Grupo de Trabalho" ? "Grupo" : projectType}
                               </Badge>
                               {isOther && (
-                                <Badge variant="outline" className="border-white/[0.08] bg-white/[0.04] text-[9px] text-muted-foreground/50 whitespace-nowrap leading-none py-0.5 px-1.5">
-                                  Outro
+                                <Badge
+                                  variant="outline"
+                                  title={`Já pertence a ${p.cliente_id != null ? (clienteNameById.get(p.cliente_id) ?? `cliente #${p.cliente_id}`) : "outro cliente"}. Marcar irá transferir o projeto para este cliente.`}
+                                  className="border-amber-500/20 bg-amber-500/[0.08] text-[9px] text-amber-300/80 whitespace-nowrap leading-none py-0.5 px-1.5"
+                                >
+                                  De outro cliente
                                 </Badge>
                               )}
                             </span>

@@ -100,16 +100,25 @@ export default function Sprint6BonificacaoPage() {
   // Monetary (payout values): payment manager only — never exposed by role alone
   const hideMonetary = !isFullAccessManager;
 
+  // Filtro de consultor do popover "Filtros" (somente payment manager). Guarda o NOME
+  // do consultor; quando vazio, nao filtra. Aplicado na fonte para valer em todas as
+  // listas (ranking, "Todas as Avaliacoes", visao geral) e nao so na UI decorativa.
+  const scopedConsultants = useMemo(() => {
+    if (!consultantFilter) return bonus.consultants;
+    const target = normalizeName(consultantFilter);
+    return bonus.consultants.filter((consultant) => normalizeName(consultant.name) === target);
+  }, [bonus.consultants, consultantFilter]);
+
   const visibleConsultants = useMemo(() => {
-    if (canSeeAllEvaluations) return bonus.consultants;
+    if (canSeeAllEvaluations) return scopedConsultants;
     if (canManageTeam) {
-      return bonus.consultants.filter((consultant) =>
+      return scopedConsultants.filter((consultant) =>
         consultant.userId === session?.userId ||
         (consultant.userId ? (session?.coordinatorOf ?? []).includes(consultant.userId) : false),
       );
     }
-    return bonus.consultants.filter((consultant) => consultant.userId === session?.userId);
-  }, [bonus.consultants, canManageTeam, canSeeAllEvaluations, session?.coordinatorOf, session?.userId]);
+    return scopedConsultants.filter((consultant) => consultant.userId === session?.userId);
+  }, [scopedConsultants, canManageTeam, canSeeAllEvaluations, session?.coordinatorOf, session?.userId]);
 
   const myConsultant = useMemo(
     () => visibleConsultants.find((consultant) => consultant.userId === session?.userId) ?? visibleConsultants[0] ?? null,
@@ -126,11 +135,11 @@ export default function Sprint6BonificacaoPage() {
   // Payment manager sees all; coordinators see only their own subordinates in the ranking
   const rankingConsultants = useMemo(() => {
     if (!canSeeRanking) return [];
-    if (isFullAccessManager) return bonus.consultants;
-    return bonus.consultants.filter((consultant) =>
+    if (isFullAccessManager) return scopedConsultants;
+    return scopedConsultants.filter((consultant) =>
       consultant.userId != null && (session?.coordinatorOf ?? []).includes(consultant.userId),
     );
-  }, [bonus.consultants, canSeeRanking, isFullAccessManager, session?.coordinatorOf]);
+  }, [scopedConsultants, canSeeRanking, isFullAccessManager, session?.coordinatorOf]);
 
   const subordinateConsultants = useMemo(() => {
     if (!canManageTeam) return [];
@@ -533,7 +542,7 @@ export default function Sprint6BonificacaoPage() {
                 {canSeeAllEvaluations && (
                   <TabsContent value="all-evaluations" className="mt-0">
                     <BonusTeamTab
-                      subordinates={bonus.consultants}
+                      subordinates={scopedConsultants}
                       session={session}
                       periodLabel={periodLabel(period)}
                       onEvaluate={setEvaluationConsultant}
@@ -888,7 +897,7 @@ export default function Sprint6BonificacaoPage() {
                         onToggle={() => setExpandedConsultant(expandedConsultant === consultant.name ? null : consultant.name)}
                         hideMonetary={hideMonetary}
                         periodLabel={periodLabel(period)}
-                        canEvaluate={canSeeAllEvaluations || canManageConsultant}
+                        canEvaluate={canManageConsultant}
                         canSendReport={canSeeAllEvaluations || canManageConsultant}
                         onEvaluate={setEvaluationConsultant}
                         onSendReport={setReportConsultant}

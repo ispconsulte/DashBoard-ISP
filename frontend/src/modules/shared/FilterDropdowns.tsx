@@ -88,7 +88,7 @@ function SearchInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Buscar..."
-          className={`h-8 w-full rounded-full border border-white/[0.08] bg-white/[0.04] pl-7 pr-3 text-[11px] text-white/70 outline-none focus:border-[hsl(var(${accentVar})/0.4)] placeholder:text-white/25`}
+          className={`h-8 w-full rounded-md border border-white/[0.08] bg-white/[0.04] pl-7 pr-3 text-[11px] text-white/70 outline-none focus:border-[hsl(var(${accentVar})/0.4)] placeholder:text-white/25`}
         />
       </div>
     </div>
@@ -178,7 +178,7 @@ export function CustomSelect({
             <button
               type="button"
               onClick={() => { onChange("all"); setOpen(false); setSearch(""); }}
-              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition ${
+              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-[12px] font-semibold transition ${
                 !isActive
                   ? `bg-[hsl(var(${accentVar})/0.15)] text-white/90`
                   : "text-white/40 hover:bg-white/[0.06] hover:text-white/60"
@@ -198,7 +198,7 @@ export function CustomSelect({
                   key={o.value}
                   type="button"
                   onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
-                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition ${
+                  className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-[12px] font-semibold transition ${
                     value === o.value
                       ? `bg-[hsl(var(${accentVar})/0.15)] text-white/90`
                       : "text-white/50 hover:bg-white/[0.06] hover:text-white/70"
@@ -222,7 +222,7 @@ export function CustomSelect({
                 key={o.value}
                 type="button"
                 onClick={() => { onChange(o.value); setOpen(false); setSearch(""); }}
-                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition ${
+                className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-[12px] font-semibold transition ${
                   isCurrent && !subtleSelection
                     ? `bg-[hsl(var(${accentVar})/0.15)] text-white/90`
                     : "text-white/40 hover:bg-white/[0.06] hover:text-white/60"
@@ -307,7 +307,7 @@ export function MultiSelectProjects({
         key={o.value}
         type="button"
         onClick={(e) => { e.preventDefault(); toggleOption(o.value); }}
-        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition ${
+        className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-[12px] font-semibold transition ${
           isSelected
             ? `bg-[hsl(var(${accentVar})/0.12)] border border-[hsl(var(${accentVar})/0.25)] text-white/90`
             : "border border-transparent text-white/40 hover:bg-white/[0.06] hover:text-white/60"
@@ -359,7 +359,7 @@ export function MultiSelectProjects({
           <button
             type="button"
             onClick={() => { onChange([]); setSearch(""); }}
-            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition ${
+            className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-[12px] font-semibold transition ${
               isAll
                 ? `bg-[hsl(var(${accentVar})/0.15)] text-white/90`
                 : "text-white/40 hover:bg-white/[0.06] hover:text-white/60"

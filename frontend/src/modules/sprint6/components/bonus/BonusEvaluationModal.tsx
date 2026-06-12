@@ -457,9 +457,12 @@ export function BonusEvaluationModal({
           if (!row.category || !row.subtopic || !next[row.category as BonusEvaluationCategory]?.[row.subtopic]) return;
           const justParsed = parseBracketField(row.justificativa ?? "");
           const melhoraParsed = parseBracketField(row.pontos_de_melhoria ?? "");
+          // score_1_10 null = subtopico salvo sem nota: carrega como NAO avaliado
+          // (slider na base 5, mas a UI mostra "Sem nota" e fica fora do calculo).
+          const hasScore = row.score_1_10 != null;
           next[row.category as BonusEvaluationCategory][row.subtopic] = {
-            score: Number(row.score_1_10 ?? 5),
-            scored: true,
+            score: hasScore ? Number(row.score_1_10) : 5,
+            scored: hasScore,
             justificativa: justParsed.text,
             justificativa_chips: justParsed.chips,
             pontos_de_melhoria: melhoraParsed.text,
@@ -523,27 +526,33 @@ export function BonusEvaluationModal({
     setSaving(true);
     try {
       const rows = categoryKeys.flatMap((category) =>
-        Object.entries(form[category]).map(([subtopic, value]) => ({
-          evaluation_scope: "consultant",
-          period_type: "month",
-          period_key: periodKey,
-          period_month: periodMonth,
-          period_year: periodYear,
-          user_id: consultant.userId,
-          evaluator_user_id: session.userId,
-          category,
-          subtopic,
-          score_1_10: value.score,
-          justificativa: composeField(value.justificativa_chips ?? [], value.justificativa),
-          pontos_de_melhoria: composeField(value.pontos_de_melhoria_chips ?? [], value.pontos_de_melhoria),
-          soft_skill_score: category === "soft_skill" ? value.score * 10 : null,
-          people_skill_score: category === "people_skill" ? value.score * 10 : null,
-          notes: composeField(value.justificativa_chips ?? [], value.justificativa),
-          source_provenance: "manual",
-          source_form: "bonus_evaluation_modal",
-          status,
-          submitted_at: new Date().toISOString(),
-        })),
+        Object.entries(form[category]).map(([subtopic, value]) => {
+          // Subtopico nao avaliado (scored=false) NAO pode gravar a nota base 5: isso
+          // contaminava a media do coordenador e fazia o item reaparecer como avaliado.
+          // Gravamos score_1_10 = null para que o leitor (useBonusRealData) o ignore.
+          const isScored = value.scored;
+          return {
+            evaluation_scope: "consultant",
+            period_type: "month",
+            period_key: periodKey,
+            period_month: periodMonth,
+            period_year: periodYear,
+            user_id: consultant.userId,
+            evaluator_user_id: session.userId,
+            category,
+            subtopic,
+            score_1_10: isScored ? value.score : null,
+            justificativa: composeField(value.justificativa_chips ?? [], value.justificativa),
+            pontos_de_melhoria: composeField(value.pontos_de_melhoria_chips ?? [], value.pontos_de_melhoria),
+            soft_skill_score: isScored && category === "soft_skill" ? value.score * 10 : null,
+            people_skill_score: isScored && category === "people_skill" ? value.score * 10 : null,
+            notes: composeField(value.justificativa_chips ?? [], value.justificativa),
+            source_provenance: "manual",
+            source_form: "bonus_evaluation_modal",
+            status,
+            submitted_at: new Date().toISOString(),
+          };
+        }),
       );
 
       // Atomic save: upsert on the consultant identity unique index
@@ -632,19 +641,14 @@ export function BonusEvaluationModal({
   );
 
   /* ── Permission check ─────────────────────────────────────────────────
-     Admin e responsavel geral (payment manager) podem avaliar qualquer um.
-     Os demais so podem avaliar quem coordenam explicitamente
-     (user_coordinator_links). bonusRole sozinho nao concede permissao.
+     SOMENTE o coordenador direto do colaborador pode avaliar (vinculo explicito
+     em user_coordinator_links). Acesso full (admin / payment manager) VE tudo
+     — ranking, payouts, relatorios — mas NAO avalia quem nao coordena.
   ── */
   const hasPermission = useMemo(() => {
-    // Admin e responsavel geral (payment manager) podem avaliar qualquer consultor.
-    // Esta checagem vem PRIMEIRO e nao depende de session.userId/consultant.userId:
-    // o acesso full nao pode ser barrado por um id ainda nao resolvido (race de fetch).
-    if (session?.role === "admin" || session?.isPaymentManager === true) return true;
-    // Demais: precisam do vinculo explicito de coordenacao, logo exigem ambos os ids.
     if (!consultant?.userId || !session?.userId) return false;
     return (session?.coordinatorOf ?? []).includes(consultant.userId);
-  }, [consultant?.userId, session?.coordinatorOf, session?.userId, session?.role, session?.isPaymentManager]);
+  }, [consultant?.userId, session?.coordinatorOf, session?.userId]);
 
   const responsibleCoordinatorName = consultant?.coordinatorName ?? null;
 

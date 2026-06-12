@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ClipboardCheck, Users, Search, ChevronDown, AlertCircle } from "lucide-react";
+import { ClipboardCheck, Users, Search, ChevronDown, AlertCircle, TrendingUp, TrendingDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import type { BonusConsultantCard } from "@/modules/sprint6/hooks/useBonusRealData";
@@ -7,6 +7,47 @@ import type { AuthSession } from "@/modules/auth/hooks/useAuth";
 import { normalizeName, scoreColor, scoreBg, levelLabel, levelColor } from "./BonusHelpers";
 import { formatHoursHuman } from "@/modules/tasks/utils";
 import { AnimatePresence, motion } from "framer-motion";
+
+/* ── Card de comparação de nota (sistema vs coordenador) ─────────────── */
+function ScoreCompareCard({
+  label,
+  score,
+  active,
+  tone,
+  caption,
+}: {
+  label: string;
+  score: number | null;
+  active: boolean;
+  tone: "primary" | "emerald";
+  caption: string;
+}) {
+  const has = score != null;
+  const ring = active
+    ? tone === "emerald"
+      ? "border-emerald-500/30 bg-emerald-500/[0.06]"
+      : "border-primary/30 bg-primary/[0.06]"
+    : "border-border/10 bg-card/20";
+  const badge = tone === "emerald" ? "bg-emerald-500/15 text-emerald-400" : "bg-primary/15 text-primary";
+  const bar = tone === "emerald" ? "bg-emerald-500/55" : "bg-primary/55";
+  return (
+    <div className={`rounded-xl border p-3.5 transition-colors ${ring}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</p>
+        {active && (
+          <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${badge}`}>Vale p/ $$</span>
+        )}
+      </div>
+      <p className={`mt-1.5 text-2xl font-extrabold leading-none ${has ? "text-foreground" : "text-muted-foreground/40"}`}>
+        {has ? `${score}%` : "Pendente"}
+      </p>
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-card/50">
+        {has && <div className={`h-full rounded-full ${bar}`} style={{ width: `${Math.min(Math.max(score, 0), 100)}%` }} />}
+      </div>
+      <p className="mt-1.5 truncate text-[10px] text-muted-foreground/50">{caption}</p>
+    </div>
+  );
+}
 
 interface BonusTeamTabProps {
   subordinates: BonusConsultantCard[];
@@ -95,6 +136,9 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
           const evalStatus = consultant.manualEvaluation.status;
           const hasCoordinatorScore = consultant.coordinatorScore != null;
           const hasDisplayScore = consultant.scoreSource !== "none";
+          // Avaliar so e permitido ao coordenador direto. Acesso full (admin/payment
+          // manager) ve a aba, mas nao avalia quem nao coordena.
+          const canEvaluate = consultant.userId != null && (session?.coordinatorOf ?? []).includes(consultant.userId);
 
           return (
             <div
@@ -155,52 +199,116 @@ export function BonusTeamTab({ subordinates, session, periodLabel, onEvaluate, o
                     transition={{ duration: 0.25 }}
                     className="overflow-hidden"
                   >
-                    <div className="space-y-4 border-t border-border/10 px-3 pb-4 pt-4 sm:px-4">
-                      {/* Metrics */}
-                      <div className="grid min-w-0 grid-cols-1 gap-2 min-[430px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-                        {[
-                          { label: "Nota do coordenador", value: hasCoordinatorScore ? `${consultant.score}%` : null, placeholder: "Pendente de nota" },
-                          { label: "Score registrado", value: consultant.scoreSource === "snapshot" ? `${consultant.score}%` : null, placeholder: null },
-                          { label: "Score automático", value: `${consultant.automaticScore}%`, placeholder: null },
-                          { label: "No Prazo", value: consultant.onTimeRate != null ? `${Math.round(consultant.onTimeRate)}%` : null, placeholder: null },
-                          { label: "Utilização", value: consultant.utilization != null ? `${Math.round(consultant.utilization)}%` : null, placeholder: null },
-                          { label: "Projetos", value: consultant.projectCount > 0 ? String(consultant.projectCount) : null, placeholder: null },
-                        ].filter((m) => m.value != null || m.placeholder != null).map((m) => (
-                          <div key={m.label} className="min-w-0 rounded-xl border border-border/8 bg-card/20 p-3 text-center">
-                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50">{m.label}</p>
-                            <p className={`mt-1 break-words text-base font-bold leading-tight ${m.value != null ? "text-foreground" : "text-muted-foreground/35"}`}>
-                              {m.value ?? m.placeholder}
-                            </p>
-                          </div>
-                        ))}
+                    <div className="space-y-5 border-t border-border/10 px-3 pb-5 pt-5 sm:px-5">
+                      {/* ── Notas: Sistema vs Coordenador ─────────────────────────
+                          A nota do coordenador, quando existe, é a oficial usada no $$. */}
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/45">Comparação de notas</p>
+                          {consultant.coordinatorScore != null && (() => {
+                            const diff = consultant.coordinatorScore - consultant.automaticScore;
+                            if (diff === 0) return <span className="text-[10px] font-medium text-muted-foreground/45">coordenador = sistema</span>;
+                            const up = diff > 0;
+                            return (
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-bold ${up ? "text-emerald-400" : "text-red-400"}`}>
+                                {up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                {up ? "+" : ""}{diff} pts vs sistema
+                              </span>
+                            );
+                          })()}
+                        </div>
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                          {/* Sistema */}
+                          <ScoreCompareCard
+                            label="Nota do sistema"
+                            score={consultant.automaticScore}
+                            active={consultant.scoreSource === "automatic"}
+                            tone="primary"
+                            caption="Prazo, atraso, utilização e saúde"
+                          />
+                          {/* Coordenador */}
+                          <ScoreCompareCard
+                            label="Nota do coordenador"
+                            score={consultant.coordinatorScore}
+                            active={consultant.scoreSource === "coordinator"}
+                            tone="emerald"
+                            caption={consultant.coordinatorName ? `Avaliação de ${consultant.coordinatorName}` : "Avaliação manual"}
+                          />
+                        </div>
                       </div>
 
-                      {/* Manual eval summary */}
-                      {consultant.manualEvaluation.hasManualEvaluation && (
-                        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                          {[
-                            { label: "Hard Skill Manual", value: consultant.manualEvaluation.hardManualScore },
-                            { label: "Soft Skills", value: consultant.manualEvaluation.softSkillScore },
-                            { label: "People Skills", value: consultant.manualEvaluation.peopleSkillScore },
-                          ].filter((i) => i.value != null).map((i) => (
-                            <div key={i.label} className="rounded-xl border border-border/8 bg-card/20 p-3">
-                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50">{i.label}</p>
-                              <p className="mt-1 text-lg font-bold text-foreground">{Math.round(i.value!)}/100</p>
+                      {/* ── Detalhamento da avaliação (Hard / Soft / People) ──────── */}
+                      {consultant.manualEvaluation.hasManualEvaluation && (() => {
+                        const skills = [
+                          { label: "Hard Skill", value: consultant.manualEvaluation.hardManualScore },
+                          { label: "Soft Skills", value: consultant.manualEvaluation.softSkillScore },
+                          { label: "People Skills", value: consultant.manualEvaluation.peopleSkillScore },
+                        ].filter((i) => i.value != null);
+                        if (skills.length === 0) return null;
+                        return (
+                          <div className="space-y-2.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/45">Detalhamento da avaliação</p>
+                            <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
+                              {skills.map((i) => {
+                                const pct = Math.round(i.value!);
+                                const barColor = pct >= 70 ? "bg-emerald-500/60" : pct >= 40 ? "bg-amber-500/60" : "bg-red-500/60";
+                                return (
+                                  <div key={i.label} className="rounded-xl border border-border/8 bg-card/20 p-3">
+                                    <div className="flex items-baseline justify-between">
+                                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50">{i.label}</p>
+                                      <p className="text-sm font-bold text-foreground">{pct}<span className="text-[10px] font-medium text-muted-foreground/40">/100</span></p>
+                                    </div>
+                                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-card/50">
+                                      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-                          ))}
-                        </div>
-                      )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* ── Indicadores operacionais ──────────────────────────────── */}
+                      {(() => {
+                        const metrics = [
+                          { label: "No prazo", value: consultant.onTimeRate != null ? `${Math.round(consultant.onTimeRate)}%` : null },
+                          { label: "Utilização", value: consultant.utilization != null ? `${Math.round(consultant.utilization)}%` : null },
+                          { label: "Projetos", value: consultant.projectCount > 0 ? String(consultant.projectCount) : null },
+                          { label: "Tarefas", value: consultant.totalTasks > 0 ? `${consultant.completedTasks}/${consultant.totalTasks}` : null },
+                          { label: "Horas", value: consultant.hoursTracked > 0 ? formatHoursHuman(consultant.hoursTracked) : null },
+                        ].filter((m) => m.value != null);
+                        if (metrics.length === 0) return null;
+                        return (
+                          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border/8 bg-card/15 px-4 py-3">
+                            {metrics.map((m) => (
+                              <div key={m.label} className="flex items-baseline gap-1.5">
+                                <span className="text-[10px] uppercase tracking-wider text-muted-foreground/45">{m.label}</span>
+                                <span className="text-sm font-bold text-foreground">{m.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
 
                       {/* Action buttons */}
-                      <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => onEvaluate(consultant)}
-                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/8 px-5 py-2.5 text-sm font-semibold text-primary transition-all hover:border-primary/35 hover:bg-primary/12 sm:w-auto"
-                        >
-                          <ClipboardCheck className="h-4 w-4" />
-                          {evalStatus === "submitted" ? "Revisar Avaliação" : evalStatus === "draft" ? "Continuar Avaliação" : "Avaliar"}
-                        </button>
+                      <div className="flex flex-col gap-2.5 border-t border-border/8 pt-4 sm:flex-row sm:flex-wrap">
+                        {canEvaluate ? (
+                          <button
+                            type="button"
+                            onClick={() => onEvaluate(consultant)}
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/8 px-5 py-2.5 text-sm font-semibold text-primary transition-all hover:border-primary/35 hover:bg-primary/12 sm:w-auto"
+                          >
+                            <ClipboardCheck className="h-4 w-4" />
+                            {evalStatus === "submitted" ? "Revisar Avaliação" : evalStatus === "draft" ? "Continuar Avaliação" : "Avaliar"}
+                          </button>
+                        ) : (
+                          <span className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border/12 bg-card/25 px-5 py-2.5 text-xs font-medium text-muted-foreground/50 sm:w-auto">
+                            <ClipboardCheck className="h-3.5 w-3.5" />
+                            Apenas o coordenador direto avalia
+                            {consultant.coordinatorName ? ` · ${consultant.coordinatorName}` : ""}
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => onSendReport(consultant)}

@@ -114,7 +114,9 @@ export default function AppUpdateManager() {
   return (
     <Dialog open={modalOpen} onOpenChange={(open) => { if (!open) handleLater(); }}>
       <DialogContent
+        overlayClassName="z-[200]"
         className={[
+          "z-[200]",
           "w-[92vw] max-w-[460px] p-0 overflow-hidden",
           "border border-white/[0.08]",
           "bg-[linear-gradient(165deg,hsl(228_33%_14%),hsl(233_36%_8%))]",

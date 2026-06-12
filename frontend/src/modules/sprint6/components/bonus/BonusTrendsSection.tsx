@@ -291,7 +291,9 @@ export function BonusTrendsSection({ consultants, consultantSnapshots, hideMonet
     const vals = trendData.map((d) => d.totalPayout);
     const lo = Math.max(0, Math.min(...vals) * 0.85);
     const hi = Math.max(...vals) * 1.15;
-    return [Math.floor(lo), Math.ceil(hi)];
+    // Quando todos os payouts sao 0, hi tambem fica 0 e o grafico colapsa
+    // (dominio [0,0]). Garantimos um teto minimo para o eixo continuar visivel.
+    return [Math.floor(lo), Math.max(Math.ceil(hi), 1)];
   }, [trendData]);
 
   return (
