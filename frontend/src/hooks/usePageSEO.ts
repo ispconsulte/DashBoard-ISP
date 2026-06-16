@@ -11,6 +11,10 @@ const PAGE_META: Record<string, { title: string; description: string }> = {
     title: `Tarefas | ${BASE_TITLE}`,
     description: "Gerencie e acompanhe todas as tarefas dos projetos no ISP Consulte.",
   },
+  "/tarefas/horas": {
+    title: `Relatório de Horas | ${BASE_TITLE}`,
+    description: "Horas trabalhadas por tarefa, projeto e responsável, com filtro por tempo gasto.",
+  },
   "/analiticas": {
     title: `Analíticas | ${BASE_TITLE}`,
     description: "Relatórios de desempenho, horas e produtividade dos projetos.",

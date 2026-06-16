@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabaseExt } from "@/lib/supabase";
 import { toast } from "sonner";
-import { Save, Loader2, Search, FolderOpen, Building2, X, Trash2 } from "lucide-react";
+import { Save, Loader2, Search, FolderOpen, Building2, X, Trash2, AlertTriangle, Link2, Clock } from "lucide-react";
+import { isOrgOfClient } from "@/lib/clientMatch";
+
+// Passo de confirmação exibido como modal no tema escuro (substitui os window.confirm).
+// `tone` controla a cor de destaque; `message` é o texto literal (UTF-8) exigido.
+interface ConfirmStep {
+  key: string;
+  tone: "danger" | "warning";
+  icon: "hours" | "unlink" | "unrelated" | "linked";
+  title: string;
+  message: string;
+}
 
 interface Cliente {
   cliente_id: number;
@@ -69,6 +80,7 @@ function getProjectTypeBadgeClass(projectType: string) {
 
 export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved }: Props) {
   const isEdit = !!cliente;
+  const openedAtRef = useRef(0);
 
   const [nome, setNome] = useState("");
   const [cidade, setCidade] = useState("");
@@ -85,6 +97,17 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
   const [linkedProjectIds, setLinkedProjectIds] = useState<Set<number>>(new Set());
   const [projectSearch, setProjectSearch] = useState("");
   const [loadingProjects, setLoadingProjects] = useState(false);
+
+  // Estado original (capturado ao abrir) para basear as confirmações em DIFF:
+  // só perguntamos sobre o que o usuário realmente mudou.
+  const [originalHoras, setOriginalHoras] = useState("0");
+  const [originalLinkedIds, setOriginalLinkedIds] = useState<Set<number>>(new Set());
+
+  // Fila de confirmações: cada modal aparece em sequência; ao confirmar todos,
+  // o salvamento prossegue. Cancelar em qualquer ponto aborta sem salvar.
+  const [confirmQueue, setConfirmQueue] = useState<ConfirmStep[]>([]);
+  const [confirmIndex, setConfirmIndex] = useState(0);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   // Mapa cliente_id -> nome, usado para avisar de qual cliente um projeto sera
   // transferido ao marca-lo (um projeto so pode pertencer a um cliente por vez).
   const [clienteNameById, setClienteNameById] = useState<Map<number, string>>(new Map());
@@ -92,6 +115,15 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
     () => allProjects.filter((project) => linkedProjectIds.has(project.id)),
     [allProjects, linkedProjectIds],
   );
+
+  useEffect(() => {
+    if (open) openedAtRef.current = Date.now();
+  }, [open]);
+
+  const handleDialogOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen && Date.now() - openedAtRef.current < 500) return;
+    onOpenChange(nextOpen);
+  }, [onOpenChange]);
 
   useEffect(() => {
     if (open && cliente) {
@@ -104,11 +136,15 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
       setHorasHgContratadas(cliente.horas_hg_contratadas != null ? String(cliente.horas_hg_contratadas) : "");
       setLogoUrl(cliente.logo_url || "");
       setAtivo(cliente.Ativo);
+      setOriginalHoras(String(cliente.horas_contratadas));
     } else if (open && !cliente) {
       setNome(""); setCidade(""); setStatus("Ativo"); setTipoHoras("HG");
       setHorasContratadas("0"); setHorasConsumidas("0"); setHorasHgContratadas("");
       setLogoUrl(""); setAtivo(true);
+      setOriginalHoras("0");
     }
+    // Reseta qualquer fila de confirmação pendente ao (re)abrir.
+    setConfirmQueue([]); setConfirmIndex(0);
   }, [open, cliente]);
 
   useEffect(() => {
@@ -134,8 +170,10 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
         if (cliente) {
           const linked = (data ?? []).filter((p: ProjectRow) => p.cliente_id === cliente.cliente_id).map((p: ProjectRow) => p.id);
           setLinkedProjectIds(new Set(linked));
+          setOriginalLinkedIds(new Set(linked));
         } else {
           setLinkedProjectIds(new Set());
+          setOriginalLinkedIds(new Set());
         }
 
         // Nomes dos clientes para o aviso de transferencia.
@@ -156,47 +194,153 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
     })();
   }, [open, cliente]);
 
+  // Ordem dos tipos para o agrupamento da lista (item 9).
+  const TYPE_ORDER: Record<string, number> = { Projeto: 0, Collab: 1, "Grupo de Trabalho": 2 };
+
   const suggestedProjects = useMemo(() => {
     const q = projectSearch.trim().toLowerCase();
-    if (q) return allProjects.filter((p) => p.name.toLowerCase().includes(q));
-    if (nome.trim()) {
-      const fullName = nome.trim().toLowerCase();
-      return allProjects.filter((p) => {
-        if (cliente && p.cliente_id === cliente.cliente_id) return true;
-        const pLower = p.name.toLowerCase();
-        return pLower.includes(fullName) || fullName.includes(pLower);
-      });
-    }
-    return allProjects;
-  }, [allProjects, projectSearch, nome, cliente]);
+    const base = q
+      ? allProjects.filter((p) => p.name.toLowerCase().includes(q))
+      : [...allProjects];
 
+    const isLinkedElsewhere = (p: ProjectRow) => p.cliente_id != null && p.cliente_id !== cliente?.cliente_id;
+    // "Similar/relevante" só quando há nome de cliente; sem nome não inventa similaridade.
+    const isSimilar = (p: ProjectRow) => {
+      if (cliente && p.cliente_id === cliente.cliente_id) return true;
+      return nome.trim() ? isOrgOfClient(p.name, nome) : false;
+    };
+
+    return base.sort((a, b) => {
+      // 1) Já vinculados a OUTRO cliente sempre por último.
+      const aElse = isLinkedElsewhere(a) ? 1 : 0;
+      const bElse = isLinkedElsewhere(b) ? 1 : 0;
+      if (aElse !== bElse) return aElse - bElse;
+
+      // 2) Disponíveis: similares/relevantes primeiro.
+      if (aElse === 0) {
+        const aSim = isSimilar(a) ? 0 : 1;
+        const bSim = isSimilar(b) ? 0 : 1;
+        if (aSim !== bSim) return aSim - bSim;
+      }
+
+      // 3) Agrupa por tipo (Projeto, Collab, Grupo de Trabalho).
+      const at = TYPE_ORDER[normalizeProjectType(a)] ?? 9;
+      const bt = TYPE_ORDER[normalizeProjectType(b)] ?? 9;
+      if (at !== bt) return at - bt;
+
+      // 4) Dentro do grupo, ordem alfabética.
+      return a.name.localeCompare(b.name);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allProjects, projectSearch, nome, cliente?.cliente_id]);
+
+  // Seleção não bloqueia nem questiona; os avisos acontecem ao salvar.
   const toggleProject = useCallback((projectId: number) => {
     setLinkedProjectIds((prev) => {
       const next = new Set(prev);
-      if (next.has(projectId)) {
-        next.delete(projectId);
-        return next;
-      }
-      // Marcando: se o projeto ja pertence a OUTRO cliente, confirmar a transferencia,
-      // pois salvar vai mover o projeto (ele some do cliente atual).
-      const project = allProjects.find((p) => p.id === projectId);
-      const ownerId = project?.cliente_id ?? null;
-      const isFromOther = ownerId != null && ownerId !== cliente?.cliente_id;
-      if (isFromOther) {
-        const ownerName = clienteNameById.get(ownerId) ?? `cliente #${ownerId}`;
-        const ok = window.confirm(
-          `O projeto "${project?.name ?? projectId}" já pertence a ${ownerName}.\n\n` +
-          `Ao salvar, ele será TRANSFERIDO para este cliente e deixará de aparecer em ${ownerName}.\n\nDeseja continuar?`,
-        );
-        if (!ok) return prev;
-      }
-      next.add(projectId);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
       return next;
     });
-  }, [allProjects, cliente?.cliente_id, clienteNameById]);
+  }, []);
 
-  const handleSave = async () => {
+  // Monta a fila de confirmações com base no DIFF entre o estado original e o
+  // atual. Cada situação tem seu próprio modal e texto exato (item 7-11).
+  const buildConfirmSteps = useCallback((): ConfirmStep[] => {
+    const steps: ConfirmStep[] = [];
+
+    // (a) Horas contratadas removidas/zeradas: só pergunta quando havia horas e
+    //     agora não há mais (remoção). Edição que mantém valor > 0 não pergunta.
+    const prevHoras = Number(originalHoras) || 0;
+    const nextHoras = Number(horasContratadas) || 0;
+    if (prevHoras > 0 && nextHoras <= 0) {
+      steps.push({
+        key: "hours-removed",
+        tone: "warning",
+        icon: "hours",
+        title: "Remover horas contratadas",
+        message: "Deseja realmente remover as horas contratadas deste cliente?",
+      });
+    }
+
+    // (b) Organizações vinculadas removidas (estavam vinculadas e foram desmarcadas).
+    const removed = [...originalLinkedIds].filter((id) => !linkedProjectIds.has(id));
+    if (removed.length > 0) {
+      steps.push({
+        key: "org-removed",
+        tone: "danger",
+        icon: "unlink",
+        title: "Remover organização vinculada",
+        message: "Deseja realmente remover esta organização vinculada?",
+      });
+    }
+
+    // Itens recém-ADICIONADOS nesta edição (não estavam vinculados antes).
+    const added = allProjects.filter(
+      (p) => linkedProjectIds.has(p.id) && !originalLinkedIds.has(p.id),
+    );
+
+    // (c) Item adicionado já vinculado a OUTRO cliente.
+    const alreadyLinked = added.filter(
+      (p) => p.cliente_id != null && p.cliente_id !== cliente?.cliente_id,
+    );
+    if (alreadyLinked.length > 0) {
+      steps.push({
+        key: "already-linked",
+        tone: "warning",
+        icon: "linked",
+        title: "Organização já vinculada",
+        message: "Esta organização já está vinculada a outro cliente. Deseja vinculá-la mesmo assim?",
+      });
+    }
+
+    // (d) Item adicionado SEM relação aparente com o nome do cliente.
+    //     Ignora os que já caíram no aviso de "já vinculado" para não duplicar.
+    const alreadyLinkedIds = new Set(alreadyLinked.map((p) => p.id));
+    const unrelated = added.filter(
+      (p) => !alreadyLinkedIds.has(p.id) && !isOrgOfClient(p.name, nome),
+    );
+    if (unrelated.length > 0) {
+      steps.push({
+        key: "unrelated",
+        tone: "warning",
+        icon: "unrelated",
+        title: "Vínculo sem relação aparente",
+        message: "Este item não parece ter relação com o cliente selecionado. Deseja vinculá-lo mesmo assim?",
+      });
+    }
+
+    return steps;
+  }, [originalHoras, horasContratadas, originalLinkedIds, linkedProjectIds, allProjects, cliente?.cliente_id, nome]);
+
+  const handleSave = () => {
     if (!nome.trim()) { toast.error("O nome do cliente é obrigatório."); return; }
+    const steps = buildConfirmSteps();
+    if (steps.length > 0) {
+      setConfirmQueue(steps);
+      setConfirmIndex(0);
+      return;
+    }
+    void persist();
+  };
+
+  // Avança na fila de confirmações; ao confirmar a última, persiste.
+  const handleConfirmNext = () => {
+    if (confirmIndex + 1 < confirmQueue.length) {
+      setConfirmIndex((i) => i + 1);
+    } else {
+      setConfirmQueue([]);
+      setConfirmIndex(0);
+      void persist();
+    }
+  };
+
+  const handleConfirmCancel = () => {
+    setConfirmQueue([]);
+    setConfirmIndex(0);
+  };
+
+  const persist = async () => {
     setSaving(true);
     try {
       const payload: Record<string, any> = {
@@ -242,10 +386,14 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!cliente) return;
-    const confirmed = window.confirm(`Excluir o cliente "${cliente.nome}"? Os projetos vinculados ficarão sem cliente associado.`);
-    if (!confirmed) return;
+    setConfirmDeleteOpen(true);
+  };
+
+  const doDelete = async () => {
+    if (!cliente) return;
+    setConfirmDeleteOpen(false);
     setSaving(true);
     try {
       const { data: fnData, error: fnError } = await supabaseExt.functions.invoke(
@@ -279,9 +427,18 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
     return Math.min(100, Math.round((consumed / contracted) * 100));
   }, [horasContratadas, horasConsumidas]);
 
+  const activeConfirm = confirmQueue[confirmIndex] ?? null;
+
   return (
-    <Dialog modal={false} open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[94vh] w-[calc(100vw-1rem)] max-w-[920px] flex-col gap-0 overflow-hidden rounded-2xl border-white/[0.08] bg-[linear-gradient(180deg,hsl(224_42%_9%/0.98),hsl(228_38%_7%/0.96))] p-0 shadow-2xl shadow-black/50 backdrop-blur-xl sm:w-full">
+    <>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+      <DialogContent
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onFocusOutside={(e) => e.preventDefault()}
+        className="flex max-h-[94vh] w-[calc(100vw-1rem)] max-w-[920px] flex-col gap-0 overflow-hidden rounded-2xl border-white/[0.08] bg-[linear-gradient(180deg,hsl(224_42%_9%/0.98),hsl(228_38%_7%/0.96))] p-0 shadow-2xl shadow-black/50 backdrop-blur-xl sm:w-full"
+      >
 
         {/* ── Header: compact, balanced ── */}
         <div className="relative overflow-hidden border-b border-white/[0.08] bg-[linear-gradient(135deg,hsl(234_42%_14%/0.85),hsl(222_38%_9%/0.92)_48%,hsl(200_52%_10%/0.68))] px-5 py-4 sm:px-6 sm:py-5">
@@ -460,10 +617,10 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
                               {isOther && (
                                 <Badge
                                   variant="outline"
-                                  title={`Já pertence a ${p.cliente_id != null ? (clienteNameById.get(p.cliente_id) ?? `cliente #${p.cliente_id}`) : "outro cliente"}. Marcar irá transferir o projeto para este cliente.`}
-                                  className="border-amber-500/20 bg-amber-500/[0.08] text-[9px] text-amber-300/80 whitespace-nowrap leading-none py-0.5 px-1.5"
+                                  title={`Já vinculado a ${p.cliente_id != null ? (clienteNameById.get(p.cliente_id) ?? `cliente #${p.cliente_id}`) : "outro cliente"}. Marcar irá transferir para este cliente ao salvar.`}
+                                  className="border-red-500/30 bg-red-500/[0.10] text-[9px] font-semibold text-red-300 whitespace-nowrap leading-none py-0.5 px-1.5"
                                 >
-                                  De outro cliente
+                                  Já vinculado
                                 </Badge>
                               )}
                             </span>
@@ -529,8 +686,84 @@ export default function ClienteEditModal({ open, onOpenChange, cliente, onSaved 
             </div>
           </div>
         </div>
+
+        {/* ── Confirmações (substituem window.confirm) ── */}
+        {activeConfirm && (
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+            onClick={handleConfirmCancel}
+          >
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-sm rounded-2xl border p-6 shadow-2xl shadow-black/50 ${activeConfirm.tone === "danger" ? "border-red-500/20" : "border-amber-500/20"} bg-[linear-gradient(180deg,hsl(224_35%_10%/0.99),hsl(229_33%_8%/0.99))]`}
+            >
+              <div className="space-y-2">
+                <div className={`mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border ${activeConfirm.tone === "danger" ? "border-red-500/20 bg-red-500/10" : "border-amber-500/20 bg-amber-500/10"}`}>
+                  {activeConfirm.icon === "hours" && <Clock className={`h-5 w-5 ${activeConfirm.tone === "danger" ? "text-red-400" : "text-amber-400"}`} />}
+                  {activeConfirm.icon === "unlink" && <Trash2 className="h-5 w-5 text-red-400" />}
+                  {activeConfirm.icon === "unrelated" && <AlertTriangle className="h-5 w-5 text-amber-400" />}
+                  {activeConfirm.icon === "linked" && <Link2 className="h-5 w-5 text-amber-400" />}
+                </div>
+                <h2 className="text-center text-base font-bold text-foreground">{activeConfirm.title}</h2>
+                <p className="text-center text-[13px] leading-relaxed text-muted-foreground/70">{activeConfirm.message}</p>
+              </div>
+              <div className="mt-4 flex gap-2">
+                <Button variant="outline" size="default" onClick={handleConfirmCancel} disabled={saving} className="flex-1 rounded-xl border-border/15 text-sm">
+                  Cancelar
+                </Button>
+                <Button
+                  size="default"
+                  onClick={handleConfirmNext}
+                  disabled={saving}
+                  className={`flex-1 rounded-xl text-sm ${activeConfirm.tone === "danger" ? "bg-red-500 hover:bg-red-600 text-white" : ""}`}
+                >
+                  Confirmar
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Confirmação de exclusão de cliente (substitui window.confirm) ── */}
+        {confirmDeleteOpen && (
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+            onClick={() => setConfirmDeleteOpen(false)}
+          >
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm rounded-2xl border border-red-500/20 p-6 shadow-2xl shadow-black/50 bg-[linear-gradient(180deg,hsl(224_35%_10%/0.99),hsl(229_33%_8%/0.99))]"
+            >
+              <div className="space-y-2">
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10">
+                  <Trash2 className="h-5 w-5 text-red-400" />
+                </div>
+                <h2 className="text-center text-base font-bold text-foreground">Excluir cliente?</h2>
+                <p className="text-center text-[13px] leading-relaxed text-muted-foreground/70">
+                  O cliente <span className="font-semibold text-foreground/85">{cliente?.nome}</span> será excluído. Os projetos vinculados ficarão sem cliente associado.
+                </p>
+              </div>
+              <div className="mt-4 flex gap-2">
+                <Button variant="outline" size="default" onClick={() => setConfirmDeleteOpen(false)} disabled={saving} className="flex-1 rounded-xl border-border/15 text-sm">
+                  Cancelar
+                </Button>
+                <Button size="default" onClick={() => void doDelete()} disabled={saving} className="flex-1 rounded-xl gap-2 text-sm bg-red-500 hover:bg-red-600 text-white">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
+    </>
   );
 }
 

@@ -1,4 +1,4 @@
-import { Children, isValidElement, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import {
   AlertTriangle,
@@ -536,7 +536,7 @@ export default function AdminDiagnostico() {
   const [showTaskLegend, setShowTaskLegend] = useState(false);
   const [showElapsedLegend, setShowElapsedLegend] = useState(false);
 
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     if (!session?.accessToken) return;
     setLoading(true);
     setError(null);
@@ -548,9 +548,9 @@ export default function AdminDiagnostico() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [session?.accessToken]);
 
-  useEffect(() => { if (session?.accessToken && isManager) void loadDashboard(); }, [session?.accessToken, isManager]);
+  useEffect(() => { if (session?.accessToken && isManager) void loadDashboard(); }, [session?.accessToken, isManager, loadDashboard]);
   useEffect(() => { if (!dialogState) return; setVisibilityMode(dialogState.item.visibility_mode); setReviewStatus(dialogState.item.review_status); setAdminNote(dialogState.item.admin_note ?? ""); }, [dialogState]);
 
   const hiddenTaskCount = payload?.problematic_tasks.filter((t) => t.visibility_mode !== "show_in_operations").length ?? 0;

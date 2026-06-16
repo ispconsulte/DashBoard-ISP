@@ -52,7 +52,7 @@ const lazyWithRecovery = <T,>(factory: LazyFactory<T>, key: string) =>
 // Lazy-loaded pages (code splitting) with recovery
 const IndexPage = lazyWithRecovery(() => import("./pages/Index"), "index");
 const TarefasPage = lazyWithRecovery(() => import("./pages/Tarefas"), "tarefas");
-const AnaliticasPage = lazyWithRecovery(() => import("./pages/Analiticas"), "analiticas");
+const TarefasHorasPage = lazyWithRecovery(() => import("./pages/tarefas/TarefasHorasPage"), "tarefas-horas");
 const UsuariosPage = lazyWithRecovery(() => import("./pages/Usuarios"), "usuarios");
 const ComodatoPage = lazyWithRecovery(() => import("./pages/Comodato"), "comodato");
 const IntegracoesPage = lazyWithRecovery(() => import("./pages/Integracoes"), "integracoes");
@@ -91,7 +91,7 @@ const AppRoutes = () => (
       <Route element={<DashboardLayout />}>
         <Route path="/" element={<LazyPage><IndexPage /></LazyPage>} />
         <Route path="/tarefas" element={<LazyPage><TarefasPage /></LazyPage>} />
-        <Route path="/analiticas" element={<LazyPage><AnaliticasPage /></LazyPage>} />
+        <Route path="/tarefas/horas" element={<LazyPage><TarefasHorasPage /></LazyPage>} />
         <Route path="/usuarios" element={<LazyPage><UsuariosPage /></LazyPage>} />
         <Route path="/integracoes" element={<LazyPage><IntegracoesPage /></LazyPage>} />
         <Route path="/comodato" element={<LazyPage><ComodatoPage /></LazyPage>} />

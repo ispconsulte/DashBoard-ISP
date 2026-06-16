@@ -3,7 +3,6 @@ import {
   Home,
   FolderKanban,
   ListTodo,
-  BarChart3,
   LogOut,
   ChevronDown,
   HelpCircle,
@@ -17,6 +16,7 @@ import {
   Contact,
   BadgeDollarSign,
   Crown,
+  Clock4,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
@@ -186,13 +186,13 @@ export function AppSidebar() {
 
 
   // Determine which section is active based on route
-  const getActiveSection = (): SectionKey | null => {
+  const getActiveSection = useCallback((): SectionKey | null => {
     const p = location.pathname;
-    if (["/tarefas", "/analiticas", "/calendario", "/admin/testes/clientes", "/admin/testes/bonificacao"].some((r) => p.startsWith(r))) return "management";
+    if (["/tarefas", "/tarefas/horas", "/analiticas", "/calendario", "/admin/testes/clientes", "/admin/testes/bonificacao"].some((r) => p.startsWith(r))) return "management";
     if (["/ferramentas", "/comodato"].some((r) => p.startsWith(r))) return "tools";
     if (["/usuarios", "/integracoes", "/admin", "/administracao"].some((r) => p.startsWith(r))) return "administration";
     return null;
-  };
+  }, [location.pathname]);
 
   const activeSection = getActiveSection();
 
@@ -204,7 +204,7 @@ export function AppSidebar() {
     const active = getActiveSection();
     if (active) setOpenSection(active);
     if (isMobile) setOpenMobile(false);
-  }, [location.pathname]);
+  }, [getActiveSection, isMobile, setOpenMobile]);
 
   const toggleSection = useCallback((key: SectionKey) => {
     setOpenSection((prev) => (prev === key ? null : key));
@@ -219,7 +219,6 @@ export function AppSidebar() {
   const canAccessIntegracoes = canAccess("integracoes");
   const canAccessDiagnostico = canAccess("diagnostico");
   const showManagementSection =
-    canAccess("analiticas") ||
     canAccessBonus ||
     canAccess("calendario") ||
     canAccessClientes ||
@@ -285,8 +284,8 @@ export function AppSidebar() {
             <nav className="flex flex-col gap-0.5">
               {collapsed ? (
                 <>
-                  {canAccess("tarefas") && <SidebarNavItem to="/tarefas" icon={ListTodo} label="Tarefas" iconColor="hsl(38 92% 50%)" />}
-                  {canAccess("analiticas") && <SidebarNavItem to="/analiticas" icon={BarChart3} label="Analíticas" iconColor="hsl(280 70% 55%)" />}
+                  {canAccess("tarefas") && <SidebarNavItem to="/tarefas" end icon={ListTodo} label="Tarefas" iconColor="hsl(38 92% 50%)" />}
+                  {canAccess("tarefas") && <SidebarNavItem to="/tarefas/horas" icon={Clock4} label="Relatório de Horas" iconColor="hsl(220 90% 60%)" />}
                   {canAccessClientes && <SidebarNavItem to="/admin/testes/clientes" icon={Contact} label="Página do Cliente" iconColor="hsl(200 75% 50%)" />}
                   {canAccess("calendario") && <SidebarNavItem to="/calendario" icon={CalendarDays} label="Calendário" iconColor="hsl(160 84% 39%)" />}
                   {canAccessBonus && <SidebarNavItem to="/admin/testes/bonificacao" icon={BadgeDollarSign} label="Bonificação" iconColor="hsl(45 90% 55%)" />}
@@ -312,13 +311,13 @@ export function AppSidebar() {
                   {(openSection === "management" || isManagementActive) && (
                     <div className="ml-[18px] mt-0.5 flex flex-col gap-0.5 border-l-2 border-white/10 pl-3">
                       {canAccess("tarefas") && (
-                        <NavLink to="/tarefas" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
+                        <NavLink to="/tarefas" end className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
                           <ListTodo className="h-4 w-4" style={{ color: "hsl(38 92% 50%)" }} /><span>Tarefas</span>
                         </NavLink>
                       )}
-                      {canAccess("analiticas") && (
-                        <NavLink to="/analiticas" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
-                          <BarChart3 className="h-4 w-4" style={{ color: "hsl(280 70% 55%)" }} /><span>Analíticas</span>
+                      {canAccess("tarefas") && (
+                        <NavLink to="/tarefas/horas" className={SIDEBAR_SUBLINK} activeClassName="!text-white !bg-white/[0.1] !rounded-xl">
+                          <Clock4 className="h-4 w-4" style={{ color: "hsl(220 90% 60%)" }} /><span>Relatório de Horas</span>
                         </NavLink>
                       )}
                       {canAccessClientes && (

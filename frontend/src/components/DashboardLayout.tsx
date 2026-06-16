@@ -26,7 +26,6 @@ import { BonusEvaluationNotificationCard } from "@/modules/sprint6/components/bo
 /** Map route paths to access areas */
 const ROUTE_TO_AREA: Record<string, AccessArea> = {
   "/tarefas": "tarefas",
-  "/analiticas": "analiticas",
   "/comodato": "comodato",
   "/integracoes": "integracoes",
   "/usuarios": "usuarios",
@@ -192,7 +191,6 @@ function DashboardInner() {
     preloadedRef.current = true;
     const preload = () => {
       import("@/pages/Tarefas").catch(() => {});
-      import("@/pages/Analiticas").catch(() => {});
       import("@/pages/Calendario").catch(() => {});
     };
     // Use requestIdleCallback when available, otherwise a 3s delay
@@ -236,7 +234,7 @@ function DashboardInner() {
     });
 
     return filtered.length > 0 ? filtered : myTasks;
-  }, [deferredTasks, isAdmin, accessibleProjectIds, companyName, session?.name]);
+  }, [deferredTasks, isAdmin, accessibleProjectIds, companyName, session?.name, session?.bitrixUserId]);
 
   // For non-admin users, further filter by consultant name so they only see their own tasks
   const userScopedTasks = useMemo(() => {

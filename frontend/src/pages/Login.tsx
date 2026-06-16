@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type FormEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, LogIn, ArrowRight, BarChart3, Zap, Users, Layers, TrendingUp, ShieldAlert, X } from "lucide-react";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
@@ -17,35 +17,44 @@ const FEATURE_CARDS = [
 
 /* ── Full-page animated background ── */
 function AnimatedBackground() {
+  const particles = useMemo(
+    () => Array.from({ length: 65 }, () => ({
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      animationDelay: `${Math.random() * 10}s`,
+      animationDuration: `${4 + Math.random() * 6}s`,
+      width: `${0.8 + Math.random() * 2.2}px`,
+      height: `${0.8 + Math.random() * 2.2}px`,
+    })),
+    [],
+  );
+  const shootingStars = useMemo(
+    () => Array.from({ length: 4 }, (_, i) => ({
+      top: `${10 + Math.random() * 40}%`,
+      left: `${Math.random() * 60}%`,
+      animationDelay: `${i * 4 + Math.random() * 3}s`,
+      animationDuration: `${1.5 + Math.random() * 1}s`,
+    })),
+    [],
+  );
+
   return (
     <div className="login-bg" aria-hidden="true">
       <div className="login-bg__nebula" />
       {/* Particles */}
-      {Array.from({ length: 65 }).map((_, i) => (
+      {particles.map((style, i) => (
         <div
           key={i}
           className="login-bg__particle"
-          style={{
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            animationDelay: `${Math.random() * 10}s`,
-            animationDuration: `${4 + Math.random() * 6}s`,
-            width: `${0.8 + Math.random() * 2.2}px`,
-            height: `${0.8 + Math.random() * 2.2}px`,
-          }}
+          style={style}
         />
       ))}
       {/* Shooting stars */}
-      {Array.from({ length: 4 }).map((_, i) => (
+      {shootingStars.map((style, i) => (
         <div
           key={`shoot-${i}`}
           className="login-bg__shooting-star"
-          style={{
-            top: `${10 + Math.random() * 40}%`,
-            left: `${Math.random() * 60}%`,
-            animationDelay: `${i * 4 + Math.random() * 3}s`,
-            animationDuration: `${1.5 + Math.random() * 1}s`,
-          }}
+          style={style}
         />
       ))}
       {/* Rings */}

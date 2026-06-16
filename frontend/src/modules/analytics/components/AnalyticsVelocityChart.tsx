@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Zap, Info, X } from "lucide-react";
 import type { TaskRecord } from "@/modules/tasks/types";
@@ -95,8 +95,27 @@ export default function AnalyticsVelocityChart({ tasks, classifyTask }: Props) {
   const hoveredData = hoveredIdx !== null ? weekData[hoveredIdx] : null;
   const chartKey = useMemo(() => weekData.map((w) => w.count).join("|"), [weekData]);
   const svgRef = useRef<SVGSVGElement>(null);
-  const measureSvgWidth = useCallback(() => {
-    if (svgRef.current) setSvgWidth(svgRef.current.getBoundingClientRect().width);
+
+  useEffect(() => {
+    const node = svgRef.current;
+    if (!node) return;
+
+    const updateWidth = (width: number) => {
+      setSvgWidth((current) => Math.abs(current - width) > 1 ? width : current);
+    };
+
+    if ("ResizeObserver" in window) {
+      const observer = new ResizeObserver(([entry]) => {
+        updateWidth(entry.contentRect.width);
+      });
+      observer.observe(node);
+      return () => observer.disconnect();
+    }
+
+    const onResize = () => updateWidth(node.getBoundingClientRect().width);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   return (
@@ -252,7 +271,6 @@ export default function AnalyticsVelocityChart({ tasks, classifyTask }: Props) {
           viewBox={`0 0 ${chartW} ${chartH + 24}`}
           preserveAspectRatio="xMidYMid meet"
           className="overflow-visible"
-          onMouseEnter={measureSvgWidth}
         >
           {/* Area fill */}
           <motion.path

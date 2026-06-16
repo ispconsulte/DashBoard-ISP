@@ -92,12 +92,29 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
 
 /** Bell shake animation — runs every 15 seconds when there are unread notifications */
 const SHAKE_INTERVAL_MS = 15_000;
+const DESKTOP_PANEL_STYLE: React.CSSProperties = {
+  background: "linear-gradient(160deg, hsl(234 50% 13%), hsl(260 45% 10%))",
+  top: 0,
+  right: 16,
+};
+const MOBILE_PANEL_STYLE: React.CSSProperties = {
+  background: "linear-gradient(160deg, hsl(234 50% 13%), hsl(260 45% 10%))",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  width: "100%",
+  maxWidth: "100%",
+  maxHeight: "100%",
+  borderRadius: 0,
+};
 
 function NotificationBellInner({ notifications, unreadCount, onMarkAsRead, onMarkAllAsRead, collapsed }: Props) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [onlyMine, setOnlyMine] = useState(false);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>(DESKTOP_PANEL_STYLE);
   const panelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const bellControls = useAnimation();
@@ -136,6 +153,31 @@ function NotificationBellInner({ notifications, unreadCount, onMarkAsRead, onMar
 
   useEffect(() => {
     if (!open) return;
+    if (isMobile) {
+      setPanelStyle(MOBILE_PANEL_STYLE);
+      return;
+    }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const panelWidth = 380;
+    let rightPos = 16;
+    if (rect) {
+      const rightEdge = viewportWidth - rect.right;
+      rightPos = Math.max(8, rightEdge - panelWidth / 2 + rect.width / 2);
+      if (rightPos + panelWidth > viewportWidth - 8) {
+        rightPos = viewportWidth - panelWidth - 8;
+      }
+      if (rightPos < 8) rightPos = 8;
+    }
+    setPanelStyle({
+      ...DESKTOP_PANEL_STYLE,
+      top: rect ? rect.bottom + 8 : 0,
+      right: rightPos,
+    });
+  }, [open, isMobile]);
+
+  useEffect(() => {
+    if (!open) return;
     const handler = (e: MouseEvent) => {
       if (
         panelRef.current &&
@@ -164,42 +206,6 @@ function NotificationBellInner({ notifications, unreadCount, onMarkAsRead, onMar
     if (!notif.read) onMarkAsRead(notif.id);
     setOpen(false);
     if (notif.link) navigate(notif.link);
-  };
-
-  // Compute panel position for desktop; mobile uses fixed full-width
-  const getPanelStyle = (): React.CSSProperties => {
-    if (isMobile) {
-      return {
-        background: "linear-gradient(160deg, hsl(234 50% 13%), hsl(260 45% 10%))",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        width: "100%",
-        maxWidth: "100%",
-        maxHeight: "100%",
-        borderRadius: 0,
-      };
-    }
-    const rect = buttonRef.current?.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const panelWidth = 380;
-    let rightPos = 16;
-    if (rect) {
-      const rightEdge = viewportWidth - rect.right;
-      rightPos = Math.max(8, rightEdge - (panelWidth / 2) + (rect.width / 2));
-      // Ensure panel doesn't go off-screen right
-      if (rightPos + panelWidth > viewportWidth - 8) {
-        rightPos = viewportWidth - panelWidth - 8;
-      }
-      // Ensure panel doesn't go off-screen left
-      if (rightPos < 8) rightPos = 8;
-    }
-    return {
-      background: "linear-gradient(160deg, hsl(234 50% 13%), hsl(260 45% 10%))",
-      top: rect ? rect.bottom + 8 : 0,
-      right: rightPos,
-    };
   };
 
   return (
@@ -251,7 +257,7 @@ function NotificationBellInner({ notifications, unreadCount, onMarkAsRead, onMar
               className={`fixed z-[100] overflow-hidden border border-white/[0.08] shadow-2xl shadow-black/60 flex flex-col ${
                 isMobile ? "inset-0" : "w-[380px] max-h-[520px] rounded-2xl"
               }`}
-              style={getPanelStyle()}
+              style={panelStyle}
             >
             {/* Header */}
             <div className={`flex items-center justify-between border-b border-white/[0.06] px-4 ${isMobile ? "py-4" : "py-3"}`}>

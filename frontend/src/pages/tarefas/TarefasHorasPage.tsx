@@ -12,7 +12,7 @@ import { ProjectPerformanceGauge } from "@/modules/tasks/ui/TaskCharts";
 import { TaskFilters } from "@/modules/tasks/ui/TaskFilters";
 import { TaskListTable } from "@/modules/tasks/ui/TaskListTable";
 import { ActivityListSection } from "@/modules/tasks/ui/ActivityListSection";
-import { TaskCharts } from "@/modules/tasks/ui/TaskCharts";
+import { HorasCharts } from "@/modules/tasks/ui/charts/HorasCharts";
 import { useElapsedTimes } from "@/modules/tasks/api/useElapsedTimes";
 import { useTasks } from "@/modules/tasks/api/useTasks";
 import { getTaskDatasetQueries } from "@/modules/tasks/taskDatasetQuery";
@@ -32,15 +32,13 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  Users,
-  FolderKanban,
   Timer,
   CheckCircle2,
   Hourglass,
-  TrendingUp,
   BarChart3,
   ChevronDown,
   FileDown,
+  Clock4,
 } from "lucide-react";
 import {
   deadlineColor,
@@ -56,8 +54,6 @@ import {
   type TaskStatusKey,
 } from "@/modules/tasks/utils";
 import {
-  isTaskDateFilterMode,
-  taskDateFilterOptions,
   taskMatchesStatus,
   type TaskDateFilterMode,
 } from "@/modules/tasks/taskDateFilter";
@@ -96,17 +92,6 @@ const pickField = (task: TaskRecord, keys: string[], fallback = ""): string => {
     if (task[key]) return String(task[key]);
   }
   return fallback;
-};
-
-const formatLastUpdated = (timestamp: number | null) => {
-  if (!timestamp) return "Nunca atualizado";
-  const diff = Date.now() - timestamp;
-  if (diff < 60_000) return "Atualizado agora";
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 60) return `Atualizado há ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return `Atualizado há ${hours}h${rest ? ` ${rest} min` : ""}`;
 };
 
 const normalizeComparableText = (value?: string | null) =>
@@ -191,20 +176,14 @@ const normalizeTask = (task: TaskRecord, elapsedSeconds?: number, projectNameByI
 };
 
 /* ─── Animations ─── */
-const fadeUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.5 },
-};
-
 const stagger = {
   animate: { transition: { staggerChildren: 0.08 } },
 };
 
 /* ─── Page ─── */
 
-export default function TarefasPage() {
-  usePageSEO("/tarefas");
+export default function TarefasHorasPage() {
+  usePageSEO("/tarefas/horas");
   const { session } = useAuth();
   const isAdmin = session?.role === "admin" || session?.role === "gerente" || session?.role === "coordenador";
   const canSyncBitrix = Boolean(session?.role && session.role !== "cliente");
@@ -214,8 +193,9 @@ export default function TarefasPage() {
   const [nextAllowedBitrixSyncAt, setNextAllowedBitrixSyncAt] = useState(readNextAllowedBitrixSyncAt);
 
   // Filter state — restored from localStorage (clear if different user)
-  const FILTERS_KEY = "tarefas:filters";
-  const IDENTITY_KEY = "tarefas:lastUser";
+  // Chave própria desta página (Relatório de Horas) para não conflitar com /tarefas
+  const FILTERS_KEY = "tarefas-horas:filters";
+  const IDENTITY_KEY = "tarefas-horas:lastUser";
   const savedFilters = useMemo(() => {
     const lastUser = storage.get<string>(IDENTITY_KEY, "");
     const currentUser = session?.email || "";
@@ -227,24 +207,6 @@ export default function TarefasPage() {
     if (currentUser) storage.set(IDENTITY_KEY, currentUser);
     return storage.get<Record<string, string>>(FILTERS_KEY, {});
   }, [session?.email]);
-  // Base de data padrão específica da página de Tarefas: "Data de fechamento".
-  // Demais páginas (ex.: Relatório de Horas) mantêm seu próprio padrão.
-  const PAGE_DEFAULT_DATE_FILTER_MODE: TaskDateFilterMode = "closed_date";
-  // Rótulos da base de data desta página: o "(padrão)" acompanha a opção
-  // padrão da página (Data de fechamento), sem alterar a lista compartilhada.
-  const pageDateFilterOptions = useMemo(
-    () =>
-      taskDateFilterOptions.filter((opt) => opt.value !== "elapsed_created_date").map((opt) => ({
-        ...opt,
-        label: opt.label.replace(/\s*\(padrão\)\s*$/, ""),
-      })).map((opt) =>
-        opt.value === PAGE_DEFAULT_DATE_FILTER_MODE
-          ? { ...opt, label: `${opt.label} (padrão)` }
-          : opt,
-      ),
-    [],
-  );
-  const pageDateFilterPlaceholder = "Data de fechamento (padrão)";
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState(savedFilters.status || "all");
@@ -252,11 +214,11 @@ export default function TarefasPage() {
   const [period, setPeriod] = useState(savedFilters.period || "30d");
   const [dateFrom, setDateFrom] = useState(savedFilters.dateFrom || "");
   const [dateTo, setDateTo] = useState(savedFilters.dateTo || "");
-  const [dateFilterMode, setDateFilterMode] = useState<TaskDateFilterMode>(
-    isTaskDateFilterMode(savedFilters.dateFilterMode) && savedFilters.dateFilterMode !== "elapsed_created_date"
-      ? savedFilters.dateFilterMode
-      : PAGE_DEFAULT_DATE_FILTER_MODE
-  );
+  // Relatório de Horas: período baseado no TEMPO GASTO na tarefa (elapsed/created date).
+  // Esta aba SEMPRE abre com o filtro padrão dela (tempo gasto), diferente da aba Tarefas.
+  // Não restauramos o modo salvo para garantir que cada aba mantenha seu foco próprio.
+  const PAGE_DEFAULT_DATE_FILTER_MODE: TaskDateFilterMode = "elapsed_created_date";
+  const [dateFilterMode, setDateFilterMode] = useState<TaskDateFilterMode>(PAGE_DEFAULT_DATE_FILTER_MODE);
   const [deadlineTo, setDeadlineTo] = useState(savedFilters.deadlineTo || "");
   const [consultant, setConsultant] = useState(savedFilters.consultant || "all");
   const [project, setProject] = useState<string[]>(() => {
@@ -345,7 +307,6 @@ export default function TarefasPage() {
     defaultsAppliedRef.current = true;
   }, [session?.name, session?.role]);
   const [page, setPage] = useState(1);
-  const [chartSlide, setChartSlide] = useState(0);
   const [showCharts, setShowCharts] = useState(true);
   const [showDashboard, setShowDashboard] = useState(true);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -364,7 +325,7 @@ export default function TarefasPage() {
     () => getTaskDatasetQueries({ period, dateFrom, dateTo, dateFilterMode }),
     [period, dateFrom, dateTo, dateFilterMode]
   );
-  const { tasks, loading, error, reload, lastUpdated, totalCount } = useTasks({
+  const { tasks, loading, error, reload } = useTasks({
     accessToken: session?.accessToken,
     period: taskDatasetQueries.results.period,
     dateFrom: taskDatasetQueries.results.dateFrom,
@@ -383,7 +344,6 @@ export default function TarefasPage() {
     loading: loadingTimes,
     error: timesError,
     reload: reloadTimes,
-    lastUpdated: lastUpdatedTimes,
   } = useElapsedTimes({
     accessToken: session?.accessToken,
     period,
@@ -438,10 +398,6 @@ export default function TarefasPage() {
   const refreshing = loading || loadingTimes;
   const bitrixSyncCooldownMs = Math.max(0, nextAllowedBitrixSyncAt - syncNowMs);
   const refreshButtonBusy = refreshing || syncingBitrix;
-  const combinedLastUpdated =
-    lastUpdated && lastUpdatedTimes
-      ? Math.min(lastUpdated, lastUpdatedTimes)
-      : lastUpdated ?? lastUpdatedTimes ?? null;
 
   const handleManualBitrixSync = useCallback(async () => {
     if (!canSyncBitrix || syncingBitrix) return;
@@ -689,6 +645,9 @@ export default function TarefasPage() {
     }
 
     return filteredOrMine.length > 0 ? filteredOrMine : myTasks;
+    // Deps enxutas: o escopo depende só de sessão/projetos acessíveis. Não inclui
+    // timeEntriesByTaskId/userNames (não usados aqui) para evitar recomputar todo o
+    // escopo O(n) a cada auto-refresh de horas (intervalo de 60s).
   }, [isAdmin, accessibleProjectIds, accessibleProjectNames, companyName, session?.name, session?.bitrixUserId]);
 
   const projectFilteredTasks = useMemo(
@@ -777,11 +736,6 @@ export default function TarefasPage() {
     []
   );
 
-  const searchScopedTasks = useMemo(() => {
-    if (!searchTerm) return scopedTasks;
-    return scopedTasks.filter((t) => matchesSearchTerm(t, searchTerm));
-  }, [scopedTasks, searchTerm, matchesSearchTerm]);
-
   // Filter options — projects with "<>" in the name go to the end
   const projectOptions = useMemo(() => {
     const set = new Set<string>();
@@ -809,9 +763,11 @@ export default function TarefasPage() {
   }, [filterOptionScopedTasks]);
 
   const lockedProject = session?.role === "cliente" && session.company?.trim();
+  // Memoiza para manter referência estável: sem isso o array é recriado a cada
+  // render e dispara recomputo de filteredTasks (recorte pesado da Análise Detalhada).
   const effectiveProjectFilter = useMemo<string[]>(
-    () => lockedProject ? [session.company?.trim() ?? ""] : project,
-    [lockedProject, session?.company, project],
+    () => (lockedProject ? [session?.company?.trim() ?? ""] : project),
+    [lockedProject, session?.company, project]
   );
 
   // Filtered tasks
@@ -881,20 +837,7 @@ export default function TarefasPage() {
     return { total, done, overdue, pending, totalSeconds: totalSeconds || 0 };
   }, [filteredTasks]);
 
-  // Unique clients & projects
-  const uniqueClients = useMemo(() => {
-    const set = new Set<string>();
-    filteredTasks.forEach((t) => {
-      const clientName = t.raw.projects && typeof t.raw.projects === "object"
-        ? String((t.raw.projects as any)?.name ?? "").trim()
-        : "";
-      const projectName = (t.project || "").trim();
-      const name = clientName || projectName;
-      if (name && name.toLowerCase() !== "projeto indefinido") set.add(name);
-    });
-    return set;
-  }, [filteredTasks]);
-
+  // Unique projects
   const uniqueProjects = useMemo(() => {
     const set = new Set<string>();
     filteredTasks.forEach((t) => {
@@ -915,29 +858,6 @@ export default function TarefasPage() {
       .slice(0, 8);
   }, [filteredTasks]);
 
-  // Activity bars
-  const activityBars = useMemo(() => {
-    const monthMap = new Map<string, { done: number; pending: number }>();
-    filteredTasks.forEach((t) => {
-      const d = t.deadlineDate || parseDateValue(t.raw["created_at"]) || parseDateValue(t.raw["createdAt"]);
-      if (!d) return;
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const cur = monthMap.get(key) ?? { done: 0, pending: 0 };
-      if (t.statusKey === "done") cur.done += 1;
-      else cur.pending += 1;
-      monthMap.set(key, cur);
-    });
-    return [...monthMap.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-6)
-      .map(([key, val]) => {
-        const [, m] = key.split("-");
-        const monthLabel = new Date(2024, Number(m) - 1).toLocaleString("pt-BR", { month: "short" }).replace(".", "");
-        return { month: monthLabel, done: val.done, pending: val.pending, total: val.done + val.pending };
-      });
-  }, [filteredTasks]);
-
-  const maxBarValue = Math.max(1, ...activityBars.map((b) => b.total));
 
   // Project hours for bar chart
   const projectHoursData = useMemo(() => {
@@ -963,11 +883,6 @@ export default function TarefasPage() {
   const totalHoursLabel = formatSecondsHuman(stats.totalSeconds);
   const pctDone = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0;
 
-  const chartSlides = [
-    { id: "overview", label: "Visão Geral" },
-    { id: "charts", label: "Gráficos Detalhados" },
-  ];
-
   // Show skeleton on initial load (no cached data yet)
   if (loading && tasks.length === 0 && !error) {
     return <PageSkeleton variant="tarefas" />;
@@ -990,9 +905,9 @@ export default function TarefasPage() {
 
         {/* ═══ HEADER ═══ */}
         <PageHeaderCard
-          icon={Layers}
-          title="Tarefas"
-          subtitle="Progresso, prazos e desempenho das atividades."
+          icon={Clock4}
+          title="Relatório de Horas"
+          subtitle="Horas trabalhadas por tarefa, projeto e responsável (filtro por tempo gasto)."
           actions={
             <>
               {canSyncBitrix && (
@@ -1114,8 +1029,7 @@ export default function TarefasPage() {
             dateFrom={dateFrom} setDateFrom={setDateFrom}
             dateTo={dateTo} setDateTo={setDateTo}
             dateFilterMode={dateFilterMode} setDateFilterMode={setDateFilterMode}
-            dateFilterOptions={pageDateFilterOptions} dateFilterPlaceholder={pageDateFilterPlaceholder}
-            dateFilterDefaultMode={PAGE_DEFAULT_DATE_FILTER_MODE}
+            showDateFilter={false}
             deadlineTo={deadlineTo} setDeadlineTo={setDeadlineTo}
             consultant={consultant} setConsultant={setConsultant}
             consultantOptions={isAdmin ? consultantOptions : (session?.name ? [session.name] : [])}
@@ -1220,7 +1134,6 @@ export default function TarefasPage() {
                 const performers = [...performerMap.entries()]
                   .sort((a, b) => b[1].done - a[1].done || b[1].total - a[1].total)
                   .slice(0, 6);
-                const maxTotal = Math.max(1, ...performers.map(([, d]) => d.total));
 
                 if (!performers.length) {
                   return <EmptyState variant="users" />;
@@ -1229,8 +1142,6 @@ export default function TarefasPage() {
                 return performers.map(([name, data], idx) => {
                   const pctBar = data.total > 0 ? (data.done / data.total) * 100 : 0;
                   const pctDoneLocal = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
-                  // Cor única: verde para progresso concluído
-                  const color = "hsl(142 71% 45%)";
                   return (
                     <motion.div
                       key={name}
@@ -1447,7 +1358,7 @@ export default function TarefasPage() {
                 transition={{ duration: 0.3 }}
                 className="overflow-hidden"
               >
-                <TaskCharts
+                <HorasCharts
                   tasks={filteredTasks}
                   barProjectsOverride={projectHoursData}
                   loading={loading}
@@ -1522,7 +1433,7 @@ export default function TarefasPage() {
       {/* Modal de opções de exportação PDF */}
       {showExportModal && (
         <ExportPDFModal
-          title="Exportar Relatório de Tarefas"
+          title="Exportar Relatório de Horas"
           onClose={() => setShowExportModal(false)}
           taskIntegrityData={filteredTasks.map((t): TaskIntegrityInfo => ({
             title: t.title,
@@ -1578,6 +1489,8 @@ export default function TarefasPage() {
 
             // Geração de PDF é idempotente: nova tentativa em falhas transitórias antes de avisar.
             await withRetry(() => exportTasksPDF({
+              title: "Relatório de Horas",
+              fileName: "relatorio-horas.pdf",
               tasks: rows,
               stats: {
                 total: rows.length,
@@ -1587,7 +1500,7 @@ export default function TarefasPage() {
                 totalHours: `${totalHoursLabel}h`,
               },
               generatedBy: session?.name || undefined,
-            }), { label: "tarefas-pdf" });
+            }), { label: "tarefas-horas-pdf" });
             } catch (pdfError) {
               // Detalhe técnico fica apenas no log; o usuário recebe a mensagem amigável.
               notifyError(pdfError, {

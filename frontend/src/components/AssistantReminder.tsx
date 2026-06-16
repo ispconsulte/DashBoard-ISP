@@ -111,7 +111,7 @@ export default function AssistantReminder({ notifTasks, statusAlert, onDismissAl
       });
       setVisible(true);
     }
-  }, [statusAlert]);
+  }, [statusAlert, role]);
 
   const show = useCallback(() => {
     if (messages.length === 0) return;

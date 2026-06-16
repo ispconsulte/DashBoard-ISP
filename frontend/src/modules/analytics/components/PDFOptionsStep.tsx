@@ -112,34 +112,36 @@ export default function OptionsStep({
         <span>O relatório usa os filtros aplicados na página (período, base de data, projeto e consultor). Ajuste os filtros antes de exportar para alterar o conteúdo.</span>
       </div>
 
-      {/* Options */}
-      <div className="px-6 pb-2 space-y-2">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-white/30 mb-3">Conteúdo do relatório</p>
-        {OPTIONS.map((opt) => {
-          const active = selection[opt.key];
-          return (
-            <button
-              key={opt.key}
-              type="button"
-              onClick={() => toggle(opt.key)}
-              aria-pressed={active}
-              className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
-                active ? opt.borderColor : "border-white/[0.05] bg-white/[0.02] opacity-50"
-              }`}
-            >
-              <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all ${
-                active ? "border-transparent bg-gradient-to-br from-[hsl(262_83%_58%)] to-[hsl(234_89%_64%)]" : "border-white/20 bg-white/[0.03]"
-              }`}>
-                {active && <span className="h-1.5 w-1.5 rounded-sm bg-white" />}
-              </span>
-              <span className={`shrink-0 ${active ? opt.color : "text-white/25"}`}>{opt.icon}</span>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-semibold transition-colors ${active ? "text-white/85" : "text-white/35"}`}>{opt.label}</p>
-                <p className="text-[10px] text-white/30 mt-0.5">{opt.description}</p>
-              </div>
-            </button>
-          );
-        })}
+      {/* Options — grid responsivo: 2 colunas no desktop, 1 no tablet/mobile */}
+      <div className="px-6 pb-2">
+        <p className="text-center text-[10px] font-bold uppercase tracking-wider text-white/30 mb-3">Conteúdo do relatório</p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {OPTIONS.map((opt) => {
+            const active = selection[opt.key];
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => toggle(opt.key)}
+                aria-pressed={active}
+                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
+                  active ? opt.borderColor : "border-white/[0.05] bg-white/[0.02] opacity-50"
+                }`}
+              >
+                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all ${
+                  active ? "border-transparent bg-gradient-to-br from-[hsl(262_83%_58%)] to-[hsl(234_89%_64%)]" : "border-white/20 bg-white/[0.03]"
+                }`}>
+                  {active && <span className="h-1.5 w-1.5 rounded-sm bg-white" />}
+                </span>
+                <span className={`shrink-0 ${active ? opt.color : "text-white/25"}`}>{opt.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-semibold transition-colors ${active ? "text-white/85" : "text-white/35"}`}>{opt.label}</p>
+                  <p className="text-[10px] text-white/30 mt-0.5">{opt.description}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Duration info */}

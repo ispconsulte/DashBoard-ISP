@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import { supabaseExt as supabase } from "@/lib/supabase";
 import { withRetry, notifyError } from "@/lib/friendlyError";
 
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
+
 export interface ProjectFinancialRow {
   id: string;
   project_id: number;
@@ -23,7 +25,6 @@ export interface UseProjectFinancialsReturn {
 }
 
 export function useProjectFinancials(accessToken?: string | null): UseProjectFinancialsReturn {
-  const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const [data, setData] = useState<Map<number, ProjectFinancialRow>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -34,12 +34,14 @@ function DropdownPanel({
   surfaceVar = "--task-surface",
   maxHeight = "min(300px,70vh)",
   width = "min(240px,calc(100vw-1.5rem))",
+  align = "left",
 }: {
   open: boolean;
   children: React.ReactNode;
   surfaceVar?: string;
   maxHeight?: string;
   width?: string;
+  align?: "left" | "right";
 }) {
   return (
     <AnimatePresence>
@@ -49,11 +51,15 @@ function DropdownPanel({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -4, scale: 0.97 }}
           transition={{ duration: 0.15 }}
-          className={`absolute left-0 sm:right-0 sm:left-auto top-full ${DROPDOWN_Z} mt-1 rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col`}
+          className={`absolute top-full ${align === "right" ? "right-0" : "left-0"} ${DROPDOWN_Z} mt-1 rounded-2xl border border-white/[0.08] shadow-xl shadow-black/50 overflow-hidden flex flex-col`}
           style={{
             background: `hsl(var(${surfaceVar}))`,
             maxHeight,
-            width,
+            // Acompanha a largura do gatilho (com um mínimo legível), e nunca
+            // ultrapassa a viewport — evita o painel "vazar" para a esquerda
+            // (sob a sidebar) quando ancorado à direita em telas estreitas.
+            width: `max(100%, ${width})`,
+            maxWidth: "calc(100vw - 1.5rem)",
           }}
         >
           {children}
@@ -106,6 +112,9 @@ export function CustomSelect({
   accentVar = "--task-purple",
   surfaceVar = "--task-surface",
   subtleSelection = false,
+  panelAlign = "left",
+  panelWidth = "min(220px,calc(100vw-1.5rem))",
+  panelMaxHeight = "min(260px,70vh)",
 }: BaseDropdownProps & {
   value: string;
   onChange: (v: string) => void;
@@ -115,6 +124,9 @@ export function CustomSelect({
    *  value). Used for the always-defaulted Base de data / Período filters so
    *  they don't look pre-selected. */
   subtleSelection?: boolean;
+  panelAlign?: "left" | "right";
+  panelWidth?: string;
+  panelMaxHeight?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -167,7 +179,7 @@ export function CustomSelect({
         <ChevronDown className={`h-3 w-3 shrink-0 opacity-40 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
-      <DropdownPanel open={open} surfaceVar={surfaceVar} maxHeight="min(260px,70vh)" width="min(220px,calc(100vw-1.5rem))">
+      <DropdownPanel open={open} surfaceVar={surfaceVar} maxHeight={panelMaxHeight} width={panelWidth} align={panelAlign}>
         {options.length > 5 && (
           <SearchInput value={search} onChange={setSearch} inputRef={inputRef} surfaceVar={surfaceVar} />
         )}

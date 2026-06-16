@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { FolderKanban, Clock, CheckCircle2, AlertTriangle, TrendingUp, Briefcase } from "lucide-react";
+import { FolderKanban, Clock, CheckCircle2, AlertTriangle, TrendingUp, Briefcase, ListTodo } from "lucide-react";
 import { motion } from "framer-motion";
 import { formatHoursHuman } from "@/modules/tasks/utils";
 
@@ -11,27 +11,41 @@ type Props = {
   doneCount: number;
   overdueCount: number;
   loading?: boolean;
+  /** Rótulo do primeiro card. Padrão "Meus Projetos" (Analíticas). */
+  projectsLabel?: string;
+  /** Rótulo do card de horas. Padrão "Horas Alocadas". */
+  hoursLabel?: string;
+  /** Quando true, o 2º card mostra "Tarefas Totais" (contagem) em vez de horas. */
+  secondCardTasks?: boolean;
 };
 
-function AnalyticsKpiCardsInner({ clients, activeProjects, totalHours, totalTasks, doneCount, overdueCount, loading }: Props) {
+function AnalyticsKpiCardsInner({ clients, activeProjects, totalHours, totalTasks, doneCount, overdueCount, loading, projectsLabel = "Meus Projetos", hoursLabel = "Horas Alocadas", secondCardTasks = false }: Props) {
   const pendingCount = totalTasks - doneCount - overdueCount;
   const completionPct = totalTasks > 0 ? Math.round((doneCount / totalTasks) * 100) : 0;
 
   const kpis = [
     {
-      label: "Meus Projetos",
+      label: projectsLabel,
       value: clients.toLocaleString("pt-BR"),
       sub: activeProjects > 0 ? `${activeProjects} com atividade recente` : "Nenhum ativo no período",
       icon: Briefcase,
       accent: "hsl(262 83% 58%)",
     },
-    {
-      label: "Horas Alocadas",
-      value: formatHoursHuman(totalHours),
-      sub: activeProjects > 0 ? `~${formatHoursHuman(totalHours / activeProjects)} por projeto` : "Sem registro de horas",
-      icon: Clock,
-      accent: "hsl(200 80% 55%)",
-    },
+    secondCardTasks
+      ? {
+          label: "Tarefas Totais",
+          value: totalTasks.toLocaleString("pt-BR"),
+          sub: activeProjects > 0 ? `em ${activeProjects} ${activeProjects === 1 ? "ativo" : "ativos"}` : "Todas as organizações",
+          icon: ListTodo,
+          accent: "hsl(200 80% 55%)",
+        }
+      : {
+          label: hoursLabel,
+          value: formatHoursHuman(totalHours),
+          sub: activeProjects > 0 ? `~${formatHoursHuman(totalHours / activeProjects)} por projeto` : "Sem registro de horas",
+          icon: Clock,
+          accent: "hsl(200 80% 55%)",
+        },
     {
       label: "Concluídas",
       value: doneCount.toLocaleString("pt-BR"),
