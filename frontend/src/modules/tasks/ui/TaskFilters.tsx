@@ -24,6 +24,11 @@ type TaskFiltersProps = {
   setDateTo: (value: string) => void;
   dateFilterMode: TaskDateFilterMode;
   setDateFilterMode: (value: TaskDateFilterMode) => void;
+  // Rótulos da base de data podem variar por página (qual opção é "(padrão)").
+  dateFilterOptions?: Array<{ value: TaskDateFilterMode; label: string }>;
+  dateFilterPlaceholder?: string;
+  dateFilterDefaultMode?: TaskDateFilterMode;
+  showDateFilter?: boolean;
   deadlineTo: string;
   setDeadlineTo: (value: string) => void;
   searchRef?: React.RefObject<HTMLInputElement>;
@@ -72,6 +77,10 @@ export function TaskFilters({
   setDateTo,
   dateFilterMode,
   setDateFilterMode,
+  dateFilterOptions = taskDateFilterOptions,
+  dateFilterPlaceholder = "Criação + tempo gasto (padrão)",
+  dateFilterDefaultMode = DEFAULT_TASK_DATE_FILTER_MODE,
+  showDateFilter = true,
   deadlineTo,
   setDeadlineTo,
   searchRef,
@@ -122,7 +131,7 @@ export function TaskFilters({
   const activeCount =
     (status !== "all" ? 1 : 0) +
     (period !== "all" ? 1 : 0) +
-    (dateFilterMode !== DEFAULT_TASK_DATE_FILTER_MODE ? 1 : 0) +
+    (showDateFilter && dateFilterMode !== dateFilterDefaultMode ? 1 : 0) +
     (consultant !== "all" && consultant ? 1 : 0) +
     (project.length > 0 ? 1 : 0);
 
@@ -198,18 +207,19 @@ export function TaskFilters({
                 />
               </div>
 
-              {/* Date field dropdown */}
-              <div className="space-y-1.5 w-full sm:w-[170px]">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Base de data</label>
-                <CustomSelect
-                  value={dateFilterMode}
-                  onChange={(value) => setDateFilterMode(value as TaskDateFilterMode)}
-                  options={taskDateFilterOptions}
-                  placeholder="Criação + tempo gasto (padrão)"
-                  icon={Calendar}
-                  subtleSelection
-                />
-              </div>
+              {showDateFilter && (
+                <div className="space-y-1.5 w-full sm:w-[170px]">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Base de data</label>
+                  <CustomSelect
+                    value={dateFilterMode}
+                    onChange={(value) => setDateFilterMode(value as TaskDateFilterMode)}
+                    options={dateFilterOptions}
+                    placeholder={dateFilterPlaceholder}
+                    icon={Calendar}
+                    subtleSelection
+                  />
+                </div>
+              )}
 
               {/* Period dropdown */}
               <div className="space-y-1.5 w-full sm:w-[170px]">
@@ -254,22 +264,22 @@ export function TaskFilters({
 
               {/* Custom date range */}
               {period === "custom" && (
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 w-full sm:w-auto">
                   <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Intervalo</label>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <input
                       type="date"
                       min={MIN_CUSTOM_FILTER_DATE}
                       value={draftDateFrom}
                       onChange={(e) => handleDateFromChange(e.target.value)}
-                      className="h-9 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-[hsl(var(--task-surface))] px-2.5 text-xs text-white/70 outline-none"
+                      className="min-h-[44px] h-9 w-full sm:w-[150px] rounded-xl border border-white/[0.08] bg-[hsl(var(--task-surface))] px-3 text-[12px] font-semibold text-white/60 outline-none transition hover:border-white/[0.15] focus:border-[hsl(var(--task-purple)/0.4)] [color-scheme:dark]"
                     />
                     <input
                       type="date"
                       min={dateFrom || MIN_CUSTOM_FILTER_DATE}
                       value={draftDateTo}
                       onChange={(e) => handleDateToChange(e.target.value)}
-                      className="h-9 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-[hsl(var(--task-surface))] px-2.5 text-xs text-white/70 outline-none"
+                      className="min-h-[44px] h-9 w-full sm:w-[150px] rounded-xl border border-white/[0.08] bg-[hsl(var(--task-surface))] px-3 text-[12px] font-semibold text-white/60 outline-none transition hover:border-white/[0.15] focus:border-[hsl(var(--task-purple)/0.4)] [color-scheme:dark]"
                     />
                   </div>
                 </div>
@@ -277,12 +287,12 @@ export function TaskFilters({
 
               {/* Clear filters */}
               {hasActiveFilters && (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-semibold uppercase tracking-wider text-transparent">‎</label>
+                <div className="space-y-1.5 w-full sm:w-[170px]">
+                  <label className="hidden text-[10px] font-semibold uppercase tracking-wider text-transparent sm:block">‎</label>
                   <button
                     type="button"
                     onClick={onClearFilters}
-                    className="flex min-h-[44px] h-9 w-full sm:w-auto items-center justify-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-semibold text-white/40 hover:text-white/60 hover:border-white/[0.15] transition"
+                    className="flex min-h-[44px] h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-semibold text-white/40 hover:text-white/60 hover:border-white/[0.15] transition"
                   >
                     <X className="h-3 w-3" />
                     Limpar

@@ -124,11 +124,12 @@ export function useOnlineUsers(): Map<string, PresenceEntry> {
 
   useEffect(() => {
     let cancelled = false;
+    const cache = cacheRef.current;
 
     const publishFromCache = () => {
       const now = Date.now();
       const map = new Map<string, PresenceEntry>();
-      cacheRef.current.forEach(({ entry, seenAt }, key) => {
+      cache.forEach(({ entry, seenAt }, key) => {
         if (now - seenAt <= PRESENCE_STALE_TTL_MS) {
           map.set(key, entry);
         }
@@ -149,7 +150,7 @@ export function useOnlineUsers(): Map<string, PresenceEntry> {
         );
         const entry = sorted[0];
         if (entry?.email && entry.email !== "__observer__") {
-          cacheRef.current.set(entry.email.trim().toLowerCase(), {
+          cache.set(entry.email.trim().toLowerCase(), {
             entry,
             seenAt: now,
           });
@@ -180,9 +181,9 @@ export function useOnlineUsers(): Map<string, PresenceEntry> {
 
     const gcTimer = window.setInterval(() => {
       const now = Date.now();
-      cacheRef.current.forEach((value, key) => {
+      cache.forEach((value, key) => {
         if (now - value.seenAt > PRESENCE_STALE_TTL_MS) {
-          cacheRef.current.delete(key);
+          cache.delete(key);
         }
       });
       publishFromCache();
@@ -197,7 +198,7 @@ export function useOnlineUsers(): Map<string, PresenceEntry> {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
-      cacheRef.current.clear();
+      cache.clear();
       setOnlineMap(new Map());
     };
   }, []);

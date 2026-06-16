@@ -1,20 +1,24 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import PageHeaderCard from "@/components/PageHeaderCard";
-import { motion } from "framer-motion";
-import { Search, Filter, Plus, MoreVertical, Contact, Pencil, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Search, Plus, MoreVertical, Contact, Pencil, Loader2, Info, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePageSEO } from "@/hooks/usePageSEO";
 import { supabaseExt } from "@/lib/supabase";
 import PageSkeleton from "@/components/ui/PageSkeleton";
 import ClienteEditModal from "./ClienteEditModal";
+import ClienteWorkspace from "./ClienteWorkspace";
 import DataErrorCard from "@/components/ui/DataErrorCard";
 import EmptyState from "@/components/ui/EmptyState";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
+import { useTasks } from "@/modules/tasks/api/useTasks";
+import { useElapsedTimes } from "@/modules/tasks/api/useElapsedTimes";
+import { getTaskDurationSeconds } from "@/modules/tasks/utils";
 
 interface Cliente {
   cliente_id: number;
@@ -51,8 +55,24 @@ const fadeUp = {
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
+/** Cor da barra de consumo por nível de uso das horas contratadas. */
+function consumptionBar(percent: number, exceeded: boolean): { bar: string; text: string } {
+  if (exceeded) return { bar: "bg-[linear-gradient(90deg,hsl(0_84%_55%),hsl(0_84%_45%))]", text: "text-red-400" };
+  if (percent >= 90) return { bar: "bg-[linear-gradient(90deg,hsl(25_95%_55%),hsl(18_90%_50%))]", text: "text-orange-400" };
+  if (percent >= 70) return { bar: "bg-[linear-gradient(90deg,hsl(38_92%_55%),hsl(32_90%_50%))]", text: "text-amber-400" };
+  return { bar: "bg-[linear-gradient(90deg,hsl(160_84%_42%),hsl(170_80%_40%))]", text: "text-emerald-400" };
+}
+
+/** Formata uma data ISO no padrão brasileiro dd/mm/aaaa (sem hora). */
+function formatDateBR(value: string | null): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
 export default function ClientesPage() {
-  usePageSEO("Clientes — Área de Testes");
+  usePageSEO("Página do Cliente — Área de Testes");
   const { session, loadingSession } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "ativo" | "inativo">("all");
@@ -62,6 +82,46 @@ export default function ClientesPage() {
   const [error, setError] = useState<string | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
+  // Cliente selecionado abre a Página do Cliente (workspace) no lugar da lista.
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
+  // Card cujo popover "O que significa cada indicador" está aberto.
+  const [infoCardId, setInfoCardId] = useState<number | null>(null);
+  const [openClientMenuId, setOpenClientMenuId] = useState<number | null>(null);
+  const ignoreNextCardClickRef = useRef(false);
+
+  // Horas consumidas ao vivo por cliente: soma getTaskDurationSeconds tarefa a
+  // tarefa (mesma lógica do workspace, que usa time_spent_in_logs como fallback),
+  // agrupando por projects.cliente_id.
+  const { tasks: allTasks } = useTasks({ accessToken: session?.accessToken, period: "all" });
+  const { times } = useElapsedTimes({ accessToken: session?.accessToken, period: "all" });
+  // Por cliente: horas consumidas (ao vivo) + nº de tarefas (atividade), usados
+  // para o display do consumo e para ordenar a lista por "mais ativo".
+  const statsByClient = useMemo(() => {
+    const elapsedByTask = new Map<string, number>();
+    times.forEach((tm) => {
+      if (tm.task_id == null) return;
+      const key = String(tm.task_id);
+      elapsedByTask.set(key, (elapsedByTask.get(key) ?? 0) + (Number(tm.seconds ?? 0) || 0));
+    });
+    const stats = new Map<number, { hours: number; tasks: number }>();
+    allTasks.forEach((t) => {
+      const clientId = Number(t.projects?.cliente_id ?? 0);
+      if (!clientId) return;
+      const id = t.task_id ?? t.id;
+      const fallback = id != null ? elapsedByTask.get(String(id)) : undefined;
+      const seconds = getTaskDurationSeconds(t as Record<string, unknown>, fallback) ?? 0;
+      const entry = stats.get(clientId) ?? { hours: 0, tasks: 0 };
+      entry.tasks += 1;
+      entry.hours += seconds / 3600;
+      stats.set(clientId, entry);
+    });
+    return stats;
+  }, [allTasks, times]);
+  const consumedByClient = useMemo(() => {
+    const map = new Map<number, number>();
+    statsByClient.forEach((s, id) => map.set(id, s.hours));
+    return map;
+  }, [statsByClient]);
 
   const fetchClientes = useCallback(async () => {
     if (!session?.accessToken) {
@@ -109,6 +169,15 @@ export default function ClientesPage() {
     fetchClientes();
   }, [fetchClientes]);
 
+  // Mantém o cliente aberto no workspace sincronizado após refresh/edição.
+  useEffect(() => {
+    setSelectedCliente((prev) => {
+      if (!prev) return prev;
+      const updated = clientes.find((c) => c.cliente_id === prev.cliente_id);
+      return updated ?? prev;
+    });
+  }, [clientes]);
+
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       void fetchClientes();
@@ -130,9 +199,27 @@ export default function ClientesPage() {
     };
   }, [fetchClientes]);
 
+  const guardCardClick = () => {
+    ignoreNextCardClickRef.current = true;
+    window.setTimeout(() => {
+      ignoreNextCardClickRef.current = false;
+    }, 300);
+  };
+
   const handleOpenEdit = (c: Cliente) => {
+    guardCardClick();
+    setOpenClientMenuId(null);
+    setSelectedCliente(null);
     setEditingCliente(c);
-    setEditModalOpen(true);
+    window.setTimeout(() => setEditModalOpen(true), 0);
+  };
+
+  const handleOpenWorkspace = (c: Cliente) => {
+    if (ignoreNextCardClickRef.current) {
+      ignoreNextCardClickRef.current = false;
+      return;
+    }
+    setSelectedCliente(c);
   };
 
   const handleOpenCreate = () => {
@@ -142,19 +229,40 @@ export default function ClientesPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return clientes.filter((c) => {
-      const displayStatus = (c.status || (c.Ativo ? "Ativo" : "Inativo")).toLowerCase();
-      const matchesSearch = !q ||
-        c.nome.toLowerCase().includes(q) ||
-        (c.cidade ?? "").toLowerCase().includes(q) ||
-        displayStatus.includes(q);
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "ativo" && displayStatus === "ativo") ||
-        (statusFilter === "inativo" && displayStatus !== "ativo");
-      return matchesSearch && matchesStatus;
-    });
-  }, [search, clientes, statusFilter]);
+    const isAtivo = (c: Cliente) => (c.status || (c.Ativo ? "Ativo" : "Inativo")).toLowerCase() === "ativo";
+    // Score de atividade: prioriza nº de tarefas (ações) e, em seguida, horas.
+    // Clientes mais usados sobem; os "parados" (sem tarefas/horas) descem.
+    const activityScore = (c: Cliente) => {
+      const s = statsByClient.get(c.cliente_id);
+      const tasks = s?.tasks ?? 0;
+      const hours = s?.hours ?? 0;
+      return tasks * 1000 + hours;
+    };
+    return clientes
+      .filter((c) => {
+        const displayStatus = (c.status || (c.Ativo ? "Ativo" : "Inativo")).toLowerCase();
+        const matchesSearch = !q ||
+          c.nome.toLowerCase().includes(q) ||
+          (c.cidade ?? "").toLowerCase().includes(q) ||
+          displayStatus.includes(q);
+        const matchesStatus =
+          statusFilter === "all" ||
+          (statusFilter === "ativo" && displayStatus === "ativo") ||
+          (statusFilter === "inativo" && displayStatus !== "ativo");
+        return matchesSearch && matchesStatus;
+      })
+      .sort((a, b) => {
+        // 1) Ativos sempre no topo.
+        const aActive = isAtivo(a) ? 1 : 0;
+        const bActive = isAtivo(b) ? 1 : 0;
+        if (aActive !== bActive) return bActive - aActive;
+        // 2) Mais atividade (tarefas + horas) primeiro.
+        const diff = activityScore(b) - activityScore(a);
+        if (diff !== 0) return diff;
+        // 3) Desempate alfabético.
+        return a.nome.localeCompare(b.nome);
+      });
+  }, [search, clientes, statusFilter, statsByClient]);
 
   const pageBackground = {
     background: [
@@ -185,23 +293,56 @@ export default function ClientesPage() {
     );
   }
 
+  const editModal = (
+    <ClienteEditModal
+      open={editModalOpen}
+      onOpenChange={(open) => {
+        setEditModalOpen(open);
+        if (!open) setEditingCliente(null);
+      }}
+      cliente={editingCliente}
+      onSaved={fetchClientes}
+    />
+  );
+
+  // Workspace do cliente selecionado (sem nova rota/modal): substitui a lista.
+  if (selectedCliente) {
+    return (
+      <div data-client-page className="w-full min-h-[calc(100vh-3.5rem)]" style={pageBackground}>
+        <div data-client-content className="mx-auto w-full max-w-[1900px] space-y-6 p-4 sm:p-5 md:p-8">
+          <ClienteWorkspace cliente={selectedCliente} onBack={() => setSelectedCliente(null)} />
+        </div>
+        {editModal}
+      </div>
+    );
+  }
+
   return (
     <div data-client-page className="w-full min-h-[calc(100vh-3.5rem)]" style={pageBackground}>
       <div data-client-content className="mx-auto w-full max-w-[1900px] space-y-6 p-4 sm:p-5 md:p-8">
 
         <PageHeaderCard
           icon={Contact}
-          title="Clientes"
-          subtitle="Gestão centralizada de carteira, contratos e projetos vinculados."
+          title="Página do Cliente"
+          subtitle="Selecione um cliente para abrir seu workspace com analíticas, horas e tarefas."
           actions={
-            <Button
-              size="sm"
-              className="h-10 gap-2 rounded-xl text-sm font-medium shadow-[0_14px_28px_-14px_hsl(234_89%_64%/0.7)] shrink-0"
-              onClick={handleOpenCreate}
-            >
-              <Plus className="h-4 w-4" />
-              Novo Cliente
-            </Button>
+            <>
+              {refreshing && (
+                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-xs font-medium text-white/45">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span className="hidden sm:inline">Atualizando</span>
+                </span>
+              )}
+              <Button
+                size="sm"
+                className="h-9 shrink-0 gap-1.5 rounded-xl text-xs font-medium shadow-[0_14px_28px_-14px_hsl(234_89%_64%/0.7)]"
+                onClick={handleOpenCreate}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Novo Cliente</span>
+                <span className="sm:hidden">Novo</span>
+              </Button>
+            </>
           }
         />
 
@@ -212,31 +353,14 @@ export default function ClientesPage() {
           </motion.div>
         )}
 
-        {/* ── Search & filter bar ── */}
+        {/* ── Search & filter bar (padrão Tarefas) ── */}
         <motion.div
           {...fadeUp}
           transition={{ delay: 0.05 }}
           className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3 sm:p-4"
         >
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05]">
-                <Filter className="h-4 w-4 text-primary" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-foreground">Filtros</p>
-                <p className="text-xs text-white/35">Busque e refine a lista de clientes.</p>
-              </div>
-              {refreshing && (
-                <span className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.035] px-2.5 py-1 text-[10px] font-medium text-white/45">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Atualizando
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1fr)_220px]">
-              <div className="relative min-w-0">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_200px]">
+            <div className="relative min-w-0">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/30" />
               <Input
                 placeholder="Buscar cliente..."
@@ -244,19 +368,18 @@ export default function ClientesPage() {
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-8 h-9 rounded-xl text-sm bg-white/[0.03] border-white/[0.07]"
               />
-              </div>
-
-              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "all" | "ativo" | "inativo")}>
-                <SelectTrigger className="h-9 rounded-xl border-white/[0.07] bg-white/[0.03] text-xs text-white/80">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent className="border-white/[0.07] bg-[hsl(222_40%_10%)] text-foreground">
-                  <SelectItem value="all">Todos os status</SelectItem>
-                  <SelectItem value="ativo">Somente ativos</SelectItem>
-                  <SelectItem value="inativo">Inativos e outros</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
+
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "all" | "ativo" | "inativo")}>
+              <SelectTrigger className="h-9 rounded-xl border-white/[0.07] bg-white/[0.03] text-xs text-white/80">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent className="border-white/[0.07] bg-[hsl(222_40%_10%)] text-foreground">
+                <SelectItem value="all">Todos os status</SelectItem>
+                <SelectItem value="ativo">Somente ativos</SelectItem>
+                <SelectItem value="inativo">Inativos e outros</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </motion.div>
 
@@ -280,10 +403,14 @@ export default function ClientesPage() {
             const color = getColor(c.cliente_id);
             const displayStatus = c.status || (c.Ativo ? "Ativo" : "Inativo");
             const horasContratadasCliente = Number(c.horas_contratadas || 0);
-            const horasConsumidasCliente = Number(c.horas_consumidas || 0);
-            const consumoPercent = horasContratadasCliente > 0
-              ? Math.min(100, Math.round((horasConsumidasCliente / horasContratadasCliente) * 100))
+            // Consumo real a partir das tarefas vinculadas (fallback p/ valor do banco).
+            const horasConsumidasCliente = consumedByClient.get(c.cliente_id) ?? Number(c.horas_consumidas || 0);
+            const consumoRaw = horasContratadasCliente > 0
+              ? Math.round((horasConsumidasCliente / horasContratadasCliente) * 100)
               : 0;
+            const consumoPercent = Math.min(100, consumoRaw);
+            const consumoExcedido = horasContratadasCliente > 0 && horasConsumidasCliente > horasContratadasCliente;
+            const consumoColor = consumptionBar(consumoRaw, consumoExcedido);
 
             return (
               <motion.div
@@ -294,7 +421,11 @@ export default function ClientesPage() {
               >
                 <div
                   data-client-card
-                  className="group relative overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 space-y-4 transition-all duration-200 hover:border-white/[0.12] hover:bg-white/[0.035]"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleOpenWorkspace(c)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleOpenWorkspace(c); } }}
+                  className={`group relative cursor-pointer rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 space-y-4 transition-all duration-200 hover:border-white/[0.12] hover:bg-white/[0.035] focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 ${infoCardId === c.cliente_id ? "overflow-visible z-20" : "overflow-hidden"}`}
                 >
 
                   {/* Identity row */}
@@ -328,21 +459,44 @@ export default function ClientesPage() {
                         </p>
                       </div>
                     </div>
-                    <DropdownMenu modal={false}>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          data-client-menu-trigger
-                          className="rounded-lg p-1.5 text-white/30 transition-colors outline-none hover:bg-white/[0.06] hover:text-white/60 focus:outline-none"
+                    <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                      <DropdownMenu
+                        modal={false}
+                        open={openClientMenuId === c.cliente_id}
+                        onOpenChange={(open) => setOpenClientMenuId(open ? c.cliente_id : null)}
+                      >
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            data-client-menu-trigger
+                            className="rounded-lg p-1.5 text-white/30 transition-colors outline-none hover:bg-white/[0.06] hover:text-white/60 focus:outline-none"
+                          >
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          className="min-w-[140px] bg-card border-white/[0.06] rounded-xl shadow-xl shadow-black/30"
                         >
-                          <MoreVertical className="h-3.5 w-3.5" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="min-w-[140px] bg-card border-white/[0.06] rounded-xl shadow-xl shadow-black/30">
-                        <DropdownMenuItem onClick={() => handleOpenEdit(c)} className="gap-2 text-xs rounded-lg focus:bg-white/[0.06] focus:text-foreground">
-                          <Pencil className="h-3.5 w-3.5" /> Editar
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <button
+                            type="button"
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              guardCardClick();
+                            }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleOpenEdit(c);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-foreground outline-none transition-colors hover:bg-white/[0.06] focus:bg-white/[0.06]"
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> Editar
+                          </button>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
 
                   {/* Hours consumption bar */}
@@ -357,16 +511,19 @@ export default function ClientesPage() {
                     <div className="mt-2 flex items-center gap-2.5">
                       <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
                         <div
-                          className="h-full rounded-full bg-[linear-gradient(90deg,hsl(234_89%_64%),hsl(200_75%_50%))]"
+                          className={`h-full rounded-full ${consumoColor.bar}`}
                           style={{ width: `${consumoPercent}%` }}
                         />
                       </div>
-                      <span className="text-xs font-bold text-foreground tabular-nums w-8 text-right">{consumoPercent}%</span>
+                      <span className={`text-xs font-bold tabular-nums w-10 text-right ${consumoColor.text}`}>{consumoRaw}%</span>
                     </div>
+                    {consumoExcedido && (
+                      <p className="mt-1 text-[10px] font-medium text-red-400/80">Limite contratado excedido</p>
+                    )}
                   </div>
 
                   {/* Metadata row */}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
                     <span className="text-white/30">
                       Projetos <span className="font-medium text-foreground">{c.projetos_quantidade}</span>
                     </span>
@@ -375,11 +532,56 @@ export default function ClientesPage() {
                         HG <span className="font-medium text-foreground">{Math.round(c.horas_hg_contratadas)}h</span>
                       </span>
                     )}
-                    {c.created_at && (
+                    {c.created_at && formatDateBR(c.created_at) && (
                       <span className="text-white/30">
-                        Desde <span className="font-medium text-foreground">{new Date(c.created_at).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" })}</span>
+                        Desde <span className="font-medium text-foreground">{formatDateBR(c.created_at)}</span>
                       </span>
                     )}
+
+                    {/* Botão "mais informações" (igual ao dos gráficos) */}
+                    <div className="relative ml-auto">
+                      <button
+                        type="button"
+                        aria-label="O que significa cada indicador?"
+                        title="O que significa cada indicador?"
+                        onClick={(e) => { e.stopPropagation(); setInfoCardId((prev) => (prev === c.cliente_id ? null : c.cliente_id)); }}
+                        className="flex h-6 w-6 items-center justify-center rounded-lg text-white/25 transition hover:bg-white/[0.08] hover:text-white/60"
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </button>
+                      <AnimatePresence>
+                        {infoCardId === c.cliente_id && (
+                          <>
+                            <div className="fixed inset-0 z-30" onClick={(e) => { e.stopPropagation(); setInfoCardId(null); }} />
+                            <motion.div
+                              initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                              transition={{ duration: 0.15 }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute bottom-8 right-0 z-40 w-[min(300px,calc(100vw-3rem))] rounded-2xl border border-white/[0.1] bg-[hsl(224_42%_9%/0.98)] p-4 text-left shadow-2xl shadow-black/50 backdrop-blur-xl"
+                            >
+                              <div className="mb-2.5 flex items-center justify-between">
+                                <p className="text-xs font-bold text-white/90">O que significa cada indicador</p>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setInfoCardId(null); }}
+                                  className="flex h-6 w-6 items-center justify-center rounded-lg text-white/40 hover:bg-white/10 hover:text-white/80"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                              <ul className="space-y-2 text-[11px] leading-relaxed text-white/55">
+                                <li><strong className="text-white/80">Projetos</strong> — organizações vinculadas ao cliente (inclui projetos, collabs e grupos de trabalho).</li>
+                                <li><strong className="text-emerald-300">HG (Hora Garantida)</strong> — pacote de horas mensais contratado e reservado para o cliente.</li>
+                                <li><strong className="text-cyan-300">HP (Hora Projeto)</strong> — horas alocadas para um projeto específico, fora do pacote garantido.</li>
+                                <li><strong className="text-white/80">Desde dd/mm/aaaa</strong> — data de cadastro do cliente.</li>
+                              </ul>
+                            </motion.div>
+                          </>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -388,12 +590,7 @@ export default function ClientesPage() {
         </motion.div>
       </div>
 
-      <ClienteEditModal
-        open={editModalOpen}
-        onOpenChange={setEditModalOpen}
-        cliente={editingCliente}
-        onSaved={fetchClientes}
-      />
+      {editModal}
     </div>
   );
 }

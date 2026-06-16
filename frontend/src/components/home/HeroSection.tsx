@@ -8,27 +8,32 @@ function AnimatedCounter({ target, suffix = "%", duration = 2000 }: { target: nu
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    const frameMs = 80;
+    let tickTimer: ReturnType<typeof setInterval> | null = null;
     const runAnimation = () => {
       setDone(false);
       setCount(0);
       const start = performance.now();
-      const animate = (now: number) => {
+      tickTimer = setInterval(() => {
+        const now = performance.now();
         const elapsed = now - start;
         const progress = Math.min(elapsed / duration, 1);
         const eased = 1 - Math.pow(1 - progress, 3);
         setCount(Math.round(target * eased));
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        } else {
+        if (progress >= 1) {
+          if (tickTimer) clearInterval(tickTimer);
+          tickTimer = null;
           setDone(true);
         }
-      };
-      requestAnimationFrame(animate);
+      }, frameMs);
     };
 
     runAnimation();
     const interval = setInterval(runAnimation, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (tickTimer) clearInterval(tickTimer);
+    };
   }, [target, duration]);
 
   return (

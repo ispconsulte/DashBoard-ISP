@@ -5,9 +5,11 @@ type TaskRow = {
   title: string;
   project: string;
   consultant: string;
+  consultantNameForHours?: string;
   statusLabel: string;
   deadlineLabel: string;
   durationLabel: string;
+  durationSeconds?: number;
 };
 
 type ExportOptions = {
@@ -16,6 +18,8 @@ type ExportOptions = {
   fileName?: string;
   tasks: TaskRow[];
   generatedBy?: string;
+  /** Mantém `title` como está, sem derivar do projeto (usado na Página do Cliente). */
+  forceTitle?: boolean;
   stats?: {
     total: number;
     done: number;
@@ -221,6 +225,108 @@ function drawClientHoursBar(
   doc.text(hoursText, bx + bw + 3, y + 3.5);
 }
 
+function parseDurationLabelSeconds(label: string): number {
+  const text = String(label ?? "").toLowerCase();
+  if (!text || text === "—") return 0;
+  let seconds = 0;
+  const hourMatches = text.matchAll(/(\d+(?:[.,]\d+)?)\s*h/g);
+  for (const match of hourMatches) seconds += Number(match[1].replace(",", ".")) * 3600;
+  const minuteMatches = text.matchAll(/(\d+(?:[.,]\d+)?)\s*(?:m|min)/g);
+  for (const match of minuteMatches) seconds += Number(match[1].replace(",", ".")) * 60;
+  const secondMatches = text.matchAll(/(\d+(?:[.,]\d+)?)\s*s/g);
+  for (const match of secondMatches) seconds += Number(match[1].replace(",", "."));
+  return Number.isFinite(seconds) ? seconds : 0;
+}
+
+function formatHoursForPdf(seconds: number): string {
+  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return "0h";
+  const totalMinutes = Math.round(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${String(minutes).padStart(2, "0")}min`;
+}
+
+function buildConsultantHours(tasks: TaskRow[]) {
+  const byConsultant = new Map<string, number>();
+  tasks.forEach((task) => {
+    const consultant = (task.consultantNameForHours || task.consultant || "Sem responsável").trim() || "Sem responsável";
+    const seconds =
+      typeof task.durationSeconds === "number" && Number.isFinite(task.durationSeconds)
+        ? Math.max(0, task.durationSeconds)
+        : parseDurationLabelSeconds(task.durationLabel);
+    byConsultant.set(consultant, (byConsultant.get(consultant) ?? 0) + seconds);
+  });
+
+  return Array.from(byConsultant.entries())
+    .map(([consultant, seconds]) => ({ consultant, seconds }))
+    .filter((row) => row.seconds > 0)
+    .sort((a, b) => b.seconds - a.seconds);
+}
+
+function drawConsultantHoursSection(
+  doc: jsPDF,
+  yPos: number,
+  tasks: TaskRow[],
+  logo: string | null,
+  pageW: number,
+  reportTitle: string,
+  now: string,
+  generatedBy?: string,
+) {
+  const rows = buildConsultantHours(tasks);
+  if (rows.length === 0) return yPos;
+
+  const pageH = doc.internal.pageSize.getHeight();
+  if (pageH - 14 - yPos < 34) {
+    doc.addPage();
+    drawPageBg(doc);
+    drawPageHeader(doc, logo, pageW, reportTitle);
+    yPos = TABLE_START_Y;
+  }
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(200, 200, 230);
+  doc.text("Horas por Consultor", 14, yPos + 4);
+
+  autoTable(doc, {
+    startY: yPos + 8,
+    head: [["Consultor", "Total de horas"]],
+    body: rows.map((row) => [sanitizeText(row.consultant), formatHoursForPdf(row.seconds)]),
+    theme: "grid",
+    styles: {
+      fontSize: 8.5,
+      cellPadding: 2.5,
+      textColor: [200, 200, 230],
+      lineColor: [50, 48, 80],
+      lineWidth: 0.15,
+      fillColor: [22, 20, 48],
+      overflow: "linebreak",
+    },
+    headStyles: {
+      fillColor: [30, 27, 75],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 8.5,
+    },
+    alternateRowStyles: { fillColor: [28, 26, 56] },
+    columnStyles: {
+      0: { cellWidth: "auto", fontStyle: "bold" },
+      1: { halign: "right", cellWidth: 42 },
+    },
+    margin: { left: 14, right: 14, top: TABLE_START_Y },
+    willDrawPage: (data: any) => {
+      if (data.pageNumber > 1) drawPageBg(doc);
+      drawPageHeader(doc, logo, pageW, reportTitle);
+    },
+    didDrawPage: () => drawFooter(doc, pageW, now, generatedBy),
+  });
+
+  const finalY = (doc as any).lastAutoTable?.finalY;
+  return typeof finalY === "number" ? finalY + 8 : yPos + 32;
+}
+
 function getNow() {
   return new Date().toLocaleDateString("pt-BR", {
     day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
@@ -370,11 +476,16 @@ export async function exportTasksPDF({
   tasks,
   stats,
   generatedBy,
+  forceTitle = false,
 }: ExportOptions) {
   const projectNames = new Set(tasks.map(t => t.project).filter(Boolean));
-  const dynamicTitle = projectNames.size === 1
-    ? `Relatório — ${[...projectNames][0]}`
-    : title;
+  // `forceTitle` mantém o título recebido (ex.: nome do cliente na Página do
+  // Cliente) mesmo com vários projetos; sem ele, com 1 projeto deriva o título.
+  const dynamicTitle = forceTitle
+    ? title
+    : projectNames.size === 1
+      ? `Relatório — ${[...projectNames][0]}`
+      : title;
 
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -441,6 +552,8 @@ export async function exportTasksPDF({
       }
 
       yPos += chartSectionH + 2;
+
+      yPos = drawConsultantHoursSection(doc, yPos, tasks, logo, pageW, dynamicTitle, now, generatedBy);
 
       // Productivity pulse — show up to 10 projects
       const projectCounts = new Map<string, { done: number; pending: number; overdue: number }>();

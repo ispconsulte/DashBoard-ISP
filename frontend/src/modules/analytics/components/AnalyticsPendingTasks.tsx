@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, Clock, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Info, X } from "lucide-react";
 import type { TaskRecord } from "@/modules/tasks/types";
@@ -44,7 +44,9 @@ export default function AnalyticsPendingTasks({ tasks, classifyTask }: Props) {
   const pendingCount = pendingTasks.filter((t) => t._status === "pending").length;
 
   // Reset page when tasks change
-  useMemo(() => { if (page >= totalPages) setPage(0); }, [pendingTasks.length]);
+  useEffect(() => {
+    if (page >= totalPages) setPage(0);
+  }, [page, totalPages]);
 
   if (pendingTasks.length === 0) return null;
 

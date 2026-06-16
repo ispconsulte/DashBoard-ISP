@@ -108,7 +108,7 @@ export function useTasks(params: UseTasksParams = {}): UseTasksResult {
     if (!cached?.data?.length) return null;
     if (Date.now() - (cached.timestamp ?? 0) > CACHE_TTL_MS) return null;
     return cached;
-  }, []); // intentionally empty — only read cache on first mount
+  }, [dateFilterMode, period, dateFrom, dateTo]);
 
   const [tasks, setTasks] = useState<TaskRecord[]>(initialCache?.data ?? []);
   const [loading, setLoading] = useState(false);

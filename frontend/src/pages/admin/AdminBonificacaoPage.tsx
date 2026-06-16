@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Crown, Pencil, Trash2,
   ChevronDown, ChevronUp, Search, AlertTriangle, Check, X, User,
@@ -271,7 +271,7 @@ export default function AdminBonificacaoPage() {
   const [deleting, setDeleting] = useState(false);
 
   /* ── load ── */
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setDataError(null);
@@ -297,9 +297,9 @@ export default function AdminBonificacaoPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
-  useEffect(() => { void load(); }, [token]);
+  useEffect(() => { void load(); }, [load]);
 
   const userNameById = useMemo(() => {
     const m = new Map<string, string>();

@@ -60,8 +60,11 @@ const buildRpcEndpoint = () => {
   return { endpoint, key, error: null };
 };
 
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const RELOAD_COOLDOWN_MS = 5000;
+
 export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursResult {
-  const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const { startIso, endIso, clientId = null, projectId = null, userId = null } = params;
   const [{ endpoint, key, error: envError }] = useState(buildRpcEndpoint);
   const [data, setData] = useState<ProjectHours[]>([]);
@@ -71,9 +74,10 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
   const [refreshFlag, setRefreshFlag] = useState(0);
   const cacheRef = useRef(new Map<string, { timestamp: number; data: ProjectHours[]; mismatches: TaskHoursMismatch[] }>());
   const lastReloadRef = useRef(0);
-  const cacheKey = `${startIso}|${endIso}|${clientId ?? "all"}|${projectId ?? "all"}|${userId ?? "all"}`;
-  const CACHE_TTL_MS = 5 * 60 * 1000;
-  const RELOAD_COOLDOWN_MS = 5000;
+  const cacheKey = useMemo(
+    () => `${startIso}|${endIso}|${clientId ?? "all"}|${projectId ?? "all"}|${userId ?? "all"}`,
+    [startIso, endIso, clientId, projectId, userId],
+  );
 
   const reload = useCallback(() => {
     const now = Date.now();
@@ -115,7 +119,7 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
       return;
     }
 
-    const controller = new AbortController();
+    let active = true;
     const fetchData = async () => {
       setLoading(true);
       setError(null);
@@ -157,7 +161,6 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
               apikey: key,
               Authorization: `Bearer ${key}`,
             },
-            signal: controller.signal,
           });
 
           if (!response.ok) {
@@ -191,7 +194,6 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
               apikey: key,
               Authorization: `Bearer ${key}`,
             },
-            signal: controller.signal,
           });
 
           if (!response.ok) {
@@ -221,7 +223,6 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
                 apikey: key,
                 Authorization: `Bearer ${key}`,
               },
-              signal: controller.signal,
             },
           );
           if (!clientResponse.ok) continue;
@@ -243,24 +244,27 @@ export function useProjectHours(params: UseProjectHoursParams): UseProjectHoursR
           userId,
         });
 
+        if (!active) return;
         setData(mapped);
         setMismatches(taskMismatches);
         cacheRef.current.set(cacheKey, { timestamp: Date.now(), data: mapped, mismatches: taskMismatches });
       } catch (err) {
-        if (controller.signal.aborted || (err instanceof Error && err.name === "AbortError")) return;
+        if (!active || (err instanceof Error && err.name === "AbortError")) return;
         const message = (err as Error).message || "Não foi possível carregar as horas.";
         console.error("[useProjectHours] fetch error", message);
         setError(message);
       } finally {
-        if (!controller.signal.aborted) {
+        if (active) {
           setLoading(false);
         }
       }
     };
 
     fetchData().catch(() => {});
-    return () => controller.abort();
-  }, [endpoint, key, envError, startIso, endIso, clientId, projectId, userId, refreshFlag]);
+    return () => {
+      active = false;
+    };
+  }, [endpoint, key, envError, startIso, endIso, clientId, projectId, userId, refreshFlag, cacheKey]);
 
   const normalized = useMemo(
     () => data.filter((d) => Number.isFinite(d.hours) && d.projectName),

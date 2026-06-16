@@ -35,6 +35,7 @@ export interface ClientHealthDataResult {
 // Each KPI is normalized 0-100 relative to benchmarks.
 
 const DEFAULT_WEIGHTS = { ebitda: 0.4, churn: 0.3, nps: 0.3 };
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
 function calcHealthScore(
   ebitda: number | null,
@@ -70,7 +71,6 @@ function calcHealthScore(
 const RISK_THRESHOLD = 40;
 
 export function useClientHealthData(opts: UseClientHealthOptions): ClientHealthDataResult {
-  const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);

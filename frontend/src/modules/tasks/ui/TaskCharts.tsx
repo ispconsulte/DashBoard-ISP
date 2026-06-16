@@ -46,12 +46,69 @@ const COLORS = ["#22c55e", "#ef4444", "#6366f1", "#64748b", "#0ea5e9", "#8b5cf6"
 const tooltipStyle: React.CSSProperties = {
   background: "hsl(228 25% 8%)",
   border: "1px solid hsl(228 20% 18%)",
-  borderRadius: 12,
+  borderRadius: 10,
   fontSize: 12,
   color: "#e2e8f0",
   boxShadow: "0 8px 30px -8px rgba(0,0,0,0.6)",
-  padding: "8px 12px",
+  padding: "6px 10px",
+  maxWidth: 200,
+  whiteSpace: "nowrap",
 };
+
+// Permite ao tooltip escapar da área do gráfico para não ser cortado pelo card.
+const tooltipWrapperStyle: React.CSSProperties = { zIndex: 50, pointerEvents: "none" };
+
+/** Tooltip do donut de responsáveis: nome (truncado) + nº de tarefas, sem estourar o card. */
+function ConsultantPieTooltip(props: { active?: boolean; payload?: Array<{ value?: number; name?: string; payload?: { name?: string } }> }) {
+  const { active, payload } = props;
+  if (!active || !payload || !payload.length) return null;
+  const item = payload[0];
+  const name = String(item?.name ?? item?.payload?.name ?? "");
+  const value = Number(item?.value ?? 0);
+  return (
+    <div
+      style={{
+        background: "hsl(228 25% 8%)",
+        border: "1px solid hsl(228 20% 18%)",
+        borderRadius: 10,
+        boxShadow: "0 8px 30px -8px rgba(0,0,0,0.6)",
+        padding: "6px 10px",
+        maxWidth: 180,
+      }}
+    >
+      <div style={{ color: "#e2e8f0", fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+      <div style={{ color: "#94a3b8", fontSize: 11 }}>{value} tarefa{value === 1 ? "" : "s"}</div>
+    </div>
+  );
+}
+
+/** Tooltip enxuto das barras de projeto: só horas + nº de tarefas (sem bullet/colon). */
+function ProjectBarTooltip(props: { active?: boolean; payload?: Array<{ value?: number; payload?: { hours?: number; count?: number } }> }) {
+  const { active, payload } = props;
+  if (!active || !payload || !payload.length) return null;
+  const p = payload[0]?.payload ?? {};
+  const hours = Number(p.hours ?? payload[0]?.value ?? 0);
+  const count = Number(p.count ?? 0);
+  return (
+    <div
+      style={{
+        background: "hsl(228 25% 8%)",
+        border: "1px solid hsl(228 20% 18%)",
+        borderRadius: 10,
+        boxShadow: "0 8px 30px -8px rgba(0,0,0,0.6)",
+        padding: "6px 10px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ color: "#f1f5f9", fontSize: 12, fontWeight: 700 }}>{formatHoursHuman(hours)}</span>
+      {count > 0 && (
+        <span style={{ color: "#94a3b8", fontSize: 11, marginLeft: 6 }}>
+          · {count} tarefa{count === 1 ? "" : "s"}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function groupTopN(tasks: TaskView[], key: (t: TaskView) => string | null | undefined, topN: number) {
   const map = new Map<string, number>();
@@ -259,17 +316,7 @@ export function TaskCharts({
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
-    // Re-compute if date might change (midnight crossing)
-  }, [tasks]);
-
-  const formatBarTooltip: TooltipProps<number, string>["formatter"] = (value, _name, data) => {
-    const num = typeof value === "number" ? value : Number(value ?? 0);
-    const p = (data?.payload as { count?: number; name?: string } | undefined) ?? {};
-    const tasksCount = Number(p.count ?? 0);
-    const projectName = String(p.name ?? "Projeto");
-    const hours = formatHoursHuman(num);
-    return [`${hours} (${tasksCount} tarefas)`, projectName];
-  };
+  }, []);
 
   const renderActiveDot = useCallback(
     (props: ActiveDotProps) => {
@@ -322,16 +369,19 @@ export function TaskCharts({
             <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[hsl(var(--task-yellow))]">Responsáveis</p>
             <p className="mt-0.5 text-xs sm:text-sm text-[hsl(var(--task-text-muted))] truncate">Distribuição por consultor</p>
           </div>
-          <div className="flex-1 min-h-[180px] max-h-[280px]">
+          <div className="flex-1 min-h-[180px] max-h-[280px] overflow-visible">
             {pieByConsultant.length ? (
-              <div className="flex flex-col items-center gap-3 h-full overflow-hidden">
-                <div className="w-full min-w-0" style={{ minHeight: 180 }}>
+              <div className="flex flex-col items-center gap-3 h-full overflow-visible">
+                <div className="w-full min-w-0 overflow-visible" style={{ minHeight: 180 }}>
                   <ResponsiveContainer width="100%" height={180} minWidth={1} minHeight={1}>
                     <PieChart>
-                      <Pie data={pieByConsultant} dataKey="value" nameKey="name" innerRadius="40%" outerRadius="65%" paddingAngle={3} stroke="none" isAnimationActive animationDuration={1200} animationEasing="ease-out" className="cursor-pointer" onClick={(data: { name?: string; payload?: { name?: string } }) => { const name = String(data?.name ?? data?.payload?.name ?? ""); if (name) onPickConsultant?.(name); }}>
+                      {/* Raios em px (não %) + paddingAngle baixo: recharts não recalcula
+                          a geometria a cada frame, eliminando o engasgo/perda de FPS na
+                          animação do donut (jank conhecido do Pie animado com raio em %). */}
+                      <Pie data={pieByConsultant} dataKey="value" nameKey="name" innerRadius={48} outerRadius={78} paddingAngle={2} stroke="none" isAnimationActive animationDuration={800} animationEasing="ease-out" className="cursor-pointer" onClick={(data: { name?: string; payload?: { name?: string } }) => { const name = String(data?.name ?? data?.payload?.name ?? ""); if (name) onPickConsultant?.(name); }}>
                         {pieByConsultant.map((entry, index) => (<Cell key={`${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />))}
                       </Pie>
-                      <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: "#e2e8f0" }} labelStyle={{ color: "#e2e8f0" }} />
+                      <Tooltip content={<ConsultantPieTooltip />} wrapperStyle={tooltipWrapperStyle} allowEscapeViewBox={{ x: true, y: true }} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -368,10 +418,10 @@ export function TaskCharts({
             <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-[hsl(var(--task-purple))]">Alocação por Projeto</p>
             <p className="mt-0.5 text-xs sm:text-sm text-[hsl(var(--task-text-muted))] truncate">Horas investidas por projeto</p>
           </div>
-          <div className="h-[220px] min-w-0 overflow-hidden">
+          <div className="h-[220px] min-w-0 overflow-visible">
             {barByProject.length ? (
               <ResponsiveContainer width="100%" height={220} minWidth={1} minHeight={1}>
-                <BarChart data={barByProject} layout="vertical" barCategoryGap="40%" margin={{ top: 5, right: 35, bottom: 5, left: 5 }}>
+                <BarChart data={barByProject} layout="vertical" barCategoryGap="40%" margin={{ top: 5, right: 44, bottom: 5, left: 5 }}>
                   <defs>
                     {barByProject.map((_, idx) => (
                       <linearGradient key={idx} id={`barGrad-${idx}`} x1="0%" y1="0%" x2="100%" y2="0%">
@@ -382,8 +432,8 @@ export function TaskCharts({
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(228 20% 14%)" horizontal={false} />
                   <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 10 }} tickFormatter={(v: number) => formatHoursHuman(v)} />
-                  <YAxis dataKey="name" type="category" hide />
-                  <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: "#e2e8f0" }} labelStyle={{ color: "#e2e8f0" }} formatter={formatBarTooltip} labelFormatter={() => ""} cursor={{ fill: "hsl(228 20% 10%)" }} />
+                  <YAxis dataKey="name" type="category" tick={{ fill: "#94a3b8", fontSize: 10 }} width={110} tickFormatter={(v: string) => (v.length > 16 ? v.slice(0, 15) + "…" : v)} />
+                  <Tooltip content={<ProjectBarTooltip />} wrapperStyle={tooltipWrapperStyle} allowEscapeViewBox={{ x: true, y: true }} cursor={{ fill: "hsl(228 20% 10%)" }} />
                   <Bar dataKey="hours" radius={[0, 6, 6, 0]} barSize={18} minPointSize={12} isAnimationActive animationDuration={1200} animationEasing="ease-out" className="cursor-pointer" onClick={(data: { name?: string; payload?: { name?: string } }) => { const name = String(data?.name ?? data?.payload?.name ?? ""); if (name) onPickProject?.(name); }}>
                     {barByProject.map((_, idx) => (<Cell key={idx} fill={`url(#barGrad-${idx})`} />))}
                     <LabelList dataKey="hours" position="right" formatter={formatBarLabel} style={{ fill: "#e2e8f0", fontSize: 10, fontWeight: 600 }} />

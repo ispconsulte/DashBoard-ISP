@@ -182,7 +182,7 @@ export function useElapsedTimes(params: UseElapsedTimesParams = {}): UseElapsedT
     if (!cached?.data?.length) return null;
     if (Date.now() - (cached.timestamp ?? 0) > CACHE_TTL_MS) return null;
     return cached;
-  }, []);
+  }, [dateField, period, dateFrom, dateTo]);
 
   const [times, setTimes] = useState<ElapsedTimeRecord[]>(initialCache?.data ?? []);
   const [loading, setLoading] = useState(false);

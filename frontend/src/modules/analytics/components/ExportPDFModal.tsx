@@ -32,7 +32,7 @@ export default function ExportPDFModal({ onClose, onExport, title = "Exportar PD
     includeOverdue: true,
     includeResponsible: true,
     includeDeadline: true,
-    includeDuration: false,
+    includeDuration: true,
   });
   const [exporting, setExporting] = useState(false);
   const [step, setStep] = useState<"options" | "verification">("options");
@@ -60,14 +60,6 @@ export default function ExportPDFModal({ onClose, onExport, title = "Exportar PD
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const handleNext = useCallback(() => {
-    if (hasIncomplete) {
-      setStep("verification");
-    } else {
-      handleExport("include");
-    }
-  }, [hasIncomplete]);
-
   const handleExport = useCallback(async (action: IncompleteAction) => {
     setExporting(true);
     try {
@@ -77,6 +69,14 @@ export default function ExportPDFModal({ onClose, onExport, title = "Exportar PD
       onClose();
     }
   }, [selection, onExport, onClose]);
+
+  const handleNext = useCallback(() => {
+    if (hasIncomplete) {
+      setStep("verification");
+    } else {
+      handleExport("include");
+    }
+  }, [hasIncomplete, handleExport]);
 
   const anyStatusSelected = selection.includeDone || selection.includePending || selection.includeOverdue;
 
@@ -99,42 +99,46 @@ export default function ExportPDFModal({ onClose, onExport, title = "Exportar PD
           exit={{ opacity: 0, scale: 0.93, y: 16 }}
           transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
           onClick={(e) => e.stopPropagation()}
-          className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-white/[0.08] shadow-2xl scrollbar-thin scrollbar-thumb-white/10"
+          className="flex w-full max-w-xl max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-white/[0.08] shadow-2xl"
           style={{
             background: "linear-gradient(145deg, hsl(270 50% 13%), hsl(234 45% 8%))",
             boxShadow: "0 32px 64px -16px hsl(262 83% 20% / 0.55), 0 0 0 1px hsl(262 83% 58% / 0.08)",
           }}
         >
           {/* Top accent */}
-          <div className="h-[2px] w-full bg-gradient-to-r from-emerald-500 via-[hsl(262_83%_58%)] to-transparent opacity-60" />
+          <div className="h-[2px] w-full shrink-0 bg-gradient-to-r from-emerald-500 via-[hsl(262_83%_58%)] to-transparent opacity-60" />
 
-          <AnimatePresence mode="wait">
-            {step === "options" ? (
-              <OptionsStep
-                key="options"
-                title={title}
-                selection={selection}
-                toggle={toggle}
-                anyStatusSelected={anyStatusSelected}
-                hasIncomplete={hasIncomplete}
-                incompleteCount={integrity.incompleteCount}
-                totalCount={integrity.total}
-                durationSelected={selection.includeDuration}
-                exporting={exporting}
-                onClose={onClose}
-                onNext={handleNext}
-              />
-            ) : (
-              <VerificationStep
-                key="verification"
-                integrity={integrity}
-                durationSelected={selection.includeDuration}
-                exporting={exporting}
-                onBack={() => setStep("options")}
-                onExport={handleExport}
-              />
-            )}
-          </AnimatePresence>
+          {/* Conteúdo rolável: o overflow vive aqui (com a borda arredondada no
+              container externo), então a scrollbar fica dentro do modal. */}
+          <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+            <AnimatePresence mode="wait">
+              {step === "options" ? (
+                <OptionsStep
+                  key="options"
+                  title={title}
+                  selection={selection}
+                  toggle={toggle}
+                  anyStatusSelected={anyStatusSelected}
+                  hasIncomplete={hasIncomplete}
+                  incompleteCount={integrity.incompleteCount}
+                  totalCount={integrity.total}
+                  durationSelected={selection.includeDuration}
+                  exporting={exporting}
+                  onClose={onClose}
+                  onNext={handleNext}
+                />
+              ) : (
+                <VerificationStep
+                  key="verification"
+                  integrity={integrity}
+                  durationSelected={selection.includeDuration}
+                  exporting={exporting}
+                  onBack={() => setStep("options")}
+                  onExport={handleExport}
+                />
+              )}
+            </AnimatePresence>
+          </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
