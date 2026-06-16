@@ -26,7 +26,6 @@ import { toast } from "sonner";
 import { exportTasksPDF } from "@/lib/exportPdf";
 import { STATUS_LABELS } from "@/modules/tasks/types";
 import { isOrgOfClient, normalizeForMatch } from "@/lib/clientMatch";
-import { MIN_CUSTOM_FILTER_DATE } from "@/modules/tasks/customDateRange";
 import type { TaskDateFilterMode } from "@/modules/tasks/taskDateFilter";
 import { formatHoursHuman, getTaskDurationSeconds } from "@/modules/tasks/utils";
 import type { TaskRecord, ElapsedTimeRecord } from "@/modules/tasks/types";
@@ -59,17 +58,34 @@ interface Props {
   onBack: () => void;
 }
 
-type PeriodKey = "30d" | "90d" | "180d" | "all" | "custom";
 type StatusKey = "all" | "done" | "pending" | "overdue";
 
-const PERIOD_OPTIONS: { value: PeriodKey; label: string }[] = [
-  { value: "30d", label: "Últimos 30 dias" },
-  { value: "90d", label: "Últimos 90 dias" },
-  { value: "180d", label: "Últimos 180 dias" },
-  { value: "all", label: "Todo histórico" },
-  { value: "custom", label: "Personalizado" },
+const MONTH_LABELS = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
-const PERIOD_DAYS: Record<Exclude<PeriodKey, "custom">, number> = { "30d": 30, "90d": 90, "180d": 180, all: 3650 };
+
+/** Chave do mês no formato "YYYY-MM". */
+function monthKey(year: number, month: number): string {
+  return `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Lista de meses (do atual até 23 meses atrás) para o seletor. Cada opção é
+ * "YYYY-MM" com rótulo "Mês/Ano" (ex.: "Junho/2026").
+ */
+function buildMonthOptions(): { value: string; label: string }[] {
+  const out: { value: string; label: string }[] = [];
+  const now = new Date();
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    out.push({
+      value: monthKey(d.getFullYear(), d.getMonth()),
+      label: `${MONTH_LABELS[d.getMonth()]}/${d.getFullYear()}`,
+    });
+  }
+  return out;
+}
 
 const STATUS_OPTIONS: { value: StatusKey; label: string }[] = [
   { value: "all", label: "Todos" },
@@ -132,13 +148,16 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
   const accessToken = session?.accessToken;
 
   // ── Filtros do workspace ──
-  const [period, setPeriod] = useState<PeriodKey>("all");
+  // O recorte é SEMPRE por mês (contratadas vs consumidas no mês). Default = mês atual.
+  const monthOptions = useMemo(() => buildMonthOptions(), []);
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    return monthKey(now.getFullYear(), now.getMonth());
+  });
   const dateFilterMode: TaskDateFilterMode = "elapsed_created_date";
   const [statusFilter, setStatusFilter] = useState<StatusKey>("all");
   const [consultant, setConsultant] = useState("");
   const [orgFilter, setOrgFilter] = useState<string>(""); // project_id como string
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
   const [orgsOpen, setOrgsOpen] = useState(false);
   const [orgSearch, setOrgSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -216,18 +235,16 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
   }, []);
   const { data: projectHours } = useProjectHours({ startIso, endIso, clientId: cliente.cliente_id });
 
-  // Intervalo de datas do período selecionado (suporta "Personalizado").
+  // Intervalo do mês selecionado (do 1º dia 00:00 ao último dia 23:59:59).
   const periodRange = useMemo<{ start: Date | null; end: Date | null }>(() => {
-    if (period === "all") return { start: null, end: null };
-    if (period === "custom") {
-      const start = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null;
-      const end = dateTo ? new Date(`${dateTo}T23:59:59`) : null;
-      return { start, end };
-    }
-    const start = new Date();
-    start.setDate(start.getDate() - PERIOD_DAYS[period]);
-    return { start, end: null };
-  }, [period, dateFrom, dateTo]);
+    const [yStr, mStr] = selectedMonth.split("-");
+    const year = Number(yStr);
+    const month = Number(mStr) - 1; // 0-based
+    if (Number.isNaN(year) || Number.isNaN(month)) return { start: null, end: null };
+    const start = new Date(year, month, 1, 0, 0, 0, 0);
+    const end = new Date(year, month + 1, 0, 23, 59, 59, 999); // dia 0 do próximo mês = último deste
+    return { start, end };
+  }, [selectedMonth]);
 
   // Tarefas do cliente (qualquer tipo de organização) com filtros aplicados.
   const clientTasks = useMemo(
@@ -322,6 +339,10 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
     return { bar: "bg-[linear-gradient(90deg,hsl(234_89%_64%),hsl(200_75%_50%))]", dot: "bg-[hsl(200_75%_55%)]", text: "text-[hsl(200_75%_60%)]", chipBg: "bg-[hsl(200_75%_50%/0.15)]" };
   }, [allocatedHours, totals.consumedHours, hoursExceeded]);
   const activeProjects = useMemo(() => projects.filter((p) => p.isActive).length, [projects]);
+  const selectedMonthLabel = useMemo(
+    () => monthOptions.find((o) => o.value === selectedMonth)?.label ?? "mês atual",
+    [monthOptions, selectedMonth],
+  );
 
   // Itens por tipo (filtrados pela busca normalizada), para a área colapsável.
   const itemsByType = useMemo(() => {
@@ -340,8 +361,8 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
   const displayStatus = cliente.status || (cliente.Ativo ? "Ativo" : "Inativo");
   const hasData = items.length > 0 || clientTasks.length > 0;
   const loading = loadingItems || loadingTasks;
-  const activeFilterCount = (period !== "all" ? 1 : 0) + (statusFilter !== "all" ? 1 : 0) + (consultant ? 1 : 0) + (orgFilter ? 1 : 0);
-  const clearFilters = () => { setPeriod("all"); setStatusFilter("all"); setConsultant(""); setOrgFilter(""); setDateFrom(""); setDateTo(""); };
+  const activeFilterCount = (statusFilter !== "all" ? 1 : 0) + (consultant ? 1 : 0) + (orgFilter ? 1 : 0);
+  const clearFilters = () => { setStatusFilter("all"); setConsultant(""); setOrgFilter(""); };
 
   // Mapa task_id -> segundos de elapsed (para horas reais na lista de atividades).
   const elapsedSecondsByTask = useMemo(() => {
@@ -387,7 +408,7 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
   }, [activityViews, page]);
 
   // Reset page on filter change
-  useEffect(() => { setPage(1); }, [period, statusFilter, consultant, orgFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [selectedMonth, statusFilter, consultant, orgFilter]);
 
   // Lançamentos por tarefa para a seção expandida (Time Tracking) da TaskListTable.
   const timeEntriesByTaskId = useMemo(() => {
@@ -444,7 +465,7 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/40">
                 <span className="inline-flex items-center gap-1"><FolderKanban className="h-3 w-3" />{items.length} {items.length === 1 ? "organização" : "organizações"}</span>
-                <span>{Math.round(allocatedHours)}h contratadas</span>
+                <span>{Math.round(allocatedHours)}h/mês contratadas</span>
                 {cliente.cidade && <span>· {cliente.cidade}</span>}
               </div>
             </div>
@@ -574,8 +595,8 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} style={{ overflow: "visible" }}>
               <div className="grid grid-cols-1 gap-3 border-t border-white/[0.05] p-4 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Período</label>
-                  <CustomSelect value={period} onChange={(v) => setPeriod((v || "all") as PeriodKey)} options={PERIOD_OPTIONS} placeholder="Todo histórico" icon={Calendar} subtleSelection />
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Mês de referência</label>
+                  <CustomSelect value={selectedMonth} onChange={(v) => setSelectedMonth(v || monthOptions[0].value)} options={monthOptions} placeholder="Mês atual" icon={Calendar} />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Status</label>
@@ -604,27 +625,6 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
                     panelMaxHeight="min(220px,45vh)"
                   />
                 </div>
-                {period === "custom" && (
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <label className="text-[10px] font-semibold uppercase tracking-wider text-white/30">Intervalo</label>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="date"
-                        min={MIN_CUSTOM_FILTER_DATE}
-                        value={dateFrom}
-                        onChange={(e) => setDateFrom(e.target.value)}
-                        className="min-h-[44px] h-9 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-semibold text-white/60 outline-none transition hover:border-white/[0.15] focus:border-primary/40 [color-scheme:dark]"
-                      />
-                      <input
-                        type="date"
-                        min={dateFrom || MIN_CUSTOM_FILTER_DATE}
-                        value={dateTo}
-                        onChange={(e) => setDateTo(e.target.value)}
-                        className="min-h-[44px] h-9 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 text-[12px] font-semibold text-white/60 outline-none transition hover:border-white/[0.15] focus:border-primary/40 [color-scheme:dark]"
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
             </motion.div>
           )}
@@ -649,6 +649,9 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
         <div className="flex items-center gap-2 border-b border-white/[0.05] px-4 py-2.5 sm:px-5">
           <Clock className="h-4 w-4 text-primary" />
           <span className="text-sm font-bold text-foreground">Banco de horas</span>
+          <span className="hidden rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium text-white/45 sm:inline">
+            {selectedMonthLabel}
+          </span>
           <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${hoursBar.text} ${hoursBar.chipBg}`}>
             {consumptionPct}% utilizado
           </span>
@@ -657,15 +660,15 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
           <div className="bg-[hsl(222_40%_8%/0.4)] p-4 sm:p-5">
             <div className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-[hsl(234_89%_64%)]" />
-              <p className="text-[11px] uppercase tracking-wider text-white/40">Alocadas</p>
+              <p className="text-[11px] uppercase tracking-wider text-white/40">Contratadas / mês</p>
             </div>
             <p className="mt-1.5 text-2xl font-bold text-foreground sm:text-3xl">{Math.round(allocatedHours)}<span className="text-base font-semibold text-white/40">h</span></p>
-            <p className="mt-0.5 text-[11px] text-white/30">Contratadas para o cliente</p>
+            <p className="mt-0.5 text-[11px] text-white/30">Por mês no contrato</p>
           </div>
           <div className="bg-[hsl(222_40%_8%/0.4)] p-4 sm:p-5">
             <div className="flex items-center gap-1.5">
               <span className={`h-2 w-2 rounded-full ${hoursBar.dot}`} />
-              <p className="text-[11px] uppercase tracking-wider text-white/40">Consumidas</p>
+              <p className="text-[11px] uppercase tracking-wider text-white/40">Consumidas no mês</p>
             </div>
             <p className="mt-1.5 text-2xl font-bold text-foreground sm:text-3xl">{formatHoursHuman(totals.consumedHours)}</p>
             <div className="mt-2.5 flex items-center gap-2">
@@ -683,7 +686,7 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
             <p className={`mt-1.5 text-2xl font-bold sm:text-3xl ${hoursExceeded ? "text-red-400" : "text-foreground"}`}>
               {allocatedHours > 0 ? (hoursExceeded ? `-${formatHoursHuman(Math.abs(remainingHours))}` : formatHoursHuman(remainingHours)) : "—"}
             </p>
-            <p className="mt-0.5 text-[11px] text-white/30">{allocatedHours > 0 ? (hoursExceeded ? "Limite excedido" : "Saldo do contrato") : "Sem horas contratadas"}</p>
+            <p className="mt-0.5 text-[11px] text-white/30">{allocatedHours > 0 ? (hoursExceeded ? "Limite do mês excedido" : "Saldo do mês") : "Sem horas contratadas"}</p>
           </div>
         </div>
       </div>
@@ -710,7 +713,7 @@ export default function ClienteWorkspace({ cliente, onBack }: Props) {
             total={activityViews.length}
             summary={
               <span>
-                {formatHoursHuman(totals.consumedHours)} consumidas · {Math.round(allocatedHours)}h alocadas
+                {formatHoursHuman(totals.consumedHours)} consumidas · {Math.round(allocatedHours)}h/mês contratadas · {selectedMonthLabel}
               </span>
             }
           >
