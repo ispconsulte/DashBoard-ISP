@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Timer, User, Clock, BarChart3, CircleDot, Info, ChevronDown, CalendarClock, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ElapsedTimeRecord } from "@/modules/tasks/types";
-import { formatDurationHHMM, durationColorClass, getElapsedEffectiveDate } from "@/modules/tasks/utils";
+import { formatDurationHHMM, durationColorClass, getElapsedEffectiveDate, BR_TIME_ZONE } from "@/modules/tasks/utils";
 
 type TimeTrackingSectionProps = {
   entries: ElapsedTimeRecord[];
@@ -16,6 +16,7 @@ const formatDateTime = (raw?: string | Date | null): string | null => {
   const d = new Date(String(raw));
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString("pt-BR", {
+    timeZone: BR_TIME_ZONE,
     day: "2-digit",
     month: "2-digit",
     year: "2-digit",
@@ -26,6 +27,7 @@ const formatDateTime = (raw?: string | Date | null): string | null => {
 
 const formatDayMonth = (date: Date): string =>
   date.toLocaleDateString("pt-BR", {
+    timeZone: BR_TIME_ZONE,
     day: "2-digit",
     month: "2-digit",
   });

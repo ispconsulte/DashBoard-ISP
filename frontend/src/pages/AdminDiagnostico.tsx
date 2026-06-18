@@ -271,11 +271,15 @@ function getTaskProblemCodes(item: IntegrityTaskItem) {
   return item.problems.map((p) => p.code);
 }
 
-type TaskFilterCategory = "not_found_or_no_access" | "missing_project" | "missing_responsible" | "missing_deadline" | "project_archived" | "stale_not_seen" | "";
+type TaskFilterCategory = "not_found_or_no_access" | "missing_project" | "missing_responsible" | "missing_deadline" | "project_archived" | "stale_not_seen" | "incomplete" | "";
 type PeriodFilter = "" | "7d" | "30d" | "90d";
+
+// Categorias agrupadas no filtro combinado "Tarefas incompletas" (sem prazo ou sem projeto).
+const INCOMPLETE_TASK_CODES = ["missing_deadline", "missing_project"] as const;
 
 const TASK_CATEGORY_OPTIONS: Array<{ value: TaskFilterCategory; label: string }> = [
   { value: "", label: "Todas as categorias" },
+  { value: "incomplete", label: "Tarefas incompletas (sem prazo ou sem projeto)" },
   { value: "not_found_or_no_access", label: "Não encontrada / sem acesso" },
   { value: "missing_project", label: "Sem projeto válido" },
   { value: "missing_responsible", label: "Sem responsável" },
@@ -596,7 +600,14 @@ export default function AdminDiagnostico() {
     const cutoff = periodCutoff(taskPeriod);
     return allTasks.filter((i) => {
       if (!matchesTaskSearch(i, taskSearch)) return false;
-      if (taskCategory && !getTaskProblemCodes(i).includes(taskCategory)) return false;
+      if (taskCategory) {
+        const codes = getTaskProblemCodes(i);
+        if (taskCategory === "incomplete") {
+          if (!INCOMPLETE_TASK_CODES.some((code) => codes.includes(code))) return false;
+        } else if (!codes.includes(taskCategory)) {
+          return false;
+        }
+      }
       if (taskResponsible && i.responsible_name !== taskResponsible) return false;
       if (taskProject && i.project_name !== taskProject) return false;
       if (cutoff) {

@@ -3,6 +3,65 @@ export type TaskStatusKey = "done" | "pending" | "overdue" | "unknown";
 export const DEFAULT_DEADLINE_SOON_DAYS = 3;
 
 /**
+ * Timezone canônica para exibição ao usuário (Brasil).
+ * Todos os timestamps vindos de APIs (UTC/ISO) devem ser formatados nela,
+ * para não exibir hora deslocada conforme o fuso do navegador.
+ */
+export const BR_TIME_ZONE = "America/Sao_Paulo";
+
+/** Converte valor cru (string ISO/UTC, Date ou epoch) em Date válido ou null. */
+const toValidDate = (value?: string | number | Date | null): Date | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/**
+ * Formata data como dd/MM/yyyy no fuso de São Paulo. Trata null/invalid.
+ * Para strings date-only "YYYY-MM-DD" mantém o dia exato (sem shift de fuso).
+ */
+export const formatDateBR = (
+  value?: string | number | Date | null,
+  fallback = "—"
+): string => {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  const date = toValidDate(value);
+  if (!date) return fallback;
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: BR_TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+};
+
+/** Formata data/hora como dd/MM/yyyy HH:mm no fuso de São Paulo. Trata null/invalid. */
+export const formatDateTimeBR = (
+  value?: string | number | Date | null,
+  fallback = "—"
+): string => {
+  const date = toValidDate(value);
+  if (!date) return fallback;
+  // Monta explicitamente "dd/MM/yyyy HH:mm" para evitar a vírgula que o
+  // Intl insere entre data e hora em pt-BR.
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: BR_TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")}`;
+};
+
+/**
  * Returns today's date as "YYYY-MM-DD" in the user's local timezone.
  * Avoids the UTC offset bug from `new Date().toISOString().slice(0,10)`.
  */
@@ -62,10 +121,13 @@ export const formatTimestampPtBr = (
     // Create at noon local to avoid any shift
     return new Date(Number(y), Number(m) - 1, Number(d), 12).toLocaleDateString("pt-BR", defaults);
   }
-  // Full timestamp — safe to use directly
+  // Full timestamp — format in the Brazilian timezone so UTC strings don't shift
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("pt-BR", options ?? { day: "2-digit", month: "short" });
+  return date.toLocaleDateString("pt-BR", {
+    timeZone: BR_TIME_ZONE,
+    ...(options ?? { day: "2-digit", month: "short" }),
+  });
 };
 
 export const parseDateValue = (value?: unknown): Date | null => {
@@ -118,7 +180,7 @@ export const getElapsedEffectiveDate = (value: {
 
 export const formatDatePtBR = (value: Date | null) => {
   if (!value) return "Sem prazo";
-  return value.toLocaleDateString("pt-BR");
+  return value.toLocaleDateString("pt-BR", { timeZone: BR_TIME_ZONE });
 };
 
 export const formatDurationHHMM = (seconds?: number) => {

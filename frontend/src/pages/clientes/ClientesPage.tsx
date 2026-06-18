@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import PageHeaderCard from "@/components/PageHeaderCard";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, MoreVertical, Contact, Pencil, Loader2, Info, X } from "lucide-react";
+import { Search, Plus, MoreVertical, Contact, Pencil, Loader2, Info, X, ChevronLeft, ChevronRight, MapPin, Layers, CalendarDays } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -87,6 +87,9 @@ export default function ClientesPage() {
   // Card cujo popover "O que significa cada indicador" está aberto.
   const [infoCardId, setInfoCardId] = useState<number | null>(null);
   const [openClientMenuId, setOpenClientMenuId] = useState<number | null>(null);
+  // Paginação client-side para evitar scroll infinito com muitos clientes.
+  const PAGE_SIZE = 12;
+  const [page, setPage] = useState(1);
   const ignoreNextCardClickRef = useRef(false);
 
   // Horas consumidas ao vivo por cliente: soma getTaskDurationSeconds tarefa a
@@ -264,6 +267,18 @@ export default function ClientesPage() {
       });
   }, [search, clientes, statusFilter, statsByClient]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paged = useMemo(
+    () => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filtered, currentPage]
+  );
+
+  // Volta para a primeira página sempre que a busca/filtro mudam o conjunto.
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
   const pageBackground = {
     background: [
       "radial-gradient(circle at top left, hsl(234 89% 64% / 0.12), transparent 22%)",
@@ -383,12 +398,21 @@ export default function ClientesPage() {
           </div>
         </motion.div>
 
-        {/* ── Empty state ── */}
+        {/* ── Empty state (sem clientes) ── */}
         {!error && clientes.length === 0 && (
           <EmptyState
             variant="users"
             message="Nenhum cliente disponível para exibição."
             hint="Verifique se a tabela clientes possui registros ativos e se os projetos estão vinculados com cliente_id."
+          />
+        )}
+
+        {/* ── Empty state (filtro sem resultados) ── */}
+        {!error && clientes.length > 0 && filtered.length === 0 && (
+          <EmptyState
+            variant="users"
+            message="Nenhum cliente corresponde à busca."
+            hint="Ajuste o termo de busca ou o filtro de status para ver mais resultados."
           />
         )}
 
@@ -399,7 +423,7 @@ export default function ClientesPage() {
           transition={{ duration: 0.35, delay: 0.15 }}
           className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3"
         >
-          {filtered.map((c, i) => {
+          {paged.map((c, i) => {
             const color = getColor(c.cliente_id);
             const displayStatus = c.status || (c.Ativo ? "Ativo" : "Inativo");
             const horasContratadasCliente = Number(c.horas_contratadas || 0);
@@ -425,40 +449,51 @@ export default function ClientesPage() {
                   tabIndex={0}
                   onClick={() => handleOpenWorkspace(c)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleOpenWorkspace(c); } }}
-                  className={`group relative cursor-pointer rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 space-y-4 transition-all duration-200 hover:border-white/[0.12] hover:bg-white/[0.035] focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 ${infoCardId === c.cliente_id ? "overflow-visible z-20" : "overflow-hidden"}`}
+                  className={`group relative cursor-pointer rounded-2xl border border-white/[0.07] bg-gradient-to-b from-white/[0.035] to-white/[0.015] p-4 space-y-3.5 transition-all duration-200 hover:border-white/[0.14] hover:from-white/[0.05] hover:to-white/[0.02] hover:shadow-[0_18px_38px_-22px_rgba(0,0,0,0.9)] focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 ${infoCardId === c.cliente_id ? "overflow-visible z-20" : "overflow-hidden"}`}
                 >
+                  {/* Accent edge by client color */}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 top-0 h-px opacity-60"
+                    style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }}
+                  />
 
                   {/* Identity row */}
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <Avatar className="h-12 w-12 shrink-0 rounded-xl border-[1.5px] overflow-hidden" style={{ borderColor: color }}>
-                        {c.logo_url ? (
-                          <AvatarImage
-                            src={c.logo_url}
-                            alt={c.nome}
-                            className="h-full w-full object-cover object-center"
-                            style={{ imageRendering: "auto" }}
-                          />
-                        ) : null}
-                        <AvatarFallback
-                          className="flex h-full w-full items-center justify-center rounded-none text-xs font-bold text-white"
-                          style={{ background: `linear-gradient(135deg, ${color}, hsl(234 89% 64%))` }}
-                        >
-                          {getInitials(c.nome)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <span
+                        className="shrink-0 rounded-2xl p-[1.5px]"
+                        style={{ background: `linear-gradient(135deg, ${color}, hsl(234 89% 64% / 0.55))` }}
+                      >
+                        <Avatar className="h-12 w-12 rounded-[14px] overflow-hidden ring-1 ring-black/30">
+                          {c.logo_url ? (
+                            <AvatarImage
+                              src={c.logo_url}
+                              alt={c.nome}
+                              className="h-full w-full object-cover object-center"
+                              style={{ imageRendering: "auto" }}
+                            />
+                          ) : null}
+                          <AvatarFallback
+                            className="flex h-full w-full items-center justify-center rounded-none text-sm font-bold text-white"
+                            style={{ background: `linear-gradient(135deg, ${color}, hsl(234 89% 64%))` }}
+                          >
+                            {getInitials(c.nome)}
+                          </AvatarFallback>
+                        </Avatar>
+                      </span>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-foreground leading-tight">{c.nome}</p>
-                          <Badge variant="outline" className={`text-[9px] px-1.5 py-0 leading-4 shrink-0 ${statusStyle[displayStatus] || "border-border/40 text-foreground"}`}>
-                            {displayStatus}
-                          </Badge>
-                        </div>
-                        <p className="mt-0.5 truncate text-[11px] text-white/35">
-                          {c.cidade || "Sem cidade"}{c.tipo_horas ? ` · ${c.tipo_horas}` : ""}
+                        <p className="truncate text-[15px] font-semibold text-foreground leading-tight" title={c.nome}>{c.nome}</p>
+                        <p className="mt-1 flex items-center gap-1 truncate text-[11px] text-white/40">
+                          <MapPin className="h-3 w-3 shrink-0 text-white/30" />
+                          <span className="truncate">{c.cidade || "Sem cidade"}{c.tipo_horas ? ` · ${c.tipo_horas}` : ""}</span>
                         </p>
                       </div>
                     </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Badge variant="outline" className={`text-[9px] px-1.5 py-0 leading-4 ${statusStyle[displayStatus] || "border-border/40 text-foreground"}`}>
+                        {displayStatus}
+                      </Badge>
                     <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
                       <DropdownMenu
                         modal={false}
@@ -497,44 +532,47 @@ export default function ClientesPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
+                    </div>
                   </div>
 
                   {/* Hours consumption bar */}
-                  <div className="rounded-xl border border-white/[0.05] bg-white/[0.02] px-3.5 py-3">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-[10px] uppercase tracking-wider text-white/30">Consumo</p>
-                      <p className="text-xs text-white/50">
-                        <span className="font-semibold text-foreground">{Math.round(horasConsumidasCliente)}h</span>
-                        <span className="text-white/25"> / {Math.round(horasContratadasCliente)}h</span>
-                      </p>
-                    </div>
-                    <div className="mt-2 flex items-center gap-2.5">
-                      <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-                        <div
-                          className={`h-full rounded-full ${consumoColor.bar}`}
-                          style={{ width: `${consumoPercent}%` }}
-                        />
+                  <div className="rounded-xl border border-white/[0.05] bg-white/[0.02] px-3.5 py-2.5">
+                    <div className="flex items-end justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-white/30">Consumo de horas</p>
+                        <p className="mt-0.5 text-xs text-white/50">
+                          <span className="font-semibold text-foreground">{Math.round(horasConsumidasCliente)}h</span>
+                          <span className="text-white/25"> / {Math.round(horasContratadasCliente)}h</span>
+                        </p>
                       </div>
-                      <span className={`text-xs font-bold tabular-nums w-10 text-right ${consumoColor.text}`}>{consumoRaw}%</span>
+                      <span className={`text-lg font-bold leading-none tabular-nums ${consumoColor.text}`}>{consumoRaw}%</span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div
+                        className={`h-full rounded-full ${consumoColor.bar}`}
+                        style={{ width: `${consumoPercent}%` }}
+                      />
                     </div>
                     {consumoExcedido && (
-                      <p className="mt-1 text-[10px] font-medium text-red-400/80">Limite contratado excedido</p>
+                      <p className="mt-1.5 text-[10px] font-medium text-red-400/80">Limite contratado excedido</p>
                     )}
                   </div>
 
                   {/* Metadata row */}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
-                    <span className="text-white/30">
-                      Projetos <span className="font-medium text-foreground">{c.projetos_quantidade}</span>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="inline-flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.025] px-2 py-1 text-white/45">
+                      <Layers className="h-3 w-3 text-white/30" />
+                      <span className="font-semibold text-foreground">{c.projetos_quantidade}</span> proj.
                     </span>
                     {c.horas_hg_contratadas != null && (
-                      <span className="text-white/30">
-                        HG <span className="font-medium text-foreground">{Math.round(c.horas_hg_contratadas)}h</span>
+                      <span className="inline-flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.025] px-2 py-1 text-white/45">
+                        HG <span className="font-semibold text-foreground">{Math.round(c.horas_hg_contratadas)}h</span>
                       </span>
                     )}
                     {c.created_at && formatDateBR(c.created_at) && (
-                      <span className="text-white/30">
-                        Desde <span className="font-medium text-foreground">{formatDateBR(c.created_at)}</span>
+                      <span className="inline-flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.025] px-2 py-1 text-white/45">
+                        <CalendarDays className="h-3 w-3 text-white/30" />
+                        <span className="font-semibold text-foreground">{formatDateBR(c.created_at)}</span>
                       </span>
                     )}
 
@@ -588,6 +626,35 @@ export default function ClientesPage() {
             );
           })}
         </motion.div>
+
+        {/* ── Paginação ── */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              className="h-9 gap-1 rounded-xl border-white/[0.07] bg-white/[0.03] text-xs disabled:opacity-40"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Anterior</span>
+            </Button>
+            <span className="px-2 text-xs tabular-nums text-white/50">
+              {currentPage} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="h-9 gap-1 rounded-xl border-white/[0.07] bg-white/[0.03] text-xs disabled:opacity-40"
+            >
+              <span className="hidden sm:inline">Próximo</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {editModal}
