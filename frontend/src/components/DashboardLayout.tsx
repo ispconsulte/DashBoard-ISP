@@ -312,7 +312,9 @@ function DashboardInner() {
         alignItems: "stretch",
       }}
     >
-      <SyncIndicator syncing={loading} />
+      {/* Na Central de Integridade já existe um botão próprio "Sincronizando...";
+          esconder o badge global ali evita dois indicadores ao mesmo tempo. */}
+      <SyncIndicator syncing={loading && location.pathname !== "/admin/diagnostico"} />
 
       {/* Sidebar column (hidden on mobile — uses Sheet overlay instead) */}
       {!isMobile && (
