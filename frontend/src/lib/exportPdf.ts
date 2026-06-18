@@ -503,8 +503,14 @@ export async function exportTasksPDF({
     if (!projectGroups.has(pName)) projectGroups.set(pName, []);
     projectGroups.get(pName)!.push(t);
   });
-  const sortedProjects = Array.from(projectGroups.entries())
+  // Keep existing ranking (project task volume descending) and cap project
+  // sections to the Top 10 so reports without a specific project filter don't
+  // emit one page per project when there are many projects.
+  const PROJECT_SECTION_LIMIT = 10;
+  const allSortedProjects = Array.from(projectGroups.entries())
     .sort((a, b) => b[1].length - a[1].length);
+  const projectsTruncated = allSortedProjects.length > PROJECT_SECTION_LIMIT;
+  const sortedProjects = allSortedProjects.slice(0, PROJECT_SECTION_LIMIT);
 
   // ── PAGE 2: Charts / Visual Summary ──
   doc.addPage();
@@ -625,13 +631,26 @@ export async function exportTasksPDF({
 
   // ── PAGES 3+: Tasks grouped by project ──
   if (sortedProjects.length > 1) {
-    // Multiple projects — one section per project
-    sortedProjects.forEach(([projectName, projectTasks]) => {
+    // Multiple projects — one section per project (Top 10 by task volume)
+    sortedProjects.forEach(([projectName, projectTasks], pIdx) => {
       doc.addPage();
       drawPageBg(doc);
       drawPageHeader(doc, logo, pageW, dynamicTitle);
 
       let py = TABLE_START_Y;
+
+      // Nota de corte: só na primeira página de projetos, quando houver mais de 10.
+      if (pIdx === 0 && projectsTruncated) {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "italic");
+        doc.setTextColor(150, 150, 185);
+        doc.text(
+          `Top ${PROJECT_SECTION_LIMIT} projetos por volume de tarefas (de ${allSortedProjects.length}).`,
+          14,
+          py - 2
+        );
+        py += 4;
+      }
 
       // Project title bar
       doc.setFillColor(30, 27, 75);
