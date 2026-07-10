@@ -442,7 +442,8 @@ function drawEvaluations(doc: jsPDF, data: BonusPdfData, logo: string | null, no
 /* ═══════════════════════════════════════════════════════════════════════
  * PUBLIC EXPORT
  * ═══════════════════════════════════════════════════════════════════════ */
-export async function exportBonusReportPdf(data: BonusPdfData) {
+/** Monta o documento (capa + detalhamento) — compartilhado entre download e anexo. */
+async function buildBonusReportDoc(data: BonusPdfData): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const now = getNow();
   const logo = await loadLogo();
@@ -456,6 +457,25 @@ export async function exportBonusReportPdf(data: BonusPdfData) {
     drawEvaluations(doc, data, logo, now);
   }
 
-  const fileName = san(`relatorio-bonus-${data.consultantName.split(" ")[0]}-${data.monthLabel.replace("/", "-")}.pdf`);
-  doc.save(fileName || "relatorio-bonus.pdf");
+  return doc;
+}
+
+export function bonusReportFileName(data: BonusPdfData): string {
+  return san(`relatorio-bonus-${data.consultantName.split(" ")[0]}-${data.monthLabel.replace("/", "-")}.pdf`) || "relatorio-bonus.pdf";
+}
+
+export async function exportBonusReportPdf(data: BonusPdfData) {
+  const doc = await buildBonusReportDoc(data);
+  doc.save(bonusReportFileName(data));
+}
+
+/**
+ * Gera o MESMO PDF do download, mas retorna o conteudo em base64 (sem o prefixo
+ * data:...;base64,) para ser anexado no e-mail via Resend. */
+export async function bonusReportPdfBase64(data: BonusPdfData): Promise<string> {
+  const doc = await buildBonusReportDoc(data);
+  const dataUri = doc.output("datauristring"); // "data:application/pdf;filename=...;base64,XXXX"
+  const marker = "base64,";
+  const idx = dataUri.indexOf(marker);
+  return idx >= 0 ? dataUri.slice(idx + marker.length) : dataUri;
 }

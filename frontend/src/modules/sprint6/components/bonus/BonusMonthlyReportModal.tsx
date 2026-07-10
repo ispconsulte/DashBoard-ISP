@@ -16,7 +16,7 @@ import type { AuthSession } from "@/modules/auth/hooks/useAuth";
 import { toast } from "sonner";
 import { money } from "./BonusHelpers";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase";
-import { exportBonusReportPdf, type BonusPdfData } from "@/lib/exportBonusPdf";
+import { exportBonusReportPdf, bonusReportPdfBase64, bonusReportFileName, type BonusPdfData } from "@/lib/exportBonusPdf";
 import { notifyError, withRetry } from "@/lib/friendlyError";
 
 /* ── Pretty category/subtopic labels ────────────────────────────────── */
@@ -363,6 +363,28 @@ export function BonusMonthlyReportModal({
   const EMAIL_FALLBACK_MESSAGE =
     "Não foi possível enviar o relatório por e-mail no momento. Baixe o PDF e envie manualmente, ou acione o time responsável informando que o envio por e-mail está indisponível.";
 
+  // Monta os dados do PDF — usado tanto no download quanto no anexo do e-mail,
+  // garantindo que o PDF enviado seja IDENTICO ao que o "Baixar PDF" gera.
+  const buildPdfData = (): BonusPdfData => ({
+    consultantName: consultant?.name ?? "Consultor",
+    evaluatorName: session?.name ?? session?.email ?? "Coordenador",
+    monthLabel: `${String(month).padStart(2, "0")}/${year}`,
+    overallScore: scoreValue,
+    systemScore: previewSummary?.systemScore,
+    payoutAmount: payoutValue,
+    hideMonetary,
+    metrics: {
+      onTimeRate: onTimeValue,
+      hardSkill: previewSummary?.hard ?? Math.round(consultant?.manualEvaluation.hardManualScore ?? 0),
+      softSkill: previewSummary?.soft ?? Math.round(consultant?.manualEvaluation.softSkillScore ?? 0),
+      peopleSkill: previewSummary?.people ?? Math.round(consultant?.manualEvaluation.peopleSkillScore ?? 0),
+    },
+    evaluations: previewRows.map((row) => {
+      const { category, subtopic } = prettyLabel(row.label);
+      return { category, subtopic, score: row.score, justificativa: row.justificativa, pontosMelhoria: row.pontos };
+    }),
+  });
+
   const sendReport = async () => {
     if (!consultant?.userId || !session?.accessToken) return;
     if (!hasPermission) { toast.error("Você não tem permissão para esta ação."); return; }
@@ -384,6 +406,19 @@ export function BonusMonthlyReportModal({
     }
     setSending(true);
     try {
+      // Gera o MESMO PDF do "Baixar PDF" e envia como anexo (base64). O corpo do
+      // e-mail fica curto e bonito; o relatorio completo vai no PDF.
+      let pdfBase64: string | null = null;
+      let pdfFileName: string | null = null;
+      try {
+        const pdfData = buildPdfData();
+        pdfBase64 = await withRetry(() => bonusReportPdfBase64(pdfData), { label: "bonus-report-pdf-attach" });
+        pdfFileName = bonusReportFileName(pdfData);
+      } catch {
+        // Se a geração do PDF falhar, seguimos enviando o e-mail sem anexo (nao bloqueia).
+        pdfBase64 = null;
+      }
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-bonus-monthly-report`, {
         method: "POST",
         headers: {
@@ -398,6 +433,8 @@ export function BonusMonthlyReportModal({
           coordinatorMessage,
           recipientEmail: recipientEmail.trim(),
           hideMonetary,
+          pdfBase64,
+          pdfFileName,
         }),
       });
 
@@ -454,31 +491,7 @@ export function BonusMonthlyReportModal({
   const onTimeValue = previewSummary?.onTimeRate ?? consultant?.onTimeRate ?? 0;
 
   const handleExportPdf = async () => {
-    const pdfData: BonusPdfData = {
-      consultantName: consultant?.name ?? "Consultor",
-      evaluatorName: session?.name ?? session?.email ?? "Coordenador",
-      monthLabel: `${String(month).padStart(2, "0")}/${year}`,
-      overallScore: scoreValue,
-      systemScore: previewSummary?.systemScore,
-      payoutAmount: payoutValue,
-      hideMonetary,
-      metrics: {
-        onTimeRate: onTimeValue,
-        hardSkill: previewSummary?.hard ?? Math.round(consultant?.manualEvaluation.hardManualScore ?? 0),
-        softSkill: previewSummary?.soft ?? Math.round(consultant?.manualEvaluation.softSkillScore ?? 0),
-        peopleSkill: previewSummary?.people ?? Math.round(consultant?.manualEvaluation.peopleSkillScore ?? 0),
-      },
-      evaluations: previewRows.map((row) => {
-        const { category, subtopic } = prettyLabel(row.label);
-        return {
-          category,
-          subtopic,
-          score: row.score,
-          justificativa: row.justificativa,
-          pontosMelhoria: row.pontos,
-        };
-      }),
-    };
+    const pdfData = buildPdfData();
     try {
       // Geração de PDF é idempotente: tenta novamente em falhas transitórias antes de avisar.
       await withRetry(() => exportBonusReportPdf(pdfData), { label: "bonus-report-pdf" });
