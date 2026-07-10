@@ -98,15 +98,23 @@ export default function Sprint6BonificacaoPage() {
   // (sem cadastro manual — equipe muda a qualquer momento). A RLS do banco
   // (can_manage_bonus_consultant) espelha exatamente esta regra.
   const isRoleManager = session?.bonusRole === "admin" || session?.bonusRole === "gestor";
-  // canManage(userId): pode avaliar/enviar para este consultor?
+  // canManage(userId): pode AVALIAR/ENVIAR para este consultor? (habilita botoes)
   // Role manager -> qualquer um; senao, apenas vinculo explicito (fallback).
+  // NAO usar para montar "minha equipe" — isso e escopo de subordinado (abaixo).
   const canManage = useCallback(
     (userId?: string | null) =>
       isRoleManager || (userId != null && (session?.coordinatorOf ?? []).includes(userId)),
     [isRoleManager, session?.coordinatorOf],
   );
-  // Coordinators: role manager, ou quem tem subordinados vinculados
-  const canManageTeam = isRoleManager || (session?.coordinatorOf ?? []).length > 0;
+  // isMyTeamMember(userId): e MEU subordinado direto? (vinculo explicito apenas).
+  // Independe de papel — admin/gestor pode avaliar todos, mas "minha equipe" e so
+  // quem esta vinculado a mim em user_coordinator_links.
+  const isMyTeamMember = useCallback(
+    (userId?: string | null) => userId != null && (session?.coordinatorOf ?? []).includes(userId),
+    [session?.coordinatorOf],
+  );
+  // Tem equipe propria? (subordinados vinculados diretamente a mim)
+  const canManageTeam = (session?.coordinatorOf ?? []).length > 0;
   // Ranking: payment manager, ou quem gerencia equipe (role manager / com vinculos)
   const canSeeRanking = isFullAccessManager || canManageTeam;
   // All evaluations: payment manager only
@@ -127,11 +135,11 @@ export default function Sprint6BonificacaoPage() {
     if (canSeeAllEvaluations) return scopedConsultants;
     if (canManageTeam) {
       return scopedConsultants.filter((consultant) =>
-        consultant.userId === session?.userId || canManage(consultant.userId),
+        consultant.userId === session?.userId || isMyTeamMember(consultant.userId),
       );
     }
     return scopedConsultants.filter((consultant) => consultant.userId === session?.userId);
-  }, [scopedConsultants, canManageTeam, canSeeAllEvaluations, canManage, session?.userId]);
+  }, [scopedConsultants, canManageTeam, canSeeAllEvaluations, isMyTeamMember, session?.userId]);
 
   // "Minha avaliação" deve ser ESTRITAMENTE o card do proprio usuario logado.
   // Sem fallback para visibleConsultants[0]: quem nao tem card proprio (ex.: admin/
@@ -155,13 +163,13 @@ export default function Sprint6BonificacaoPage() {
   const rankingConsultants = useMemo(() => {
     if (!canSeeRanking) return [];
     if (isFullAccessManager) return scopedConsultants;
-    return scopedConsultants.filter((consultant) => canManage(consultant.userId));
-  }, [scopedConsultants, canSeeRanking, isFullAccessManager, canManage]);
+    return scopedConsultants.filter((consultant) => isMyTeamMember(consultant.userId));
+  }, [scopedConsultants, canSeeRanking, isFullAccessManager, isMyTeamMember]);
 
   const subordinateConsultants = useMemo(() => {
     if (!canManageTeam) return [];
-    return bonus.consultants.filter((consultant) => canManage(consultant.userId));
-  }, [bonus.consultants, canManageTeam, canManage]);
+    return bonus.consultants.filter((consultant) => isMyTeamMember(consultant.userId));
+  }, [bonus.consultants, canManageTeam, isMyTeamMember]);
 
   const pendingTeamEvaluationsCount = useMemo(
     () => subordinateConsultants.filter((consultant) => consultant.manualEvaluation.status !== "submitted").length,
