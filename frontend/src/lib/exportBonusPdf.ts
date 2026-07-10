@@ -461,7 +461,13 @@ async function buildBonusReportDoc(data: BonusPdfData): Promise<jsPDF> {
 }
 
 export function bonusReportFileName(data: BonusPdfData): string {
-  return san(`relatorio-bonus-${data.consultantName.split(" ")[0]}-${data.monthLabel.replace("/", "-")}.pdf`) || "relatorio-bonus.pdf";
+  // Nome do arquivo COM acentuacao (nomes de arquivo aceitam Unicode; nao usar
+  // san(), que e so para o texto interno do PDF em fonte Latin-1). Remove apenas
+  // os caracteres proibidos em nomes de arquivo (\\ / : * ? " < > |).
+  const nome = (data.consultantName.split(" ")[0] || "Consultor").trim();
+  const periodo = data.monthLabel.replace("/", "-");
+  const raw = `Relatório de Bonificação — ${nome} — ${periodo}.pdf`;
+  return raw.replace(/[\\/:*?"<>|]/g, "").trim() || "Relatório de Bonificação.pdf";
 }
 
 export async function exportBonusReportPdf(data: BonusPdfData) {
