@@ -94,10 +94,20 @@ export default function Sprint6BonificacaoPage() {
 
   // Payment manager: configured in bonus_settings table only — no role/name fallback
   const isFullAccessManager = session?.isPaymentManager === true;
-  // Coordinators: any user who has subordinates linked in user_coordinator_links
-  const canManageTeam = (session?.coordinatorOf ?? []).length > 0;
-  // Ranking: payment manager only, or coordinator with actual subordinates
-  // Role alone (admin/gestor) does not grant ranking — must have real supervised users
+  // Role manager: admin ou gestor gerenciam QUALQUER consultor automaticamente
+  // (sem cadastro manual — equipe muda a qualquer momento). A RLS do banco
+  // (can_manage_bonus_consultant) espelha exatamente esta regra.
+  const isRoleManager = session?.bonusRole === "admin" || session?.bonusRole === "gestor";
+  // canManage(userId): pode avaliar/enviar para este consultor?
+  // Role manager -> qualquer um; senao, apenas vinculo explicito (fallback).
+  const canManage = useCallback(
+    (userId?: string | null) =>
+      isRoleManager || (userId != null && (session?.coordinatorOf ?? []).includes(userId)),
+    [isRoleManager, session?.coordinatorOf],
+  );
+  // Coordinators: role manager, ou quem tem subordinados vinculados
+  const canManageTeam = isRoleManager || (session?.coordinatorOf ?? []).length > 0;
+  // Ranking: payment manager, ou quem gerencia equipe (role manager / com vinculos)
   const canSeeRanking = isFullAccessManager || canManageTeam;
   // All evaluations: payment manager only
   const canSeeAllEvaluations = isFullAccessManager;
@@ -117,12 +127,11 @@ export default function Sprint6BonificacaoPage() {
     if (canSeeAllEvaluations) return scopedConsultants;
     if (canManageTeam) {
       return scopedConsultants.filter((consultant) =>
-        consultant.userId === session?.userId ||
-        (consultant.userId ? (session?.coordinatorOf ?? []).includes(consultant.userId) : false),
+        consultant.userId === session?.userId || canManage(consultant.userId),
       );
     }
     return scopedConsultants.filter((consultant) => consultant.userId === session?.userId);
-  }, [scopedConsultants, canManageTeam, canSeeAllEvaluations, session?.coordinatorOf, session?.userId]);
+  }, [scopedConsultants, canManageTeam, canSeeAllEvaluations, canManage, session?.userId]);
 
   // "Minha avaliação" deve ser ESTRITAMENTE o card do proprio usuario logado.
   // Sem fallback para visibleConsultants[0]: quem nao tem card proprio (ex.: admin/
@@ -146,17 +155,13 @@ export default function Sprint6BonificacaoPage() {
   const rankingConsultants = useMemo(() => {
     if (!canSeeRanking) return [];
     if (isFullAccessManager) return scopedConsultants;
-    return scopedConsultants.filter((consultant) =>
-      consultant.userId != null && (session?.coordinatorOf ?? []).includes(consultant.userId),
-    );
-  }, [scopedConsultants, canSeeRanking, isFullAccessManager, session?.coordinatorOf]);
+    return scopedConsultants.filter((consultant) => canManage(consultant.userId));
+  }, [scopedConsultants, canSeeRanking, isFullAccessManager, canManage]);
 
   const subordinateConsultants = useMemo(() => {
     if (!canManageTeam) return [];
-    return bonus.consultants.filter((consultant) =>
-      consultant.userId != null && (session?.coordinatorOf ?? []).includes(consultant.userId),
-    );
-  }, [bonus.consultants, canManageTeam, session?.coordinatorOf]);
+    return bonus.consultants.filter((consultant) => canManage(consultant.userId));
+  }, [bonus.consultants, canManageTeam, canManage]);
 
   const pendingTeamEvaluationsCount = useMemo(
     () => subordinateConsultants.filter((consultant) => consultant.manualEvaluation.status !== "submitted").length,
@@ -898,7 +903,7 @@ export default function Sprint6BonificacaoPage() {
 
               <div className="space-y-3">
                 {filteredConsultants.map((consultant, index) => {
-                  const canManageConsultant = consultant.userId != null && (session?.coordinatorOf ?? []).includes(consultant.userId);
+                  const canManageConsultant = canManage(consultant.userId);
 
                   return (
                     <div key={consultant.userId ?? consultant.name}>

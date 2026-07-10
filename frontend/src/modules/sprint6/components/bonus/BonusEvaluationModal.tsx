@@ -641,14 +641,16 @@ export function BonusEvaluationModal({
   );
 
   /* ── Permission check ─────────────────────────────────────────────────
-     SOMENTE o coordenador direto do colaborador pode avaliar (vinculo explicito
-     em user_coordinator_links). Acesso full (admin / payment manager) VE tudo
-     — ranking, payouts, relatorios — mas NAO avalia quem nao coordena.
+     Permissao AUTOMATICA por papel: admin e gestor avaliam qualquer consultor,
+     sem depender de cadastro manual (equipe muda a qualquer momento). O vinculo
+     explicito em user_coordinator_links continua valendo como fallback.
+     A RLS do banco (can_manage_bonus_consultant) espelha exatamente esta regra.
   ── */
   const hasPermission = useMemo(() => {
     if (!consultant?.userId || !session?.userId) return false;
+    if (session?.bonusRole === "admin" || session?.bonusRole === "gestor") return true;
     return (session?.coordinatorOf ?? []).includes(consultant.userId);
-  }, [consultant?.userId, session?.coordinatorOf, session?.userId]);
+  }, [consultant?.userId, session?.bonusRole, session?.coordinatorOf, session?.userId]);
 
   const responsibleCoordinatorName = consultant?.coordinatorName ?? null;
 
