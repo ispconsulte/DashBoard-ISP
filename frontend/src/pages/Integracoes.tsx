@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import { IntegrationCard } from "@/modules/integrations/components/IntegrationCard";
@@ -40,10 +41,11 @@ import {
   readNextAllowedBitrixSyncAt,
   reserveNextBitrixSyncWindow,
 } from "@/modules/integrations/bitrixManualSyncCooldown";
+import { fetchBirthdays, type BirthdaysResponse } from "@/modules/birthdays/api/useBirthdays";
 
 const BITRIX_LAST_SYNC_REPORT_KEY = "integrations:bitrix_last_sync_report";
 
-type SyncPhase = "idle" | "preparing" | "tasks" | "times" | "done" | "error";
+type SyncPhase = "idle" | "preparing" | "tasks" | "times" | "birthdays" | "done" | "error";
 
 type SyncSummary = {
   label: string;
@@ -60,6 +62,7 @@ type SyncReport = {
   after?: IntegrityPayload["overview"] | null;
   tasksJob?: TriggerSyncPayload["jobs"][number] | null;
   timesJob?: TriggerSyncPayload["jobs"][number] | null;
+  birthdays?: Pick<BirthdaysResponse, "total" | "syncedAt"> | null;
 };
 
 const readLastSyncReport = (): SyncReport | null => {
@@ -98,6 +101,7 @@ const formatDuration = (ms?: number | null) => {
 export default function IntegracoesPage() {
   usePageSEO("/integracoes");
   const { session } = useAuth();
+  const queryClient = useQueryClient();
   const isAdmin = session?.role === "admin";
 
   const {
@@ -171,12 +175,13 @@ export default function IntegracoesPage() {
       after: null,
       tasksJob: null,
       timesJob: null,
+      birthdays: null,
     }));
 
-    const before = await fetchIntegrityDashboard(token);
+    const before = await fetchIntegrityDashboard(token).catch(() => null);
     updateSyncReport((current) => ({
       ...(current ?? { startedAt: new Date().toISOString(), phase: "preparing" }),
-      before: before.overview,
+      before: before?.overview ?? null,
       phase: "tasks",
     }));
 
@@ -199,21 +204,31 @@ export default function IntegracoesPage() {
       throw new Error(timesJob?.error || "Falha ao atualizar horas.");
     }
 
+    updateSyncReport((current) => ({
+      ...(current ?? { startedAt: new Date().toISOString(), phase: "times" }),
+      timesJob,
+      after: timesPayload.dashboard?.overview ?? null,
+      phase: "birthdays",
+    }));
+
+    const birthdays = await fetchBirthdays(token);
+
     const finishedReport: SyncReport = {
       startedAt,
       finishedAt: new Date().toISOString(),
       phase: "done",
       error: null,
-      before: before.overview,
+      before: before?.overview ?? null,
       after: timesPayload.dashboard?.overview ?? null,
       tasksJob,
       timesJob,
+      birthdays: { total: birthdays.total, syncedAt: birthdays.syncedAt },
     };
 
     setSyncReport(finishedReport);
     saveLastSyncReport(finishedReport);
 
-    return timesPayload;
+    return { timesPayload, birthdays };
   };
 
   const handleForceBitrixSync = async () => {
@@ -233,7 +248,7 @@ export default function IntegracoesPage() {
     try {
       await invokeBitrixSync();
       setNextAllowedSyncAt(reserveNextBitrixSyncWindow());
-      toast.success("Sincronização concluída. Tarefas, integridade e horas foram atualizadas.");
+      toast.success("Atualização completa: projetos, tarefas, atividades, datas, horas e aniversários sincronizados.");
     } catch (error) {
       setNextAllowedSyncAt(clearBitrixSyncCooldown());
       const message = error instanceof Error ? error.message : "Não foi possível forçar a sincronização.";
@@ -245,6 +260,7 @@ export default function IntegracoesPage() {
       }));
       toast.error(message);
     } finally {
+      await queryClient.invalidateQueries();
       setSyncingBitrix(false);
     }
   };
@@ -432,7 +448,7 @@ function SyncControlCard({
               </span>
             </div>
             <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--task-text-muted))]">
-              Atualiza projetos, tarefas, integridade e horas lançadas.
+              Atualiza projetos, tarefas, atividades, datas, horas lançadas e aniversários.
             </p>
             <p className="mt-1 text-xs text-[hsl(var(--task-text-muted)/0.75)]">
               Última conclusão: {formatDateTime(report?.finishedAt)}
@@ -504,6 +520,7 @@ function SyncProgressModal({
 
   const tasksData = report?.tasksJob?.data ?? null;
   const timesData = report?.timesJob?.data ?? null;
+  const birthdaysData = report?.birthdays ?? null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -527,10 +544,11 @@ function SyncProgressModal({
             </div>
           ) : (
             <>
-              <div className="grid gap-2 sm:grid-cols-4">
-                <ProgressStep label="Preparando" active={phase === "preparing"} done={["tasks", "times", "done"].includes(phase)} />
-                <ProgressStep label="Tarefas" active={phase === "tasks"} done={["times", "done"].includes(phase)} />
-                <ProgressStep label="Horas" active={phase === "times"} done={phase === "done"} />
+              <div className="grid gap-2 sm:grid-cols-5">
+                <ProgressStep label="Preparando" active={phase === "preparing"} done={["tasks", "times", "birthdays", "done"].includes(phase)} />
+                <ProgressStep label="Tarefas" active={phase === "tasks"} done={["times", "birthdays", "done"].includes(phase)} />
+                <ProgressStep label="Horas" active={phase === "times"} done={["birthdays", "done"].includes(phase)} />
+                <ProgressStep label="Aniversários" active={phase === "birthdays"} done={phase === "done"} />
                 <ProgressStep label="Final" active={phase === "done" || phase === "error"} done={phase === "done"} error={phase === "error"} />
               </div>
 
@@ -553,7 +571,7 @@ function SyncProgressModal({
                 ))}
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-3">
                 <JobResult
                   title="Projetos e tarefas"
                   running={syncing && ["preparing", "tasks"].includes(phase)}
@@ -562,6 +580,16 @@ function SyncProgressModal({
                     ["Projetos", tasksData ? formatNumber(Number(tasksData.projects ?? 0)) : "--"],
                     ["Tarefas lidas", tasksData ? formatNumber(Number(tasksData.tasks ?? 0)) : "--"],
                     ["Duração", `${tasksData?.duration_seconds ?? "-"}s`],
+                  ]}
+                />
+                <JobResult
+                  title="Aniversários"
+                  running={syncing && phase === "birthdays"}
+                  ok={birthdaysData ? true : undefined}
+                  rows={[
+                    ["Pessoas ativas", birthdaysData ? formatNumber(birthdaysData.total) : "--"],
+                    ["Fonte", "Bitrix"],
+                    ["Atualização", birthdaysData ? formatDateTime(birthdaysData.syncedAt) : "--"],
                   ]}
                 />
                 <JobResult

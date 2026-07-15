@@ -14,13 +14,13 @@ export type BirthdayPerson = {
   isToday: boolean;
 };
 
-type BirthdaysResponse = {
+export type BirthdaysResponse = {
   birthdays: BirthdayPerson[];
   total: number;
   syncedAt: string;
 };
 
-async function fetchBirthdays(accessToken: string): Promise<BirthdaysResponse> {
+export async function fetchBirthdays(accessToken: string): Promise<BirthdaysResponse> {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/bitrix-birthdays`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
