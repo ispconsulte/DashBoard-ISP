@@ -85,3 +85,27 @@ Desenvolvido por:
 ## 📌 Versão
 
 **v1.0.0**
+
+---
+
+## 🎂 Executor Python de aniversários
+
+O script `scripts/run_birthday_reminders.py` permite executar a mesma rotina publicada no Supabase a partir de um servidor, Windows Task Scheduler ou outro agendador. Ele não contém credenciais e não replica a regra do Bitrix: apenas chama a função central, que impede tarefas duplicadas.
+
+Configure `SUPABASE_SERVICE_ROLE_KEY` somente no ambiente do agendador. `SUPABASE_PROJECT_URL` é opcional e já aponta para este projeto por padrão.
+
+```powershell
+# Teste sem criar tarefas
+python scripts/run_birthday_reminders.py --dry-run
+
+# Execução normal; antes do dia 20 o script encerra sem criar nada
+python scripts/run_birthday_reminders.py
+```
+
+Para um teste de período específico, sem criar tarefas:
+
+```powershell
+python scripts/run_birthday_reminders.py --dry-run --target-month 1 --target-year 2027
+```
+
+O workflow `.github/workflows/birthday-reminders.yml` executa esse script no GitHub Actions diariamente às 10:15 no horário de Brasília. Antes do dia 20, o próprio script encerra sem criar tarefas. A chave deve existir exclusivamente no secret `SUPABASE_SERVICE_ROLE_KEY` do repositório.
