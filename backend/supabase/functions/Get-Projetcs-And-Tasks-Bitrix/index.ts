@@ -1773,8 +1773,6 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     supabase = createClient(supabaseUrl, supabaseKey);
 
-    await triggerBirthdayReminders(supabaseUrl, supabaseKey);
-
     if (!BITRIX_BASE_URL) {
       throw new Error("A BITRIX_BASE_URL não foi configurada nos Secrets.");
     }
@@ -1809,6 +1807,7 @@ Deno.serve(async (req) => {
     }
 
     runId = runState?.runId ?? null;
+    await triggerBirthdayReminders(supabaseUrl, supabaseKey);
     await upsertSourceStatus(supabase, 'running', {
       started_at_iso: syncStartedAtIso,
       request_method: req.method,

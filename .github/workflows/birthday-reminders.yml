@@ -1,0 +1,65 @@
+name: Birthday reminders
+
+on:
+  schedule:
+    # GitHub Actions usa UTC. 13:15 UTC corresponde a 10:15 em Brasília.
+    - cron: "15 13 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Validar sem criar tarefas"
+        required: true
+        type: boolean
+        default: true
+      target_month:
+        description: "Mês alvo opcional (1-12)"
+        required: false
+        type: string
+      target_year:
+        description: "Ano alvo opcional"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: birthday-reminders
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_PROJECT_URL: https://stubkeeuttixteqckshd.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Executar rotina agendada
+        if: github.event_name == 'schedule'
+        run: python scripts/run_birthday_reminders.py
+
+      - name: Executar validação manual
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          TARGET_MONTH: ${{ inputs.target_month }}
+          TARGET_YEAR: ${{ inputs.target_year }}
+        shell: bash
+        run: |
+          args=()
+          if [[ "$DRY_RUN" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          if [[ -n "$TARGET_MONTH" && -n "$TARGET_YEAR" ]]; then
+            args+=(--target-month "$TARGET_MONTH" --target-year "$TARGET_YEAR")
+          fi
+          python scripts/run_birthday_reminders.py "${args[@]}"

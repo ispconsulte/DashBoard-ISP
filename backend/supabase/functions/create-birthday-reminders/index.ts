@@ -105,13 +105,25 @@ async function fetchActiveBitrixUsers() {
 }
 
 async function findExistingTask(title: string, responsibleId: string) {
-  const payload = await bitrixPost("tasks.task.list.json", {
-    filter: { TITLE: title, RESPONSIBLE_ID: responsibleId },
-    select: ["ID", "TITLE", "RESPONSIBLE_ID"],
-  });
-  return normalizeList(payload?.result?.tasks ?? payload?.result).find(
-    (task) => String(field(task, "title", "TITLE") ?? "") === title,
-  );
+  let start = 0;
+  for (let page = 0; page < 10; page += 1) {
+    const payload = await bitrixPost("tasks.task.list.json", {
+      order: { ID: "DESC" },
+      filter: { RESPONSIBLE_ID: Number(responsibleId) },
+      select: ["ID", "TITLE", "RESPONSIBLE_ID"],
+      start,
+    });
+    const tasks = normalizeList(payload?.result?.tasks ?? payload?.result);
+    const existing = tasks.find(
+      (task) => String(field(task, "title", "TITLE") ?? "") === title,
+    );
+    if (existing) return existing;
+
+    const next = Number(payload?.next);
+    if (!Number.isFinite(next) || next <= start || tasks.length === 0) break;
+    start = next;
+  }
+  return undefined;
 }
 
 async function addTask(params: {
