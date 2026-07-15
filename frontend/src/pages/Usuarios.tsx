@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseRest, safeJson } from "@/modules/users/api/supabaseRest";
 import PageHeaderCard from "@/components/PageHeaderCard";
-import BirthdaysOverview, { type BirthdaysOverviewHandle } from "@/components/home/BirthdaysOverview";
+import BirthdaysOverview from "@/components/home/BirthdaysOverview";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -263,7 +263,7 @@ export default function UsuariosPage() {
   const token = session?.accessToken;
   const api = useUsersApi(token);
   const onlineUsers = useOnlineUsers();
-  const birthdaysRef = useRef<BirthdaysOverviewHandle>(null);
+  const [birthdaysRefreshKey, setBirthdaysRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!loadingSession && !session) { navigate("/login"); return; }
@@ -708,7 +708,7 @@ export default function UsuariosPage() {
                 <Trash2 className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Limpar Órfãos</span>
               </button>
-              <button onClick={() => { api.loadUsers(); birthdaysRef.current?.refetch(); }} disabled={api.loading}
+              <button onClick={() => { api.loadUsers(); setBirthdaysRefreshKey((value) => value + 1); }} disabled={api.loading}
                 className="flex items-center gap-1.5 rounded-xl border border-[hsl(var(--task-border))] bg-[hsl(var(--task-surface))] px-3 py-2 text-xs font-medium text-[hsl(var(--task-text-muted))] transition hover:border-[hsl(var(--task-purple)/0.4)] hover:text-[hsl(var(--task-purple))] disabled:opacity-40"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${api.loading ? "animate-spin" : ""}`} />
@@ -718,7 +718,7 @@ export default function UsuariosPage() {
           }
         />
 
-        <BirthdaysOverview ref={birthdaysRef} />
+        <BirthdaysOverview refreshKey={birthdaysRefreshKey} />
 
         {/* ═══ FEEDBACK ═══ */}
         <AnimatePresence>
