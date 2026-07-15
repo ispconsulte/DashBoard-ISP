@@ -23,3 +23,9 @@ verify_jwt = false
 
 [functions.send-bonus-monthly-report]
 verify_jwt = false
+
+[functions.bitrix-birthdays]
+verify_jwt = false
+
+[functions.create-birthday-reminders]
+verify_jwt = false

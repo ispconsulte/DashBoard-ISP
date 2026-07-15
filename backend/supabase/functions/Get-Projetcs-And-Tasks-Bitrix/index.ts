@@ -57,6 +57,43 @@ function parseBooleanFlag(value: unknown): boolean {
   return ['1', 'true', 'yes', 'y', 'sim'].includes(value.trim().toLowerCase());
 }
 
+function saoPauloDayOfMonth(now = new Date()) {
+  const dayPart = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+  }).formatToParts(now).find((part) => part.type === 'day');
+  return Number(dayPart?.value ?? 0);
+}
+
+async function triggerBirthdayReminders(supabaseUrl: string, serviceRoleKey: string) {
+  // O sincronizador já é executado pelo pg_cron. A partir do dia 20, ele tenta
+  // preparar o mês seguinte; a função de aniversários é idempotente e reutiliza
+  // uma tarefa que já exista, evitando duplicidade nas execuções seguintes.
+  if (saoPauloDayOfMonth() < 20) return;
+
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/create-birthday-reminders`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+        apikey: serviceRoleKey,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    if (!response.ok) {
+      console.warn(`[birthday-reminders] execução recusada com HTTP ${response.status}.`);
+    }
+  } catch (error) {
+    console.warn(
+      '[birthday-reminders] não foi possível executar nesta tentativa:',
+      error instanceof Error ? error.message : 'erro inesperado',
+    );
+  }
+}
+
 function nonEmptyString(value: any): string | null {
   if (value === undefined || value === null) return null;
   const str = String(value).trim();
@@ -1735,6 +1772,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     supabase = createClient(supabaseUrl, supabaseKey);
+
+    await triggerBirthdayReminders(supabaseUrl, supabaseKey);
 
     if (!BITRIX_BASE_URL) {
       throw new Error("A BITRIX_BASE_URL não foi configurada nos Secrets.");
