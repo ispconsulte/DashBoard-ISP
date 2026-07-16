@@ -226,7 +226,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
               return (
                 <div
                   key={person.bitrixUserId}
-                  className={`-ml-2 flex h-7 w-7 items-center justify-center rounded-full border-2 border-[hsl(270_45%_11%)] bg-gradient-to-br ${theme.grad} text-[9px] font-bold text-white first:ml-0`}
+                  className={`-ml-2 flex h-7 w-7 items-center justify-center rounded-full border-2 border-slate-900 bg-gradient-to-br ${theme.grad} text-[9px] font-bold text-white first:ml-0`}
                   style={{ zIndex: previewStack.length - i }}
                   title={person.name}
                 >
