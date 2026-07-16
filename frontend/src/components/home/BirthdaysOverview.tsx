@@ -123,7 +123,7 @@ function BirthdayCard({
 
       <div className="relative flex items-start gap-3">
         <div
-          className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${theme.grad} text-xs font-bold text-white shadow-lg ring-2 ${theme.ring}`}
+          className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-800 text-xs font-bold text-slate-300 shadow-lg ring-2 ring-slate-700/50`}
         >
           {person.isToday && (
             <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] shadow shadow-amber-950/50 animate-bounce">
