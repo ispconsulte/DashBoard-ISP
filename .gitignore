@@ -65,8 +65,16 @@ coverage.xml
 # Vercel
 # -------------------------
 .vercel/
-.codex_tmp/
+
+# -------------------------
+# Assistentes de IA / configuração local
+# -------------------------
+.agents/
 .claude/
+.codex/
+.codex_tmp/
+.cursor/
+skills-lock.json
 .mcp.json
 
 # -------------------------
