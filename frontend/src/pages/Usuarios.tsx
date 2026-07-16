@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { supabaseRest, safeJson } from "@/modules/users/api/supabaseRest";
 import PageHeaderCard from "@/components/PageHeaderCard";
 import BirthdaysOverview from "@/components/home/BirthdaysOverview";
