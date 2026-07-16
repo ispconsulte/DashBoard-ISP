@@ -243,7 +243,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
         }`}
       >
         <div className="overflow-hidden">
-          <div className="border-t border-white/[0.06] px-4 pb-4 pt-4 sm:px-5">
+          <div className="px-4 pb-5 pt-4 sm:px-5">
             {error ? (
               <div className="rounded-xl border border-rose-300/10 bg-rose-400/[0.06] px-4 py-4 text-sm text-rose-100/75">
                 <p className="font-semibold">Não foi possível carregar os aniversários.</p>
