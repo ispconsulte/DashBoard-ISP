@@ -1089,33 +1089,6 @@ export default function UsuariosPage() {
                   >
                     <div className="overflow-hidden">
                       <div className="border-t border-[hsl(var(--task-border)/0.3)]">
-                {/* ── Header com busca ── */}
-                <div className="p-5 pb-4 space-y-4 shrink-0">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="text-base font-bold text-[hsl(var(--task-text))] flex items-center gap-2">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[hsl(var(--task-purple)/0.15)]">
-                        <Users className="h-3.5 w-3.5 text-[hsl(var(--task-purple))]" />
-                      </div>
-                      Usuários Cadastrados
-                      <span className="ml-1 inline-flex items-center justify-center rounded-full bg-[hsl(var(--task-purple)/0.15)] px-2 py-0.5 text-[10px] font-bold text-[hsl(var(--task-purple))]">
-                        {filteredUsers.length}
-                      </span>
-                    </h2>
-                    {/* Legenda de status */}
-                    <div className="flex items-center gap-3 text-[10px] text-[hsl(var(--task-text-muted)/0.7)]">
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2.5 w-2.5 rounded-full bg-teal-400 shadow-[0_0_6px_rgba(45,212,191,0.6)]" />
-                        Online
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--task-text-muted)/0.3)]" />
-                        Offline
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-                        Inativo
-                      </span>
-                    </div>
                     
                     <div className="p-5 space-y-4">
                       {/* Search + Client filter row */}
@@ -1323,6 +1296,10 @@ export default function UsuariosPage() {
                     })}
                   </div>
                 )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </motion.div>
 
               {/* ─── EDIT PANEL ─── */}
