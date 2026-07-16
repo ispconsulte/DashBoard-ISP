@@ -184,13 +184,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
   const previewStack = birthdays.slice(0, 4);
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-slate-950/40 shadow-xl backdrop-blur-md">
-      <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 animate-float-slow rounded-full bg-fuchsia-500/15 blur-3xl" />
-      <div
-        className="pointer-events-none absolute -bottom-20 left-1/4 h-44 w-44 animate-float-slow rounded-full bg-indigo-500/10 blur-3xl"
-        style={{ animationDelay: "1.5s" }}
-      />
-
+    <section className="relative overflow-hidden rounded-2xl border border-border/12 bg-card/40 shadow-xl backdrop-blur-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
