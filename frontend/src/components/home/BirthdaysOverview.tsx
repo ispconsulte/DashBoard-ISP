@@ -110,10 +110,10 @@ function BirthdayCard({
 
   return (
     <div
-      className={`animate-pop-in group relative overflow-hidden rounded-xl border p-3.5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/20 ${
+      className={`animate-pop-in group relative overflow-hidden rounded-xl border p-3.5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/25 ${
         featured
-          ? "border-fuchsia-300/25 bg-fuchsia-300/[0.06] hover:border-fuchsia-300/40"
-          : "border-white/[0.07] bg-white/[0.025] hover:border-white/[0.14] hover:bg-white/[0.05]"
+          ? "border-primary/20 bg-primary/5 hover:border-primary/30"
+          : "border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]"
       }`}
       style={{ animationDelay: `${index * 55}ms` }}
     >
