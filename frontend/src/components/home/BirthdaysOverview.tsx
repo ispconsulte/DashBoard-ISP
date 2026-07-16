@@ -140,8 +140,8 @@ function BirthdayCard({
           </p>
         </div>
 
-        <div className="flex h-6 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-          <Search className="h-3 w-3 animate-pulse" />
+        <div className="flex h-6 items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-500">
+          <Hourglass className="h-3 w-3 animate-spin [animation-duration:3s]" />
           {countdownLabel(person)}
         </div>
       </div>
