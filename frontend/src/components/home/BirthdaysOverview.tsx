@@ -140,13 +140,10 @@ function BirthdayCard({
           </p>
         </div>
 
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-            person.isToday ? "bg-amber-300/15 text-amber-200" : theme.chip
-          }`}
-        >
+        <div className="flex h-6 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+          <Search className="h-3 w-3 animate-pulse" />
           {countdownLabel(person)}
-        </span>
+        </div>
       </div>
 
       <div className="relative mt-3 space-y-1.5">
