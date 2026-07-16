@@ -212,23 +212,6 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
           )}
         </div>
 
-        {!isLoading && !error && previewStack.length > 0 && (
-          <div className="hidden shrink-0 items-center sm:flex">
-            {previewStack.map((person, i) => {
-              const theme = themeFor(person);
-              return (
-                <div
-                  key={person.bitrixUserId}
-                  className={`-ml-2 flex h-7 w-7 items-center justify-center rounded-full border-2 border-slate-900 bg-gradient-to-br ${theme.grad} text-[9px] font-bold text-white first:ml-0`}
-                  style={{ zIndex: previewStack.length - i }}
-                  title={person.name}
-                >
-                  {initials(person.name)}
-                </div>
-              );
-            })}
-          </div>
-        )}
 
         {isFetching && !isLoading && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary/50" />}
 
