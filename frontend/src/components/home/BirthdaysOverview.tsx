@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CakeSlice, ChevronDown, Gift, Loader2, PartyPopper, Sparkles } from "lucide-react";
+import { CakeSlice, ChevronDown, Gift, Loader2, PartyPopper, Sparkles, Search } from "lucide-react";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import { useBirthdays, type BirthdayPerson } from "@/modules/birthdays/api/useBirthdays";
 
@@ -23,18 +23,18 @@ const MONTH_NAMES = [
 
 /** Paleta por mês — cada aniversariante ganha uma cor conforme o mês em que nasceu */
 const MONTH_THEMES = [
-  { grad: "from-rose-500 to-pink-600", ring: "ring-rose-400/30", text: "text-rose-300", chip: "bg-rose-400/10 text-rose-200/85", bar: "from-rose-400 to-pink-500" },
-  { grad: "from-fuchsia-500 to-purple-600", ring: "ring-fuchsia-400/30", text: "text-fuchsia-300", chip: "bg-fuchsia-400/10 text-fuchsia-200/85", bar: "from-fuchsia-400 to-purple-500" },
-  { grad: "from-violet-500 to-indigo-600", ring: "ring-violet-400/30", text: "text-violet-300", chip: "bg-violet-400/10 text-violet-200/85", bar: "from-violet-400 to-indigo-500" },
-  { grad: "from-blue-500 to-cyan-600", ring: "ring-blue-400/30", text: "text-blue-300", chip: "bg-blue-400/10 text-blue-200/85", bar: "from-blue-400 to-cyan-500" },
-  { grad: "from-teal-500 to-emerald-600", ring: "ring-teal-400/30", text: "text-teal-300", chip: "bg-teal-400/10 text-teal-200/85", bar: "from-teal-400 to-emerald-500" },
-  { grad: "from-emerald-500 to-lime-600", ring: "ring-emerald-400/30", text: "text-emerald-300", chip: "bg-emerald-400/10 text-emerald-200/85", bar: "from-emerald-400 to-lime-500" },
-  { grad: "from-amber-500 to-orange-600", ring: "ring-amber-400/30", text: "text-amber-300", chip: "bg-amber-400/10 text-amber-200/85", bar: "from-amber-400 to-orange-500" },
-  { grad: "from-orange-500 to-rose-600", ring: "ring-orange-400/30", text: "text-orange-300", chip: "bg-orange-400/10 text-orange-200/85", bar: "from-orange-400 to-rose-500" },
-  { grad: "from-red-500 to-fuchsia-600", ring: "ring-red-400/30", text: "text-red-300", chip: "bg-red-400/10 text-red-200/85", bar: "from-red-400 to-fuchsia-500" },
-  { grad: "from-purple-500 to-violet-600", ring: "ring-purple-400/30", text: "text-purple-300", chip: "bg-purple-400/10 text-purple-200/85", bar: "from-purple-400 to-violet-500" },
-  { grad: "from-indigo-500 to-blue-600", ring: "ring-indigo-400/30", text: "text-indigo-300", chip: "bg-indigo-400/10 text-indigo-200/85", bar: "from-indigo-400 to-blue-500" },
-  { grad: "from-cyan-500 to-teal-600", ring: "ring-cyan-400/30", text: "text-cyan-300", chip: "bg-cyan-400/10 text-cyan-200/85", bar: "from-cyan-400 to-teal-500" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
+  { grad: "from-slate-700 to-slate-800", ring: "ring-slate-600/30", text: "text-slate-400", chip: "bg-slate-700/30 text-slate-300", bar: "from-slate-500 to-slate-600" },
 ];
 
 function themeFor(person: BirthdayPerson) {
@@ -136,17 +136,14 @@ function BirthdayCard({
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-white/95">{person.name}</p>
           <p className={`mt-0.5 text-[11px] font-medium ${theme.text}`}>
-            Nasceu em {birthDateLabel(person)}
+            Data de nascimento: {birthDateLabel(person)}
           </p>
         </div>
 
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-            person.isToday ? "bg-amber-300/15 text-amber-200" : theme.chip
-          }`}
-        >
+        <div className="flex h-6 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+          <Search className="h-3 w-3 animate-pulse" />
           {countdownLabel(person)}
-        </span>
+        </div>
       </div>
 
       <div className="relative mt-3 space-y-1.5">
@@ -157,8 +154,8 @@ function BirthdayCard({
           />
         </div>
         <div className="flex items-center justify-between text-[10px] text-white/45">
-          <span>Aniversário {nextOccurrenceLabel(person)}</span>
-          <span className="text-white/25">completa {age} anos</span>
+          <span>Data do aniversário: {nextOccurrenceLabel(person)}</span>
+          <span className="text-white/35">{person.name.split(' ')[0]} vai completar {age} anos</span>
         </div>
       </div>
     </div>
@@ -240,20 +237,8 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
               </div>
             ) : (
               <div className="max-h-[30rem] space-y-6 overflow-y-auto pr-1.5 scrollbar-thin scrollbar-track-white/[0.02] scrollbar-thumb-white/[0.08] hover:scrollbar-thumb-white/[0.12]">
-                {nextBirthday && (
-                  <div className="mb-6">
-                    <p className="mb-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-primary/70">
-                      <PartyPopper className="h-3.5 w-3.5" />
-                      Próximo aniversário
-                    </p>
-                    <div className="max-w-sm">
-                      <BirthdayCard person={nextBirthday} index={0} featured />
-                    </div>
-                  </div>
-                )}
-
-                {birthdays.length > 1 &&
-                  groupByUpcomingMonth(birthdays.slice(1)).map((group) => (
+                {birthdays.length > 0 &&
+                  groupByUpcomingMonth(birthdays).map((group) => (
                     <div key={group.month}>
                       <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-white/15">
                         {MONTH_NAMES[group.month - 1]}
