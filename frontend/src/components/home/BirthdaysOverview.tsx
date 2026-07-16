@@ -258,9 +258,9 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
             ) : (
               <div className="max-h-[30rem] space-y-5 overflow-y-auto pr-1.5 scrollbar-thin scrollbar-track-white/[0.02] scrollbar-thumb-white/[0.08] hover:scrollbar-thumb-white/[0.12]">
                 {nextBirthday && (
-                  <div>
-                    <p className="sticky top-0 z-10 mb-2 flex items-center gap-1.5 bg-slate-950/80 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-fuchsia-200/55 backdrop-blur-sm">
-                      <PartyPopper className="h-3.5 w-3.5" />
+                  <div className="mb-4">
+                    <p className="sticky top-0 z-10 mb-2 flex items-center gap-1.5 bg-background/95 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-primary/60 backdrop-blur-sm">
+                      <PartyPopper className="h-3.5 w-3.5 text-primary" />
                       Próximo aniversário
                     </p>
                     <div className="max-w-sm">
