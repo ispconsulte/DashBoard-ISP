@@ -1046,51 +1046,6 @@ export default function UsuariosPage() {
               )}
             </AnimatePresence>
 
-            {/* ═══ STATS ═══ */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-              className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
-            >
-              {[
-                { label: "Total", value: stats.total, icon: Users, color: "purple" },
-                { label: "Admins", value: stats.admins, icon: Shield, color: "yellow" },
-                { label: "Consultores", value: stats.consultors, icon: User, color: "blue" },
-                { label: "Ativos", value: stats.active, icon: CheckCircle2, color: "green" },
-                { label: "Online agora", value: stats.online, icon: Wifi, color: "teal" },
-              ].map(s => (
-                <div
-                  key={s.label}
-                  className={`task-card flex items-center gap-3 p-3 sm:p-4 min-w-0 overflow-hidden transition-all ${
-                    s.color === "teal" && s.value > 0
-                      ? "border border-teal-500/30 shadow-[0_0_16px_hsl(160_60%_40%/0.12)]"
-                      : ""
-                  }`}
-                >
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                    s.color === "purple" ? "bg-[hsl(var(--task-purple)/0.15)] text-[hsl(var(--task-purple))]" :
-                    s.color === "yellow" ? "bg-[hsl(var(--task-yellow)/0.15)] text-[hsl(var(--task-yellow))]" :
-                    s.color === "blue" ? "bg-[hsl(220_90%_56%/0.15)] text-[hsl(220_90%_56%)]" :
-                    s.color === "teal" ? "bg-teal-500/15 text-teal-400" :
-                    "bg-emerald-500/15 text-emerald-400"
-                  }`}>
-                    <s.icon className={`h-4 w-4 ${s.color === "teal" && s.value > 0 ? "animate-pulse" : ""}`} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[9px] uppercase tracking-[0.15em] text-[hsl(var(--task-text-muted))] truncate">{s.label}</p>
-                    <div className="flex items-center gap-1.5">
-                      <p className={`text-xl font-extrabold ${
-                        s.color === "teal" && s.value > 0 ? "text-teal-400" : "text-[hsl(var(--task-text))]"
-                      }`}>{s.value}</p>
-                      {s.color === "teal" && s.value > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold bg-teal-500/15 text-teal-400 border border-teal-500/25">
-                          <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
-                          ao vivo
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </motion.div>
 
 
             {/* ═══ MAIN CONTENT ═══ */}
