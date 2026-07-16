@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CakeSlice, ChevronDown, Gift, Loader2, PartyPopper, Sparkles, Hourglass, Timer } from "lucide-react";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import { useBirthdays, type BirthdayPerson } from "@/modules/birthdays/api/useBirthdays";
+import hourglassAsset from "@/assets/temporizador-de-areia.png.asset.json";
 
 type BirthdaysOverviewProps = {
   refreshKey?: number;
@@ -160,7 +161,7 @@ function BirthdayCard({
         </div>
 
         <div className="flex h-6 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold text-amber-500 ring-1 ring-amber-500/20 shadow-sm">
-          <Hourglass className="h-3 w-3" />
+          <img src={hourglassAsset.url} alt="Ampulheta" className="h-4 w-4" />
           <span className="tabular-nums">{countdownLabel(person)}</span>
         </div>
       </div>
