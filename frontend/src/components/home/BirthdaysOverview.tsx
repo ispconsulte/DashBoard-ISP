@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CakeSlice, ChevronDown, Gift, Loader2, PartyPopper, Sparkles, Hourglass, Timer } from "lucide-react";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import { useBirthdays, type BirthdayPerson } from "@/modules/birthdays/api/useBirthdays";
+import hourglassAsset from "@/assets/temporizador-de-areia.png.asset.json";
 
 type BirthdaysOverviewProps = {
   refreshKey?: number;
