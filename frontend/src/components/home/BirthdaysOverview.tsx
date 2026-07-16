@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CakeSlice, ChevronDown, Gift, Loader2, PartyPopper, Sparkles, Search } from "lucide-react";
+import { CakeSlice, ChevronDown, Gift, Loader2, PartyPopper, Sparkles, Hourglass } from "lucide-react";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import { useBirthdays, type BirthdayPerson } from "@/modules/birthdays/api/useBirthdays";
 
@@ -70,9 +70,16 @@ function birthdayDayMonthLabel(person: BirthdayPerson) {
 
 /** Próxima data em que o aniversário será comemorado, ex: "08/03/2026" */
 function nextOccurrenceLabel(person: BirthdayPerson) {
-  const next = new Date(person.nextDate);
-  if (Number.isNaN(next.getTime())) return person.displayDate;
-  return `${pad2(next.getDate())}/${pad2(next.getMonth() + 1)}/${next.getFullYear()}`;
+  // Use day/month directly from person object to avoid timezone/nextDate mismatch issues
+  const today = new Date();
+  const year = today.getFullYear();
+  const birthdayThisYear = new Date(year, person.month - 1, person.day);
+  
+  // If birthday already happened this year, next one is next year
+  if (birthdayThisYear < today && !person.isToday) {
+    return `${pad2(person.day)}/${pad2(person.month)}/${year + 1}`;
+  }
+  return `${pad2(person.day)}/${pad2(person.month)}/${year}`;
 }
 
 /** Idade que a pessoa vai completar na próxima data de aniversário */
@@ -110,20 +117,20 @@ function BirthdayCard({
 
   return (
     <div
-      className={`animate-pop-in group relative overflow-hidden rounded-xl border p-3.5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/25 ${
+      className={`animate-pop-in group relative overflow-hidden rounded-xl border p-3.5 transition-all duration-400 hover:-translate-y-1 hover:shadow-2xl hover:shadow-primary/10 ${
         featured
-          ? "border-primary/20 bg-primary/5 hover:border-primary/30"
-          : "border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]"
+          ? "border-primary/30 bg-primary/[0.04]"
+          : "border-white/5 bg-white/[0.01] hover:border-white/10"
       }`}
       style={{ animationDelay: `${index * 55}ms` }}
     >
       <div
-        className={`pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-gradient-to-br ${theme.grad} opacity-[0.08] blur-2xl transition-opacity duration-300 group-hover:opacity-15`}
+        className={`pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-primary/20 opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100`}
       />
 
       <div className="relative flex items-start gap-3">
         <div
-          className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${theme.grad} text-xs font-bold text-white shadow-lg ring-2 ${theme.ring}`}
+          className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-800 text-xs font-bold text-slate-300 shadow-lg ring-2 ring-slate-700/50`}
         >
           {person.isToday && (
             <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] shadow shadow-amber-950/50 animate-bounce">
@@ -140,8 +147,8 @@ function BirthdayCard({
           </p>
         </div>
 
-        <div className="flex h-6 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-          <Search className="h-3 w-3 animate-pulse" />
+        <div className="flex h-6 items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-500">
+          <Hourglass className="h-3 w-3 animate-spin [animation-duration:3s]" />
           {countdownLabel(person)}
         </div>
       </div>
@@ -194,7 +201,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-bold text-white">Aniversários no Nubítrix</h2>
+          <h2 className="text-sm font-bold text-white">Aniversários do time ISP Consulte</h2>
 
           {isLoading ? (
             <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/40">
