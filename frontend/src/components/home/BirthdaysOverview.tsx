@@ -184,7 +184,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
   const previewStack = birthdays.slice(0, 4);
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-border/12 bg-card/40 shadow-xl backdrop-blur-sm">
+    <section className="task-card relative overflow-hidden p-0 transition-all duration-300">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
