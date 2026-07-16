@@ -70,16 +70,26 @@ function birthdayDayMonthLabel(person: BirthdayPerson) {
 
 /** Próxima data em que o aniversário será comemorado, ex: "08/03/2026" */
 function nextOccurrenceLabel(person: BirthdayPerson) {
-  // Use day/month directly from person object to avoid timezone/nextDate mismatch issues
-  const today = new Date();
-  const year = today.getFullYear();
-  const birthdayThisYear = new Date(year, person.month - 1, person.day);
+  // We use the browser's current date in America/Sao_Paulo (implicitly the user's local time if they are in Brazil)
+  // To be safe with "Brazil time", we can force a simple Date calculation.
+  const now = new Date();
   
-  // If birthday already happened this year, next one is next year
-  if (birthdayThisYear < today && !person.isToday) {
-    return `${pad2(person.day)}/${pad2(person.month)}/${year + 1}`;
+  // Create a date object for the birthday in the current year
+  const currentYear = now.getFullYear();
+  // Month is 0-indexed in JS Date
+  const bdayThisYear = new Date(currentYear, person.month - 1, person.day);
+  
+  // Set time to 00:00:00 to compare only dates
+  bdayThisYear.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let targetYear = currentYear;
+  if (bdayThisYear < today) {
+    targetYear = currentYear + 1;
   }
-  return `${pad2(person.day)}/${pad2(person.month)}/${year}`;
+
+  return `${pad2(person.day)}/${pad2(person.month)}/${targetYear}`;
 }
 
 /** Idade que a pessoa vai completar na próxima data de aniversário */
