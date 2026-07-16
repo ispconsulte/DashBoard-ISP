@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CakeSlice, ChevronDown, Gift, Loader2, PartyPopper, Sparkles, Search } from "lucide-react";
+import { CakeSlice, ChevronDown, Gift, Loader2, PartyPopper, Sparkles, Hourglass } from "lucide-react";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import { useBirthdays, type BirthdayPerson } from "@/modules/birthdays/api/useBirthdays";
 
