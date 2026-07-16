@@ -70,9 +70,16 @@ function birthdayDayMonthLabel(person: BirthdayPerson) {
 
 /** Próxima data em que o aniversário será comemorado, ex: "08/03/2026" */
 function nextOccurrenceLabel(person: BirthdayPerson) {
-  const next = new Date(person.nextDate);
-  if (Number.isNaN(next.getTime())) return person.displayDate;
-  return `${pad2(next.getDate())}/${pad2(next.getMonth() + 1)}/${next.getFullYear()}`;
+  // Use day/month directly from person object to avoid timezone/nextDate mismatch issues
+  const today = new Date();
+  const year = today.getFullYear();
+  const birthdayThisYear = new Date(year, person.month - 1, person.day);
+  
+  // If birthday already happened this year, next one is next year
+  if (birthdayThisYear < today && !person.isToday) {
+    return `${pad2(person.day)}/${pad2(person.month)}/${year + 1}`;
+  }
+  return `${pad2(person.day)}/${pad2(person.month)}/${year}`;
 }
 
 /** Idade que a pessoa vai completar na próxima data de aniversário */
