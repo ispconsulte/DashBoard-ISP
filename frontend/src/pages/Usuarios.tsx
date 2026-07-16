@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { supabaseRest, safeJson } from "@/modules/users/api/supabaseRest";
 import PageHeaderCard from "@/components/PageHeaderCard";
 import BirthdaysOverview from "@/components/home/BirthdaysOverview";
@@ -264,6 +264,7 @@ export default function UsuariosPage() {
   const api = useUsersApi(token);
   const onlineUsers = useOnlineUsers();
   const [birthdaysRefreshKey, setBirthdaysRefreshKey] = useState(0);
+  const [openUsers, setOpenUsers] = useState(false);
 
   useEffect(() => {
     if (!loadingSession && !session) { navigate("/login"); return; }
@@ -718,6 +719,52 @@ export default function UsuariosPage() {
           }
         />
 
+        {/* ═══ STATS ═══ */}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+        >
+          {[
+            { label: "Total", value: api.users.length, icon: Users, color: "purple" },
+            { label: "Admins", value: api.users.filter(u => ["admin", "gerente", "coordenador"].includes(PERFIL_TO_ROLE[u.user_profile] || "")).length, icon: Shield, color: "yellow" },
+            { label: "Consultores", value: api.users.filter(u => (PERFIL_TO_ROLE[u.user_profile] || "") === "consultor").length, icon: User, color: "blue" },
+            { label: "Ativos", value: api.users.filter(u => u.active).length, icon: CheckCircle2, color: "green" },
+            { label: "Online agora", value: onlineUsers.size, icon: Wifi, color: "teal" },
+          ].map(s => (
+            <div
+              key={s.label}
+              className={`task-card flex items-center gap-3 p-3 sm:p-4 min-w-0 overflow-hidden transition-all ${
+                s.color === "teal" && s.value > 0
+                  ? "border border-teal-500/30 shadow-[0_0_16px_hsl(160_60%_40%/0.12)]"
+                  : ""
+              }`}
+            >
+              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                s.color === "purple" ? "bg-[hsl(var(--task-purple)/0.15)] text-[hsl(var(--task-purple))]" :
+                s.color === "yellow" ? "bg-[hsl(var(--task-yellow)/0.15)] text-[hsl(var(--task-yellow))]" :
+                s.color === "blue" ? "bg-[hsl(220_90%_56%/0.15)] text-[hsl(220_90%_56%)]" :
+                s.color === "teal" ? "bg-teal-500/15 text-teal-400" :
+                "bg-emerald-500/15 text-emerald-400"
+              }`}>
+                <s.icon className={`h-4 w-4 ${s.color === "teal" && s.value > 0 ? "animate-pulse" : ""}`} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] uppercase tracking-[0.15em] text-[hsl(var(--task-text-muted))] truncate">{s.label}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className={`text-xl font-extrabold ${
+                    s.color === "teal" && s.value > 0 ? "text-teal-400" : "text-[hsl(var(--task-text))]"
+                  }`}>{s.value}</p>
+                  {s.color === "teal" && s.value > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold bg-teal-500/15 text-teal-400 border border-teal-500/25">
+                      <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
+                      ao vivo
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </motion.div>
+
         <BirthdaysOverview refreshKey={birthdaysRefreshKey} />
 
         {/* ═══ FEEDBACK ═══ */}
@@ -1000,59 +1047,48 @@ export default function UsuariosPage() {
               )}
             </AnimatePresence>
 
-            {/* ═══ STATS ═══ */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-              className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
-            >
-              {[
-                { label: "Total", value: stats.total, icon: Users, color: "purple" },
-                { label: "Admins", value: stats.admins, icon: Shield, color: "yellow" },
-                { label: "Consultores", value: stats.consultors, icon: User, color: "blue" },
-                { label: "Ativos", value: stats.active, icon: CheckCircle2, color: "green" },
-                { label: "Online agora", value: stats.online, icon: Wifi, color: "teal" },
-              ].map(s => (
-                <div
-                  key={s.label}
-                  className={`task-card flex items-center gap-3 p-3 sm:p-4 min-w-0 overflow-hidden transition-all ${
-                    s.color === "teal" && s.value > 0
-                      ? "border border-teal-500/30 shadow-[0_0_16px_hsl(160_60%_40%/0.12)]"
-                      : ""
-                  }`}
-                >
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                    s.color === "purple" ? "bg-[hsl(var(--task-purple)/0.15)] text-[hsl(var(--task-purple))]" :
-                    s.color === "yellow" ? "bg-[hsl(var(--task-yellow)/0.15)] text-[hsl(var(--task-yellow))]" :
-                    s.color === "blue" ? "bg-[hsl(220_90%_56%/0.15)] text-[hsl(220_90%_56%)]" :
-                    s.color === "teal" ? "bg-teal-500/15 text-teal-400" :
-                    "bg-emerald-500/15 text-emerald-400"
-                  }`}>
-                    <s.icon className={`h-4 w-4 ${s.color === "teal" && s.value > 0 ? "animate-pulse" : ""}`} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[9px] uppercase tracking-[0.15em] text-[hsl(var(--task-text-muted))] truncate">{s.label}</p>
-                    <div className="flex items-center gap-1.5">
-                      <p className={`text-xl font-extrabold ${
-                        s.color === "teal" && s.value > 0 ? "text-teal-400" : "text-[hsl(var(--task-text))]"
-                      }`}>{s.value}</p>
-                      {s.color === "teal" && s.value > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold bg-teal-500/15 text-teal-400 border border-teal-500/25">
-                          <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
-                          ao vivo
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </motion.div>
 
 
             {/* ═══ MAIN CONTENT ═══ */}
             <div className={`grid gap-5 ${showEditPanel ? "grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(460px,1fr)] items-stretch" : "grid-cols-1"}`}>
               {/* ─── USER LIST ─── */}
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-                className="task-card min-w-0 overflow-hidden flex flex-col xl:h-[calc(100vh-2rem)] xl:min-h-[820px]"
+                className="task-card min-w-0 overflow-hidden flex flex-col p-0"
               >
+                <div className="overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setOpenUsers((v) => !v)}
+                    className="relative flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-white/[0.03]"
+                    aria-expanded={openUsers}
+                  >
+                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--task-purple)/0.15)] shadow-lg shadow-[hsl(var(--task-purple)/0.05)]">
+                      <Users className="h-4.5 w-4.5 text-[hsl(var(--task-purple))]" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-sm font-bold text-white">Usuários Cadastrados</h2>
+                      <p className="mt-0.5 text-xs text-white/40">Gerencie acessos e permissões da equipe</p>
+                    </div>
+
+                    <div className="hidden shrink-0 items-center sm:flex mr-2">
+                      <span className="inline-flex items-center justify-center rounded-full bg-[hsl(var(--task-purple)/0.15)] px-2 py-0.5 text-[10px] font-bold text-[hsl(var(--task-purple))]">
+                        {filteredUsers.length} usuários
+                      </span>
+                    </div>
+
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-white/40 transition-transform duration-300 ${openUsers ? "rotate-180" : ""}`}
+                    />
+                  </button>
+
+                  <div
+                    className={`relative grid transition-[grid-template-rows] duration-300 ease-out ${
+                      openUsers ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="border-t border-[hsl(var(--task-border)/0.3)]">
                 {/* ── Header com busca ── */}
                 <div className="p-5 pb-4 space-y-4 shrink-0">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1080,59 +1116,75 @@ export default function UsuariosPage() {
                         Inativo
                       </span>
                     </div>
-                  </div>
+                    
+                    <div className="p-5 space-y-4">
+                      {/* Search + Client filter row */}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="relative flex-1">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--task-text-muted)/0.5)]" />
+                          <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar por nome, e-mail..."
+                            className="h-10 w-full rounded-xl border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg)/0.6)] pl-10 pr-3 text-xs text-[hsl(var(--task-text))] outline-none transition-all focus:border-[hsl(var(--task-purple)/0.5)] focus:bg-[hsl(var(--task-bg))] focus:shadow-[0_0_0_3px_hsl(var(--task-purple)/0.08)] placeholder:text-[hsl(var(--task-text-muted)/0.4)]" />
+                        </div>
+                        <Select
+                          value={clienteFilter === "all" ? "all" : String(clienteFilter)}
+                          onValueChange={(value) => setClienteFilter(value === "all" ? "all" : Number(value))}
+                        >
+                          <SelectTrigger className={taskSelectTriggerFilterClass}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className={taskSelectContentClass}>
+                            <SelectItem value="all" className={taskSelectItemClass}>Todos os clientes</SelectItem>
+                            {clienteOptions.map((c) => (
+                              <SelectItem key={c.value} value={String(c.value)} className={taskSelectItemClass}>{c.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  {/* Search + Client filter row */}
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="relative flex-1">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--task-text-muted)/0.5)]" />
-                      <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar por nome, e-mail..."
-                        className="h-10 w-full rounded-xl border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg)/0.6)] pl-10 pr-3 text-xs text-[hsl(var(--task-text))] outline-none transition-all focus:border-[hsl(var(--task-purple)/0.5)] focus:bg-[hsl(var(--task-bg))] focus:shadow-[0_0_0_3px_hsl(var(--task-purple)/0.08)] placeholder:text-[hsl(var(--task-text-muted)/0.4)]" />
+                      {/* Profile filter chips */}
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { key: "all", label: "Todos" },
+                          ...PERFIS.map(p => ({ key: p, label: p })),
+                        ].map(chip => {
+                          const isActive = profileFilter === chip.key;
+                          const count = chip.key === "all" ? api.users.length : api.users.filter(u => u.user_profile === chip.key).length;
+                          return (
+                            <button key={chip.key} onClick={() => setProfileFilter(chip.key)}
+                              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all duration-200 ${
+                                isActive
+                                  ? "bg-[hsl(var(--task-purple)/0.2)] text-[hsl(var(--task-purple))] border border-[hsl(var(--task-purple)/0.3)] shadow-[0_0_8px_hsl(var(--task-purple)/0.15)]"
+                                  : "bg-[hsl(var(--task-bg)/0.5)] text-[hsl(var(--task-text-muted))] border border-[hsl(var(--task-border)/0.5)] hover:border-[hsl(var(--task-purple)/0.25)] hover:text-[hsl(var(--task-text))] hover:bg-[hsl(var(--task-bg))]"
+                              }`}>
+                              {chip.label}
+                              <span className={`inline-flex items-center justify-center rounded-full px-1.5 min-w-[18px] h-[18px] text-[9px] font-bold ${
+                                isActive 
+                                  ? "bg-[hsl(var(--task-purple)/0.25)] text-[hsl(var(--task-purple))]" 
+                                  : "bg-[hsl(var(--task-border)/0.3)] text-[hsl(var(--task-text-muted)/0.6)]"
+                              }`}>
+                                {count}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Legenda de status */}
+                      <div className="flex items-center gap-4 text-[10px] text-[hsl(var(--task-text-muted)/0.7)] pt-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-teal-400 shadow-[0_0_6px_rgba(45,212,191,0.6)]" />
+                          Online
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--task-text-muted)/0.3)]" />
+                          Offline
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                          Inativo
+                        </span>
+                      </div>
                     </div>
-                    <Select
-                      value={clienteFilter === "all" ? "all" : String(clienteFilter)}
-                      onValueChange={(value) => setClienteFilter(value === "all" ? "all" : Number(value))}
-                    >
-                      <SelectTrigger className={taskSelectTriggerFilterClass}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className={taskSelectContentClass}>
-                        <SelectItem value="all" className={taskSelectItemClass}>Todos os clientes</SelectItem>
-                        {clienteOptions.map((c) => (
-                          <SelectItem key={c.value} value={String(c.value)} className={taskSelectItemClass}>{c.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Profile filter chips */}
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { key: "all", label: "Todos" },
-                      ...PERFIS.map(p => ({ key: p, label: p })),
-                    ].map(chip => {
-                      const isActive = profileFilter === chip.key;
-                      const count = chip.key === "all" ? api.users.length : api.users.filter(u => u.user_profile === chip.key).length;
-                      return (
-                        <button key={chip.key} onClick={() => setProfileFilter(chip.key)}
-                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all duration-200 ${
-                            isActive
-                              ? "bg-[hsl(var(--task-purple)/0.2)] text-[hsl(var(--task-purple))] border border-[hsl(var(--task-purple)/0.3)] shadow-[0_0_8px_hsl(var(--task-purple)/0.15)]"
-                              : "bg-[hsl(var(--task-bg)/0.5)] text-[hsl(var(--task-text-muted))] border border-[hsl(var(--task-border)/0.5)] hover:border-[hsl(var(--task-purple)/0.25)] hover:text-[hsl(var(--task-text))] hover:bg-[hsl(var(--task-bg))]"
-                          }`}>
-                          {chip.label}
-                          <span className={`inline-flex items-center justify-center rounded-full px-1.5 min-w-[18px] h-[18px] text-[9px] font-bold ${
-                            isActive 
-                              ? "bg-[hsl(var(--task-purple)/0.25)] text-[hsl(var(--task-purple))]" 
-                              : "bg-[hsl(var(--task-border)/0.3)] text-[hsl(var(--task-text-muted)/0.6)]"
-                          }`}>
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
 
                 {/* Divider */}
                 <div className="mx-5 border-t border-[hsl(var(--task-border)/0.3)]" />
