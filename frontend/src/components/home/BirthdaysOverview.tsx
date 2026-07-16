@@ -230,7 +230,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
           </div>
         )}
 
-        {isFetching && !isLoading && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-violet-300/70" />}
+        {isFetching && !isLoading && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary/50" />}
 
         <ChevronDown
           className={`h-4 w-4 shrink-0 text-white/40 transition-transform duration-300 ${open ? "rotate-180" : ""}`}
