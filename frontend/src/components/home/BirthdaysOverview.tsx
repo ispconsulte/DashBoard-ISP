@@ -125,7 +125,7 @@ function BirthdayCard({
       style={{ animationDelay: `${index * 55}ms` }}
     >
       <div
-        className={`pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-gradient-to-br ${theme.grad} opacity-[0.08] blur-2xl transition-opacity duration-300 group-hover:opacity-15`}
+        className={`pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-primary/20 opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100`}
       />
 
       <div className="relative flex items-start gap-3">
