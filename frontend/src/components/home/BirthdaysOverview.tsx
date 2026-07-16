@@ -154,8 +154,8 @@ function BirthdayCard({
           />
         </div>
         <div className="flex items-center justify-between text-[10px] text-white/45">
-          <span>Aniversário {nextOccurrenceLabel(person)}</span>
-          <span className="text-white/25">completa {age} anos</span>
+          <span>Data do aniversário: {nextOccurrenceLabel(person)}</span>
+          <span className="text-white/35">{person.name.split(' ')[0]} vai completar {age} anos</span>
         </div>
       </div>
     </div>
