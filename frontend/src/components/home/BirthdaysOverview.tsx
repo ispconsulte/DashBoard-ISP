@@ -237,20 +237,8 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
               </div>
             ) : (
               <div className="max-h-[30rem] space-y-6 overflow-y-auto pr-1.5 scrollbar-thin scrollbar-track-white/[0.02] scrollbar-thumb-white/[0.08] hover:scrollbar-thumb-white/[0.12]">
-                {nextBirthday && (
-                  <div className="mb-6">
-                    <p className="mb-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-primary/70">
-                      <PartyPopper className="h-3.5 w-3.5" />
-                      Próximo aniversário
-                    </p>
-                    <div className="max-w-sm">
-                      <BirthdayCard person={nextBirthday} index={0} featured />
-                    </div>
-                  </div>
-                )}
-
-                {birthdays.length > 1 &&
-                  groupByUpcomingMonth(birthdays.slice(1)).map((group) => (
+                {birthdays.length > 0 &&
+                  groupByUpcomingMonth(birthdays).map((group) => (
                     <div key={group.month}>
                       <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-white/15">
                         {MONTH_NAMES[group.month - 1]}
