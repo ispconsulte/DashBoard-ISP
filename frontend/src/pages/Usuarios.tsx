@@ -264,6 +264,7 @@ export default function UsuariosPage() {
   const api = useUsersApi(token);
   const onlineUsers = useOnlineUsers();
   const [birthdaysRefreshKey, setBirthdaysRefreshKey] = useState(0);
+  const [openUsers, setOpenUsers] = useState(false);
 
   useEffect(() => {
     if (!loadingSession && !session) { navigate("/login"); return; }
