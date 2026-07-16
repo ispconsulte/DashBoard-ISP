@@ -110,15 +110,15 @@ function BirthdayCard({
 
   return (
     <div
-      className={`animate-pop-in group relative overflow-hidden rounded-xl border p-3.5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/20 ${
+      className={`animate-pop-in group relative overflow-hidden rounded-xl border p-3.5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/25 ${
         featured
-          ? "border-fuchsia-300/25 bg-fuchsia-300/[0.06] hover:border-fuchsia-300/40"
-          : "border-white/[0.07] bg-white/[0.025] hover:border-white/[0.14] hover:bg-white/[0.05]"
+          ? "border-primary/20 bg-primary/5 hover:border-primary/30"
+          : "border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]"
       }`}
       style={{ animationDelay: `${index * 55}ms` }}
     >
       <div
-        className={`pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-gradient-to-br ${theme.grad} opacity-[0.12] blur-2xl transition-opacity duration-300 group-hover:opacity-25`}
+        className={`pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full bg-gradient-to-br ${theme.grad} opacity-[0.08] blur-2xl transition-opacity duration-300 group-hover:opacity-15`}
       />
 
       <div className="relative flex items-start gap-3">
@@ -184,26 +184,20 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
   const previewStack = birthdays.slice(0, 4);
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-slate-950/40 shadow-xl backdrop-blur-md">
-      <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 animate-float-slow rounded-full bg-fuchsia-500/15 blur-3xl" />
-      <div
-        className="pointer-events-none absolute -bottom-20 left-1/4 h-44 w-44 animate-float-slow rounded-full bg-indigo-500/10 blur-3xl"
-        style={{ animationDelay: "1.5s" }}
-      />
-
+    <section className="relative overflow-hidden rounded-2xl border border-border/12 bg-card/40 shadow-xl backdrop-blur-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-white/[0.03] sm:px-5"
         aria-expanded={open}
       >
-        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 shadow-lg shadow-fuchsia-950/40">
-          <CakeSlice className="h-4.5 w-4.5 text-white" />
+        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 shadow-lg shadow-primary/5">
+          <CakeSlice className="h-4.5 w-4.5 text-primary" />
           <Sparkles className="absolute -right-1.5 -top-1.5 h-3.5 w-3.5 text-amber-300 drop-shadow" />
         </div>
 
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-bold text-white">Aniversários no Bitrix</h2>
+          <h2 className="text-sm font-bold text-white">Aniversários no Nubítrix</h2>
 
           {isLoading ? (
             <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/40">
@@ -236,7 +230,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
           </div>
         )}
 
-        {isFetching && !isLoading && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-violet-300/70" />}
+        {isFetching && !isLoading && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary/50" />}
 
         <ChevronDown
           className={`h-4 w-4 shrink-0 text-white/40 transition-transform duration-300 ${open ? "rotate-180" : ""}`}
@@ -264,9 +258,9 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
             ) : (
               <div className="max-h-[30rem] space-y-5 overflow-y-auto pr-1.5 scrollbar-thin scrollbar-track-white/[0.02] scrollbar-thumb-white/[0.08] hover:scrollbar-thumb-white/[0.12]">
                 {nextBirthday && (
-                  <div>
-                    <p className="sticky top-0 z-10 mb-2 flex items-center gap-1.5 bg-slate-950/80 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-fuchsia-200/55 backdrop-blur-sm">
-                      <PartyPopper className="h-3.5 w-3.5" />
+                  <div className="mb-4">
+                    <p className="sticky top-0 z-10 mb-2 flex items-center gap-1.5 bg-background/95 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-primary/60 backdrop-blur-sm">
+                      <PartyPopper className="h-3.5 w-3.5 text-primary" />
                       Próximo aniversário
                     </p>
                     <div className="max-w-sm">
@@ -278,7 +272,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
                 {birthdays.length > 1 &&
                   groupByUpcomingMonth(birthdays.slice(1)).map((group) => (
                     <div key={group.month}>
-                      <p className="sticky top-0 z-10 mb-2 bg-slate-950/80 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35 backdrop-blur-sm">
+                      <p className="sticky top-0 z-10 mb-2 bg-background/95 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/20 backdrop-blur-sm">
                         {MONTH_NAMES[group.month - 1]}
                       </p>
                       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
