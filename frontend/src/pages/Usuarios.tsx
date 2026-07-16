@@ -1296,6 +1296,10 @@ export default function UsuariosPage() {
                     })}
                   </div>
                 )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </motion.div>
 
               {/* ─── EDIT PANEL ─── */}
