@@ -157,9 +157,9 @@ function BirthdayCard({
             style={{ width: `${progress}%` }}
           />
         </div>
-        <div className="flex items-center justify-between text-[10px] text-white/35">
-          <span>Nasceu {birthDateLabel(person)}</span>
-          <span>{nextOccurrenceLabel(person)}</span>
+        <div className="flex items-center justify-between text-[10px] text-white/45">
+          <span>Aniversário {nextOccurrenceLabel(person)}</span>
+          <span className="text-white/25">completa {age} anos</span>
         </div>
       </div>
     </div>
