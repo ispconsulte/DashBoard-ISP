@@ -263,7 +263,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
                 <p className="mt-1 text-xs text-white/35">Preencha a data de nascimento nos perfis do Bitrix.</p>
               </div>
             ) : (
-              <div className="max-h-[30rem] space-y-5 overflow-y-auto pr-1">
+              <div className="max-h-[30rem] space-y-5 overflow-y-auto pr-1.5 scrollbar-thin scrollbar-track-white/[0.02] scrollbar-thumb-white/[0.08] hover:scrollbar-thumb-white/[0.12]">
                 {nextBirthday && (
                   <div>
                     <p className="sticky top-0 z-10 mb-2 flex items-center gap-1.5 bg-[hsl(270_45%_11%)]/90 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-fuchsia-200/55 backdrop-blur-sm">
