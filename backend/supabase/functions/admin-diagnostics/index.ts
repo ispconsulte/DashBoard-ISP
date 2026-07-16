@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import postgres from "https://deno.land/x/postgresjs@v3.4.5/mod.js";
+import { normalizeBitrixWorkerResult } from "../_shared/bitrix-sync-contract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -654,27 +655,30 @@ function syncRequestBody(jobName: string, mode: unknown) {
       ? { full_sync: true, skip_bonus_persistence: true, task_start: 0, max_task_pages: 5 }
       : { skip_bonus_persistence: true };
   }
-  if (jobName === "sync-bitrix-times") return { full_reconcile: true };
+  if (jobName === "sync-bitrix-times") return fullMode ? { full_reconcile: true } : {};
   return {};
 }
 
 async function invokeSyncJob(jobName: string, body: Record<string, unknown>) {
-  const response = await fetch(`${EXT_URL}/functions/v1/${jobName}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${EXT_ANON}`,
-      apikey: EXT_ANON,
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json().catch(() => null);
-  return {
-    status: response.status,
-    ok: response.ok,
-    data,
-    error: response.ok ? null : data?.error ?? data?.message ?? `HTTP ${response.status}`,
-  };
+  try {
+    const response = await fetch(`${EXT_URL}/functions/v1/${jobName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${EXT_ANON}`,
+        apikey: EXT_ANON,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(110_000),
+    });
+    const data = await response.json().catch(() => null) as Record<string, unknown> | null;
+    return { ...normalizeBitrixWorkerResult(response.status, response.ok, data), data };
+  } catch (error) {
+    const normalized = normalizeBitrixWorkerResult(504, false, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ...normalized, data: null };
+  }
 }
 
 async function invokePagedTaskFullSync(initialBody: Record<string, unknown>) {
@@ -697,12 +701,23 @@ async function invokePagedTaskFullSync(initialBody: Record<string, unknown>) {
       error: result.error,
     });
 
-    if (!result.ok || result.data?.success === false || result.data?.skipped) {
+    if (!result.ok || result.data?.success === false) {
       return {
         status: result.status,
         ok: false,
+        outcome: result.outcome,
         data: { ...result.data, paged_batches: batches },
         error: result.error ?? result.data?.error ?? "Falha no sync paginado de tarefas.",
+      };
+    }
+
+    if (result.outcome === "already_running") {
+      return {
+        status: result.status,
+        ok: true,
+        outcome: result.outcome,
+        data: { ...result.data, paged_batches: batches },
+        error: null,
       };
     }
 
@@ -710,6 +725,7 @@ async function invokePagedTaskFullSync(initialBody: Record<string, unknown>) {
       return {
         status: result.status,
         ok: true,
+        outcome: result.outcome,
         data: { ...result.data, paged_batches: batches, paged_batches_count: batches.length },
         error: null,
       };
@@ -720,6 +736,7 @@ async function invokePagedTaskFullSync(initialBody: Record<string, unknown>) {
       return {
         status: result.status,
         ok: false,
+        outcome: "internal_failure" as const,
         data: { ...result.data, paged_batches: batches },
         error: "next_task_start invalido no sync paginado de tarefas.",
       };
@@ -729,6 +746,7 @@ async function invokePagedTaskFullSync(initialBody: Record<string, unknown>) {
   return {
     status: 508,
     ok: false,
+    outcome: "internal_failure" as const,
     data: { paged_batches: batches },
     error: "Limite de 100 lotes atingido no sync paginado de tarefas.",
   };
@@ -742,11 +760,12 @@ async function recordTriggeredSyncRun(
     statusCode: number | null;
     ok: boolean;
     data: Record<string, unknown> | null;
+    outcome: string;
     error: string | null;
     requestedMode: string;
   },
 ) {
-  const status = input.data?.skipped
+  const status = input.outcome === "already_running"
     ? "skipped"
     : input.ok && input.data?.success !== false
       ? "success"
@@ -769,6 +788,7 @@ async function recordTriggeredSyncRun(
       status_code: input.statusCode,
       orchestrated_by: "admin-diagnostics",
       requested_mode: input.requestedMode,
+      outcome: input.outcome,
       response: input.data,
     },
   });
@@ -798,6 +818,7 @@ async function triggerSyncJobs(adminClient: SupabaseClient, body: Record<string,
       job_name: jobName,
       status: invoked.status,
       ok: invoked.ok,
+      outcome: invoked.outcome,
       data,
       error: invoked.error,
     };
@@ -807,6 +828,7 @@ async function triggerSyncJobs(adminClient: SupabaseClient, body: Record<string,
       statusCode: invoked.status,
       ok: invoked.ok,
       data,
+      outcome: invoked.outcome,
       error: result.error,
       requestedMode,
     });
@@ -869,6 +891,15 @@ serve(async (req: Request) => {
       const dashboard = MANAGER_ROLES.has(callerRole)
         ? await loadDiagnostics(adminClient)
         : null;
+      const failed = jobs.find((job) => !job.ok);
+      if (failed) {
+        const status = failed.status && failed.status >= 400 && failed.status <= 599 ? failed.status : 500;
+        return jsonRes({
+          ok: false,
+          error: failed.error ?? "Falha ao atualizar dados do Bitrix.",
+          data: { jobs, dashboard },
+        }, status);
+      }
       return jsonRes({ ok: true, data: { jobs, dashboard } });
     }
 

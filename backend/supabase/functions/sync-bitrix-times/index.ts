@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { classifyBitrixFailure } from '../_shared/bitrix-sync-contract.ts'
 
 const BITRIX_BASE_URL = Deno.env.get('BITRIX_ADMIN_BASE_URL') ?? Deno.env.get('BITRIX_BASE_URL');
 
@@ -98,14 +99,14 @@ async function bitrixPost(url: string, body: unknown): Promise<any> {
       }
 
       if (response.status >= 500) {
-        lastError = new Error(`HTTP ${response.status}`);
+        lastError = new Error(`Bitrix HTTP ${response.status}`);
         await sleep(1000 * Math.pow(2, attempt));
         continue;
       }
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`HTTP ${response.status}: ${text}`);
+        throw new Error(`Bitrix HTTP ${response.status}: ${text}`);
       }
 
       const data = await response.json();
@@ -115,13 +116,15 @@ async function bitrixPost(url: string, body: unknown): Promise<any> {
           await sleep(DELAY_429_MS * (attempt + 1));
           continue;
         }
-        throw new Error(message);
+        throw new Error(`Bitrix: ${message}`);
       }
 
       return data;
     } catch (error: any) {
       if (error?.name === 'AbortError' || error?.message?.includes('fetch')) {
-        lastError = error;
+        lastError = error?.name === 'AbortError'
+          ? new Error('Bitrix timeout ao buscar horas.')
+          : new Error(`Bitrix fetch failed: ${error?.message ?? 'falha de rede'}`);
         await sleep(1000 * Math.pow(2, attempt));
         continue;
       }
@@ -714,6 +717,7 @@ Deno.serve(async (req) => {
       );
       return json({
         success: true,
+        outcome: 'already_running',
         skipped: true,
         reason: runState.skipReason ?? 'Skipped due to overlap.',
       }, 202);
@@ -781,8 +785,15 @@ Deno.serve(async (req) => {
     const durationSeconds = ((Date.now() - startedAt) / 1000).toFixed(1);
     const maxCursorId = records.reduce((max, item) => Math.max(max, item.id), lastCursorId);
 
+    const successfulChanges = inserted + Number(reconcileMissing.updated ?? 0) + relinkedCount;
+    const outcome = errors.length > 0
+      ? 'partial_success'
+      : successfulChanges === 0
+        ? 'noop'
+        : 'success';
     const responseBody = {
       success: true,
+      outcome,
       strategy,
       start_after_id: lastCursorId,
       max_cursor_id: maxCursorId,
@@ -825,9 +836,11 @@ Deno.serve(async (req) => {
     return json(responseBody);
   } catch (error: any) {
     console.error('ERRO FATAL:', error);
+    const failure = classifyBitrixFailure(error);
     const responseBody = {
       success: false,
-      error: error.message || String(error),
+      outcome: failure.outcome,
+      error: failure.message,
       strategy: currentStrategy,
       duration_seconds: ((Date.now() - startedAt) / 1000).toFixed(1),
     };
@@ -845,7 +858,7 @@ Deno.serve(async (req) => {
     }
     return json(
       responseBody,
-      500,
+      failure.status,
     );
   }
 });

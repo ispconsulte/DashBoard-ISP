@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { classifyBitrixFailure } from '../_shared/bitrix-sync-contract.ts'
 
 const BITRIX_BASE_URL = Deno.env.get('BITRIX_ADMIN_BASE_URL') ?? Deno.env.get('BITRIX_BASE_URL'); 
 const RETRIES = 4;
@@ -11,6 +12,7 @@ const SOURCE_ENTITY = 'tasks';
 // is never evicted, but a truly stuck row is cleaned up before the next cycle.
 const RUN_STALE_AFTER_MS = 35 * 60 * 1000;
 const TASK_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+const REMOTE_RECONCILIATION_LIMIT = 20;
 const BONUS_CALCULATION_VERSION = 'edge-bonus-writer-v1';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -55,43 +57,6 @@ function parseBooleanFlag(value: unknown): boolean {
   if (typeof value === 'number') return value === 1;
   if (typeof value !== 'string') return false;
   return ['1', 'true', 'yes', 'y', 'sim'].includes(value.trim().toLowerCase());
-}
-
-function saoPauloDayOfMonth(now = new Date()) {
-  const dayPart = new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    day: '2-digit',
-  }).formatToParts(now).find((part) => part.type === 'day');
-  return Number(dayPart?.value ?? 0);
-}
-
-async function triggerBirthdayReminders(supabaseUrl: string, serviceRoleKey: string) {
-  // O sincronizador já é executado pelo pg_cron. A partir do dia 20, ele tenta
-  // preparar o mês seguinte; a função de aniversários é idempotente e reutiliza
-  // uma tarefa que já exista, evitando duplicidade nas execuções seguintes.
-  if (saoPauloDayOfMonth() < 20) return;
-
-  try {
-    const response = await fetch(`${supabaseUrl}/functions/v1/create-birthday-reminders`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
-        'Content-Type': 'application/json',
-      },
-      body: '{}',
-      signal: AbortSignal.timeout(60_000),
-    });
-
-    if (!response.ok) {
-      console.warn(`[birthday-reminders] execução recusada com HTTP ${response.status}.`);
-    }
-  } catch (error) {
-    console.warn(
-      '[birthday-reminders] não foi possível executar nesta tentativa:',
-      error instanceof Error ? error.message : 'erro inesperado',
-    );
-  }
 }
 
 function nonEmptyString(value: any): string | null {
@@ -321,18 +286,22 @@ async function fetchJsonWithRetry(url: string) {
       clearTimeout(timeout);
 
       if (response.status === 429 || response.status >= 500) {
-        lastError = new Error(`HTTP ${response.status}`);
+        lastError = new Error(`Bitrix HTTP ${response.status}`);
         await new Promise((r) => setTimeout(r, DELAY_MS * (attempt + 1)));
         continue;
       }
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        throw new Error(`Bitrix HTTP ${response.status}: ${await response.text()}`);
       }
 
       return await response.json();
     } catch (error: any) {
-      lastError = error;
+      lastError = error?.name === 'AbortError'
+        ? new Error('Bitrix timeout ao buscar dados.')
+        : error instanceof TypeError
+          ? new Error(`Bitrix fetch failed: ${error.message}`)
+          : error;
       if (attempt === RETRIES - 1) break;
       await new Promise((r) => setTimeout(r, DELAY_MS * (attempt + 1)));
     }
@@ -362,22 +331,26 @@ async function bitrixPostWithRetry(path: string, body: unknown) {
       clearTimeout(timeout);
 
       if (response.status === 429 || response.status >= 500) {
-        lastError = new Error(`HTTP ${response.status}`);
+        lastError = new Error(`Bitrix HTTP ${response.status}`);
         await new Promise((r) => setTimeout(r, DELAY_MS * (attempt + 1)));
         continue;
       }
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        throw new Error(`Bitrix HTTP ${response.status}: ${await response.text()}`);
       }
 
       const data = await response.json();
       if (data.error && !data.result) {
-        throw new Error(String(data.error_description || data.error));
+        throw new Error(`Bitrix: ${String(data.error_description || data.error)}`);
       }
       return data;
     } catch (error: any) {
-      lastError = error;
+      lastError = error?.name === 'AbortError'
+        ? new Error('Bitrix timeout ao buscar dados.')
+        : error instanceof TypeError
+          ? new Error(`Bitrix fetch failed: ${error.message}`)
+          : error;
       if (attempt === RETRIES - 1) break;
       await new Promise((r) => setTimeout(r, DELAY_MS * (attempt + 1)));
     }
@@ -1799,6 +1772,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: true,
+          outcome: 'already_running',
           skipped: true,
           reason: runState.skipReason ?? 'Skipped due to overlap.',
         }),
@@ -1807,7 +1781,6 @@ Deno.serve(async (req) => {
     }
 
     runId = runState?.runId ?? null;
-    await triggerBirthdayReminders(supabaseUrl, supabaseKey);
     await upsertSourceStatus(supabase, 'running', {
       started_at_iso: syncStartedAtIso,
       request_method: req.method,
@@ -2146,7 +2119,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const reconcileCandidates = pagedFullSync ? [] : existingRows.filter((row: any) => {
+    const allReconcileCandidates = pagedFullSync ? [] : existingRows.filter((row: any) => {
       const taskId = Number(row.task_id);
       if (!taskId || seenTaskIds.has(taskId)) return false;
       if (tombstones.has(taskId)) return true;
@@ -2156,6 +2129,19 @@ Deno.serve(async (req) => {
       const alreadyNeedsCheck = ['not_found_or_no_access', 'stale_not_seen'].includes(String(row.local_state ?? ''));
       return tooOld || alreadyNeedsCheck;
     });
+    const tombstoneCandidates = allReconcileCandidates.filter((row: any) => tombstones.has(Number(row.task_id)));
+    const remoteReconcileCandidates = allReconcileCandidates
+      .filter((row: any) => !tombstones.has(Number(row.task_id)))
+      .sort((left: any, right: any) => {
+        const leftSeen = parseDateValue(left.last_seen_at ?? left.last_seen_in_bitrix_at)?.getTime() ?? 0;
+        const rightSeen = parseDateValue(right.last_seen_at ?? right.last_seen_in_bitrix_at)?.getTime() ?? 0;
+        return leftSeen - rightSeen || Number(left.task_id) - Number(right.task_id);
+      });
+    const reconcileCandidates = [
+      ...tombstoneCandidates,
+      ...remoteReconcileCandidates.slice(0, REMOTE_RECONCILIATION_LIMIT),
+    ];
+    const reconciliationRemaining = Math.max(0, remoteReconcileCandidates.length - REMOTE_RECONCILIATION_LIMIT);
 
     const reconciledUpdates: any[] = [];
     for (const row of reconcileCandidates) {
@@ -2242,25 +2228,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const staleUpdates = pagedFullSync ? [] : existingRows
-      .filter((row: any) => {
-        const taskId = Number(row.task_id);
-        if (!taskId || seenTaskIds.has(taskId) || tombstones.has(taskId)) return false;
-        const lastSeen = parseDateValue(row.last_seen_at ?? row.last_seen_in_bitrix_at);
-        return Boolean(lastSeen && (Date.now() - lastSeen.getTime()) >= TASK_STALE_AFTER_MS && String(row.local_state ?? '') === 'active');
-      })
-      .map((row: any) => ({
-        task_id: Number(row.task_id),
-        title: nonEmptyString(row.title) ?? `Tarefa ${Number(row.task_id)}`,
-        local_state: 'stale_not_seen',
-        diagnostic_codes: uniqueCodes([...(row.diagnostic_codes ?? []), 'stale_not_seen']),
-        bitrix_visible: true,
-        updated_at: new Date().toISOString(),
-        missing_from_bitrix_since: row.missing_from_bitrix_since ?? syncStartedAtIso,
-      }));
-
     const allStateUpdates = dedupeTaskUpsertRecords(
-      [...reconciledUpdates, ...staleUpdates],
+      reconciledUpdates,
       existingTasksMap,
       'reconciliacao de estados',
     );
@@ -2315,8 +2284,15 @@ Deno.serve(async (req) => {
       }
     }
 
+    const updatesApplied = tasksToUpsert.length + allStateUpdates.length + deadlineChangesWritten;
+    const outcome = reconciliationRemaining > 0
+      ? 'partial_success'
+      : updatesApplied === 0
+        ? 'noop'
+        : 'success';
     const responseBody = {
       success: true,
+      outcome,
       projects: totalProjects,
       project_type_counts: workgroupTypeCounts,
       sampled_non_project_groups: sampledNonProjectGroups,
@@ -2333,9 +2309,11 @@ Deno.serve(async (req) => {
       full_sync_complete: requestedFullSync ? incrementalPayload.nextStart == null : null,
       incremental_since: incrementalSince,
       reconciled_tasks: reconciledUpdates.length,
-      stale_tasks_marked: staleUpdates.length,
+      reconciliation_candidates: allReconcileCandidates.length,
+      reconciliation_remaining: reconciliationRemaining,
       reconcile_final_upsert_rows: allStateUpdates.length,
       snapshot_final_upsert_rows: tasksToUpsert.length,
+      updates_applied: updatesApplied,
       task_integrity_backfill: taskIntegrityBackfill,
       deleted_tombstones_loaded: tombstones.size,
       relinked_orphan_rows: relinkedOrphans,
@@ -2358,9 +2336,11 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("ERRO FATAL:", error);
     const message = error instanceof Error ? error.message : String(error);
+    const failure = classifyBitrixFailure(error);
     const responseBody = {
       success: false,
-      error: message,
+      outcome: failure.outcome,
+      error: failure.message,
       request_method: req.method,
       duration_seconds: ((Date.now() - startedAt) / 1000).toFixed(1),
     };
@@ -2378,7 +2358,7 @@ Deno.serve(async (req) => {
     }
     return new Response(
       JSON.stringify(responseBody),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      { status: failure.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });

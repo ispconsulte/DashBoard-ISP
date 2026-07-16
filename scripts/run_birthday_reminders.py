@@ -7,13 +7,14 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-BRASILIA_TIMEZONE = timezone(timedelta(hours=-3))
 DEFAULT_PROJECT_URL = "https://stubkeeuttixteqckshd.supabase.co"
+MAX_ATTEMPTS = 3
+TRANSIENT_HTTP_STATUSES = {429, 500, 502, 503, 504}
 
 
 def arguments() -> argparse.Namespace:
@@ -24,11 +25,6 @@ def arguments() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Valida usuários e tarefas sem criar nada no Bitrix.",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Permite executar antes do dia 20; útil somente para teste controlado.",
     )
     parser.add_argument("--target-month", type=int, choices=range(1, 13), metavar="1-12")
     parser.add_argument("--target-year", type=int)
@@ -53,18 +49,26 @@ def invoke(payload: dict[str, object]) -> dict[str, object]:
         },
     )
 
-    try:
-        with urlopen(request, timeout=90) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except HTTPError as error:
-        response_body = error.read().decode("utf-8", errors="replace")
+    last_error: Exception | None = None
+    for attempt in range(MAX_ATTEMPTS):
         try:
-            message = json.loads(response_body).get("error", f"HTTP {error.code}")
-        except json.JSONDecodeError:
-            message = f"HTTP {error.code}"
-        raise RuntimeError(f"A rotina recusou a execução: {message}") from error
-    except URLError as error:
-        raise RuntimeError(f"Não foi possível acessar o Supabase: {error.reason}") from error
+            with urlopen(request, timeout=120) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as error:
+            response_body = error.read().decode("utf-8", errors="replace")
+            try:
+                message = json.loads(response_body).get("error", f"HTTP {error.code}")
+            except json.JSONDecodeError:
+                message = f"HTTP {error.code}"
+            last_error = RuntimeError(f"A rotina recusou a execução: {message}")
+            if error.code not in TRANSIENT_HTTP_STATUSES or attempt == MAX_ATTEMPTS - 1:
+                break
+        except URLError as error:
+            last_error = RuntimeError(f"Não foi possível acessar o Supabase: {error.reason}")
+            if attempt == MAX_ATTEMPTS - 1:
+                break
+        time.sleep(2 ** attempt)
+    raise RuntimeError(str(last_error or "A rotina não respondeu.")) from last_error
 
 
 def main() -> int:
@@ -74,21 +78,11 @@ def main() -> int:
         sys.stderr.reconfigure(encoding="utf-8")
 
     args = arguments()
-    today = datetime.now(BRASILIA_TIMEZONE)
-    if today.day < 20 and not args.force and not args.dry_run:
-        print(json.dumps({
-            "ok": True,
-            "skipped": True,
-            "reason": "A rotina de produção é liberada a partir do dia 20.",
-            "date": today.date().isoformat(),
-        }, ensure_ascii=False))
-        return 0
-
     if (args.target_month is None) != (args.target_year is None):
         print("Informe --target-month e --target-year juntos.", file=sys.stderr)
         return 2
 
-    payload: dict[str, object] = {"dry_run": args.dry_run}
+    payload: dict[str, object] = {"action": "scheduled", "dry_run": args.dry_run}
     if args.target_month is not None and args.target_year is not None:
         payload.update(target_month=args.target_month, target_year=args.target_year)
 
@@ -101,12 +95,11 @@ def main() -> int:
     summary = {
         "ok": result.get("ok", False),
         "dry_run": result.get("dryRun", False),
-        "target_period": result.get("targetPeriod"),
-        "eligible": result.get("eligible", 0),
-        "created": result.get("created", []),
-        "already_existing": result.get("skipped", []),
-        "planned": result.get("planned", []),
-        "errors": result.get("errors", []),
+        "status": result.get("status"),
+        "periods": result.get("periods", []),
+        "created": result.get("created", 0),
+        "already_existing": result.get("skipped", 0),
+        "errors": result.get("errors", 0),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0 if result.get("ok") else 1

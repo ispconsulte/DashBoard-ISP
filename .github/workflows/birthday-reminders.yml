@@ -2,6 +2,8 @@ name: Birthday reminders
 
 on:
   schedule:
+    # O Python é o agendador autoritativo. Ele roda diariamente e o cursor no
+    # banco recupera ciclos elegíveis perdidos após indisponibilidade/reinício.
     # GitHub Actions usa UTC. 13:15 UTC corresponde a 10:15 em Brasília.
     - cron: "15 13 * * *"
   workflow_dispatch:

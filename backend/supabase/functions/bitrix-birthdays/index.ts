@@ -1,4 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  isCycleEligible,
+  nextBirthdayOccurrence,
+  parseBirthday,
+} from "../_shared/birthday-task-contract.ts";
+import {
+  fetchActiveBitrixUsers,
+  field as getField,
+} from "../_shared/birthday-task-service.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,105 +21,6 @@ const jsonHeaders = {
   "Content-Type": "application/json",
   "Cache-Control": "private, max-age=300",
 };
-
-const BITRIX_BASE_URL =
-  Deno.env.get("BITRIX_ADMIN_BASE_URL")?.trim() ||
-  Deno.env.get("BITRIX_BASE_URL")?.trim() ||
-  "";
-
-type BirthdayParts = { year: number; month: number; day: number };
-
-function parseBirthday(value: unknown): BirthdayParts | null {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) {
-    const year = Number(iso[1]);
-    const month = Number(iso[2]);
-    const day = Number(iso[3]);
-    return isValidBirthDate(year, month, day) ? { year, month, day } : null;
-  }
-
-  const br = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
-  if (br) {
-    const day = Number(br[1]);
-    const month = Number(br[2]);
-    const year = Number(br[3]);
-    return isValidBirthDate(year, month, day) ? { year, month, day } : null;
-  }
-
-  return null;
-}
-
-function isValidBirthDate(year: number, month: number, day: number) {
-  if (!Number.isInteger(year) || year < 1900 || year > new Date().getUTCFullYear()) return false;
-  if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1) {
-    return false;
-  }
-  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
-}
-
-function nextBirthday(month: number, day: number, now: Date) {
-  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  let year = now.getUTCFullYear();
-  let occurrence = Date.UTC(year, month - 1, day);
-  if (occurrence < todayUtc) {
-    year += 1;
-    occurrence = Date.UTC(year, month - 1, day);
-  }
-
-  return {
-    daysUntil: Math.round((occurrence - todayUtc) / 86_400_000),
-    nextDate: new Date(occurrence).toISOString().slice(0, 10),
-  };
-}
-
-function getField(record: Record<string, unknown>, lower: string, upper: string) {
-  return record[upper] ?? record[lower];
-}
-
-async function fetchBitrixUsers() {
-  if (!BITRIX_BASE_URL) throw new Error("Integração Bitrix não configurada.");
-
-  const endpoint = new URL("user.get.json", BITRIX_BASE_URL).toString();
-  const users: Record<string, unknown>[] = [];
-  let start = 0;
-
-  for (let page = 0; page < 100; page += 1) {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        FILTER: { ACTIVE: true },
-        sort: "ID",
-        order: "ASC",
-        start,
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Bitrix respondeu com HTTP ${response.status}.`);
-    }
-
-    const payload = await response.json();
-    if (payload?.error) {
-      throw new Error(`Bitrix recusou user.get: ${String(payload.error)}`);
-    }
-
-    const pageUsers = Array.isArray(payload?.result)
-      ? payload.result
-      : Object.values(payload?.result ?? {});
-    users.push(...pageUsers);
-
-    const next = Number(payload?.next);
-    if (!Number.isFinite(next) || next <= start) break;
-    start = next;
-  }
-
-  return users;
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -178,8 +88,8 @@ Deno.serve(async (req: Request) => {
     );
 
     const now = new Date();
-    const rawUsers = await fetchBitrixUsers();
-    const birthdays = rawUsers
+    const rawUsers = await fetchActiveBitrixUsers();
+    const birthdayRows = rawUsers
       .filter((user) => {
         const bitrixId = String(getField(user, "id", "ID") ?? "").trim();
         const userType = String(getField(user, "user_type", "USER_TYPE") ?? "").toLowerCase();
@@ -194,7 +104,7 @@ Deno.serve(async (req: Request) => {
         const name = `${firstName} ${lastName}`.trim();
         if (!name) return null;
 
-        const next = nextBirthday(birthday.month, birthday.day, now);
+        const next = nextBirthdayOccurrence(birthday, now);
         return {
           bitrixUserId: String(getField(user, "id", "ID") ?? ""),
           name,
@@ -206,16 +116,53 @@ Deno.serve(async (req: Request) => {
           daysUntil: next.daysUntil,
           nextDate: next.nextDate,
           isToday: next.daysUntil === 0,
+          taskCycleYear: next.cycle.year,
+          taskCycleMonth: next.cycle.month,
+          taskEligible: isCycleEligible(next.cycle, now),
         };
       })
       .filter(Boolean)
       .sort((a, b) => (a?.daysUntil ?? 0) - (b?.daysUntil ?? 0) || String(a?.name).localeCompare(String(b?.name), "pt-BR"));
+
+    const bitrixIds = birthdayRows.map((birthday) => String(birthday?.bitrixUserId ?? ""));
+    const { data: taskCycles, error: taskCyclesError } = bitrixIds.length
+      ? await adminClient
+        .from("birthday_task_cycles")
+        .select("bitrix_user_id,cycle_year,cycle_month,status,bitrix_task_id,last_error,updated_at")
+        .in("bitrix_user_id", bitrixIds)
+      : { data: [], error: null };
+    if (taskCyclesError) throw new Error("Não foi possível consultar o estado das tarefas de aniversário.");
+    const taskByCycle = new Map(
+      (taskCycles ?? []).map((task: any) => [
+        `${task.bitrix_user_id}:${task.cycle_year}-${task.cycle_month}`,
+        task,
+      ]),
+    );
+    const birthdays = birthdayRows.map((birthday) => {
+      const task = taskByCycle.get(`${birthday?.bitrixUserId}:${birthday?.taskCycleYear}-${birthday?.taskCycleMonth}`) as any;
+      return {
+        ...birthday,
+        taskStatus: task?.status ?? "not_created",
+        taskId: task?.bitrix_task_id ? String(task.bitrix_task_id) : null,
+        taskError: task?.last_error ?? null,
+        taskUpdatedAt: task?.updated_at ?? null,
+      };
+    });
+    const [{ data: automationState, error: stateError }, { data: recentRuns, error: runsError }] = await Promise.all([
+      adminClient.from("birthday_automation_state").select("*").eq("scheduler_key", "birthday-reminders").maybeSingle(),
+      adminClient.from("birthday_automation_runs")
+        .select("source,status,started_at,finished_at,target_periods,summary,error_message")
+        .order("started_at", { ascending: false })
+        .limit(5),
+    ]);
+    if (stateError || runsError) throw new Error("Não foi possível consultar a saúde da rotina de aniversários.");
 
     return new Response(
       JSON.stringify({
         birthdays,
         total: birthdays.length,
         syncedAt: now.toISOString(),
+        automation: { state: automationState, recentRuns: recentRuns ?? [] },
       }),
       { headers: jsonHeaders },
     );

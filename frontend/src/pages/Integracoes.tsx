@@ -42,6 +42,10 @@ import {
   reserveNextBitrixSyncWindow,
 } from "@/modules/integrations/bitrixManualSyncCooldown";
 import { fetchBirthdays, type BirthdaysResponse } from "@/modules/birthdays/api/useBirthdays";
+import {
+  bitrixJobStatusLabel,
+  summarizeBitrixSyncJobs,
+} from "@/modules/integrations/bitrixSyncOutcome";
 
 const BITRIX_LAST_SYNC_REPORT_KEY = "integrations:bitrix_last_sync_report";
 
@@ -228,7 +232,11 @@ export default function IntegracoesPage() {
     setSyncReport(finishedReport);
     saveLastSyncReport(finishedReport);
 
-    return { timesPayload, birthdays };
+    return {
+      timesPayload,
+      birthdays,
+      notice: summarizeBitrixSyncJobs([tasksJob, timesJob]),
+    };
   };
 
   const handleForceBitrixSync = async () => {
@@ -246,9 +254,12 @@ export default function IntegracoesPage() {
     toast.info("Sincronização com o sistema foi iniciada.");
 
     try {
-      await invokeBitrixSync();
+      const { notice } = await invokeBitrixSync();
       setNextAllowedSyncAt(reserveNextBitrixSyncWindow());
-      toast.success("Atualização completa: projetos, tarefas, atividades, datas, horas e aniversários sincronizados.");
+      if (notice.kind === "noop") toast.info(notice.message);
+      else if (notice.kind === "already_running") toast.info(notice.message);
+      else if (notice.kind === "partial_success") toast.warning(notice.message);
+      else toast.success("Atualização completa: projetos, tarefas, atividades, datas, horas e aniversários sincronizados.");
     } catch (error) {
       setNextAllowedSyncAt(clearBitrixSyncCooldown());
       const message = error instanceof Error ? error.message : "Não foi possível forçar a sincronização.";
@@ -576,6 +587,7 @@ function SyncProgressModal({
                   title="Projetos e tarefas"
                   running={syncing && ["preparing", "tasks"].includes(phase)}
                   ok={report.tasksJob?.ok}
+                  outcome={report.tasksJob ? bitrixJobStatusLabel(report.tasksJob) : undefined}
                   rows={[
                     ["Projetos", tasksData ? formatNumber(Number(tasksData.projects ?? 0)) : "--"],
                     ["Tarefas lidas", tasksData ? formatNumber(Number(tasksData.tasks ?? 0)) : "--"],
@@ -596,6 +608,7 @@ function SyncProgressModal({
                   title="Horas lançadas"
                   running={syncing && phase === "times"}
                   ok={report.timesJob?.ok}
+                  outcome={report.timesJob ? bitrixJobStatusLabel(report.timesJob) : undefined}
                   rows={[
                     ["Registros novos", timesData ? formatNumber(Number(timesData.elapsed_upserted ?? 0)) : "--"],
                     ["Horas sem vínculo", timesData ? formatNumber(Number(timesData.orphan_rows_detected ?? 0)) : "--"],
@@ -679,11 +692,13 @@ function JobResult({
   rows,
   running,
   ok,
+  outcome,
 }: {
   title: string;
   rows: Array<[string, string]>;
   running?: boolean;
   ok?: boolean;
+  outcome?: string;
 }) {
   return (
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
@@ -696,7 +711,7 @@ function JobResult({
               ? "bg-emerald-500/10 text-emerald-200"
               : "bg-white/[0.06] text-white/35"
         }`}>
-          {running ? "Rodando" : ok ? "Concluído" : "Aguardando"}
+          {running ? "Rodando" : outcome ?? (ok ? "Concluído" : "Aguardando")}
         </span>
       </div>
       <div className="mt-3 space-y-2">

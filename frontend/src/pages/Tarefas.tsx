@@ -17,6 +17,7 @@ import { useElapsedTimes } from "@/modules/tasks/api/useElapsedTimes";
 import { useTasks } from "@/modules/tasks/api/useTasks";
 import { getTaskDatasetQueries } from "@/modules/tasks/taskDatasetQuery";
 import { triggerIntegritySync } from "@/modules/diagnostics/api/adminDiagnosticsApi";
+import { summarizeBitrixSyncJobs } from "@/modules/integrations/bitrixSyncOutcome";
 import {
   clearBitrixSyncCooldown,
   formatBitrixSyncCooldown,
@@ -466,16 +467,17 @@ export default function TarefasPage() {
 
     try {
       const result = await triggerIntegritySync(session.accessToken, ["all"], "incremental");
-      const failed = result.jobs.filter((job) => !job.ok);
-      const skipped = result.jobs.filter((job) => Boolean(job.data?.skipped));
+      const notice = summarizeBitrixSyncJobs(result.jobs);
 
-      if (failed.length) {
+      if (notice.kind === "error") {
         setNextAllowedBitrixSyncAt(clearBitrixSyncCooldown());
-        const firstError = failed[0]?.error || "Erro não informado.";
-        toast.error(`Falha em ${failed.map((job) => job.job_name).join(", ")}: ${firstError}`);
-      } else if (skipped.length) {
+        toast.error(notice.message);
+      } else if (notice.kind === "already_running" || notice.kind === "noop") {
         setNextAllowedBitrixSyncAt(reserveNextBitrixSyncWindow());
-        toast.info("Já havia uma sincronização em andamento. Os dados locais serão recarregados.");
+        toast.info(notice.message);
+      } else if (notice.kind === "partial_success") {
+        setNextAllowedBitrixSyncAt(reserveNextBitrixSyncWindow());
+        toast.warning(notice.message);
       } else {
         setNextAllowedBitrixSyncAt(reserveNextBitrixSyncWindow());
         toast.success("Sincronização concluída. Tarefas, projetos e horas foram atualizados.");

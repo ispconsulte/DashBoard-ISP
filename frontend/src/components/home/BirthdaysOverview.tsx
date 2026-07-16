@@ -1,8 +1,24 @@
 import { useEffect, useState } from "react";
-import { CakeSlice, ChevronDown, Gift, Loader2, PartyPopper, Sparkles, Hourglass, Timer } from "lucide-react";
+import { CakeSlice, ChevronDown, ClipboardPlus, Clock3, Gift, Loader2, Sparkles } from "lucide-react";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
-import { useBirthdays, type BirthdayPerson } from "@/modules/birthdays/api/useBirthdays";
-import hourglassAsset from "@/assets/temporizador-de-areia.png.asset.json";
+import {
+  BirthdayTaskRequestError,
+  createBirthdayTask,
+  useBirthdays,
+  type BirthdayPerson,
+} from "@/modules/birthdays/api/useBirthdays";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 
 type BirthdaysOverviewProps = {
   refreshKey?: number;
@@ -119,10 +135,16 @@ function BirthdayCard({
   person,
   index,
   featured = false,
+  canCreateTask = false,
+  creating = false,
+  onCreateTask,
 }: {
   person: BirthdayPerson;
   index: number;
   featured?: boolean;
+  canCreateTask?: boolean;
+  creating?: boolean;
+  onCreateTask?: (person: BirthdayPerson) => void;
 }) {
   const age = turningAge(person);
   const theme = themeFor(person);
@@ -161,7 +183,7 @@ function BirthdayCard({
         </div>
 
         <div className="flex h-6 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold text-amber-500 ring-1 ring-amber-500/20 shadow-sm">
-          <img src={hourglassAsset.url} alt="Ampulheta" className="h-5 w-5 object-contain" />
+          <Clock3 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span className="tabular-nums">{countdownLabel(person)}</span>
         </div>
       </div>
@@ -178,6 +200,33 @@ function BirthdayCard({
           <span className="text-white/35">{person.name.split(' ')[0]} vai completar {age} anos</span>
         </div>
       </div>
+
+      {canCreateTask && (
+        <div className="relative mt-3 flex items-center justify-between gap-2 border-t border-white/[0.06] pt-3">
+          <span className={`text-[10px] ${person.taskStatus === "error" ? "text-rose-300" : "text-white/40"}`}>
+            {person.taskStatus === "created" && person.taskId
+              ? `Tarefa #${person.taskId} criada`
+              : person.taskStatus === "processing"
+                ? "Criação em andamento"
+                : person.taskStatus === "error"
+                  ? "Última tentativa falhou"
+                  : person.taskEligible
+                    ? "Período disponível"
+                    : "Fora do período previsto"}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 shrink-0 gap-1.5 rounded-lg border-white/10 bg-white/[0.04] px-2.5 text-[11px] text-white/80 hover:bg-white/[0.09]"
+            disabled={creating}
+            onClick={() => onCreateTask?.(person)}
+          >
+            {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardPlus className="h-3.5 w-3.5" />}
+            Criar tarefa
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -185,10 +234,13 @@ function BirthdayCard({
 function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
   const { session } = useAuth();
   const isInternal = session?.role !== "cliente";
+  const isAdmin = session?.role === "admin";
   const { data, isLoading, isFetching, error, refetch } = useBirthdays(
     isInternal ? session?.accessToken : undefined,
   );
   const [open, setOpen] = useState(false);
+  const [creatingId, setCreatingId] = useState<string | null>(null);
+  const [earlyConfirmation, setEarlyConfirmation] = useState<BirthdayPerson | null>(null);
 
   useEffect(() => {
     if (refreshKey > 0) void refetch();
@@ -198,7 +250,39 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
 
   const birthdays = data?.birthdays ?? [];
   const nextBirthday = birthdays[0];
-  
+  const automationState = data?.automation.state;
+
+  const executeCreation = async (person: BirthdayPerson, forceEarly: boolean) => {
+    if (!session?.accessToken || !isAdmin || creatingId) return;
+    setCreatingId(person.bitrixUserId);
+    try {
+      const result = await createBirthdayTask(session.accessToken, person, forceEarly);
+      if (result.result === "created") {
+        toast.success(`Tarefa de aniversário criada${result.taskId ? ` (#${result.taskId})` : ""}.`);
+      } else if (result.result === "already_exists") {
+        toast.info(`A tarefa deste ciclo já existe${result.taskId ? ` (#${result.taskId})` : ""}.`);
+      } else {
+        toast.info("A criação desta tarefa já está em andamento.");
+      }
+      await refetch();
+    } catch (error) {
+      if (error instanceof BirthdayTaskRequestError && error.code === "EARLY_CONFIRMATION_REQUIRED") {
+        setEarlyConfirmation(person);
+      } else {
+        toast.error(error instanceof Error ? error.message : "Não foi possível criar a tarefa de aniversário.");
+      }
+    } finally {
+      setCreatingId(null);
+    }
+  };
+
+  const requestCreation = (person: BirthdayPerson) => {
+    if (!person.taskEligible && person.taskStatus !== "created" && person.taskStatus !== "processing") {
+      setEarlyConfirmation(person);
+      return;
+    }
+    void executeCreation(person, false);
+  };
 
   return (
     <section className="task-card relative overflow-hidden p-0 transition-all duration-300">
@@ -243,7 +327,25 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
         }`}
       >
         <div className="overflow-hidden">
-          <div className="px-4 pb-5 pt-4 sm:px-5">
+          <div className="border-t border-white/[0.06] px-4 pb-5 pt-4 sm:px-5">
+            {isAdmin && (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[11px] text-white/45">
+                <span>
+                  Automação: {!automationState
+                    ? "ainda não registrada"
+                    : automationState.last_status === "running"
+                      ? "em execução"
+                      : automationState.last_status === "error" || automationState.last_status === "partial"
+                        ? "requer atenção"
+                        : "saudável"}
+                </span>
+                <span>
+                  Último sucesso: {automationState?.last_success_at
+                    ? new Date(automationState.last_success_at).toLocaleString("pt-BR")
+                    : "ainda não registrado"}
+                </span>
+              </div>
+            )}
             {error ? (
               <div className="rounded-xl border border-rose-300/10 bg-rose-400/[0.06] px-4 py-4 text-sm text-rose-100/75">
                 <p className="font-semibold">Não foi possível carregar os aniversários.</p>
@@ -265,7 +367,14 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
                       </p>
                       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
                         {group.people.map((person, index) => (
-                          <BirthdayCard key={`${person.bitrixUserId}-${person.nextDate}`} person={person} index={index} />
+                          <BirthdayCard
+                            key={`${person.bitrixUserId}-${person.nextDate}`}
+                            person={person}
+                            index={index}
+                            canCreateTask={isAdmin}
+                            creating={creatingId === person.bitrixUserId}
+                            onCreateTask={requestCreation}
+                          />
                         ))}
                       </div>
                     </div>
@@ -275,6 +384,30 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
           </div>
         </div>
       </div>
+      <AlertDialog open={Boolean(earlyConfirmation)} onOpenChange={(nextOpen) => !nextOpen && setEarlyConfirmation(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Criar tarefa antecipadamente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O aniversário deste colaborador ainda não está no período previsto. Deseja criar a tarefa mesmo assim?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(creatingId)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={Boolean(creatingId)}
+              onClick={(event) => {
+                event.preventDefault();
+                const person = earlyConfirmation;
+                setEarlyConfirmation(null);
+                if (person) void executeCreation(person, true);
+              }}
+            >
+              Confirmar criação
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

@@ -1,309 +1,292 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const BITRIX_BASE_URL =
-  Deno.env.get("BITRIX_ADMIN_BASE_URL")?.trim() ||
-  Deno.env.get("BITRIX_BASE_URL")?.trim() ||
-  "";
+import {
+  buildBirthdayTaskContract,
+  cycleKey,
+  cyclesToProcess,
+  isCycleEligible,
+  type BirthdayCycle,
+} from "../_shared/birthday-task-contract.ts";
+import {
+  ensureBirthdayTask,
+  loadBirthdayContext,
+} from "../_shared/birthday-task-service.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
 const responseHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+const SCHEDULER_KEY = "birthday-reminders";
 
-type Birthday = { year: number; month: number; day: number };
-type BitrixUser = Record<string, unknown>;
+type Actor = { userId: string; email: string | null };
 
-function field(record: BitrixUser, lower: string, upper: string) {
-  return record[upper] ?? record[lower];
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: responseHeaders });
 }
 
-function normalizeList(value: unknown): BitrixUser[] {
-  if (Array.isArray(value)) return value as BitrixUser[];
-  if (value && typeof value === "object") return Object.values(value) as BitrixUser[];
-  return [];
-}
+async function authenticateAdmin(req: Request, supabaseUrl: string, anonKey: string, serviceRoleKey: string): Promise<Actor | Response> {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return json({ error: "Não autorizado." }, 401);
 
-function parseBirthday(value: unknown): Birthday | null {
-  const raw = String(value ?? "").trim();
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  const br = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
-  const year = Number(iso?.[1] ?? br?.[3]);
-  const month = Number(iso?.[2] ?? br?.[2]);
-  const day = Number(iso?.[3] ?? br?.[1]);
-  if (!year || !month || !day || month > 12 || day > new Date(Date.UTC(year, month, 0)).getUTCDate()) {
-    return null;
+  const authClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false },
+  });
+  const { data: authData, error: authError } = await authClient.auth.getUser(token);
+  if (authError || !authData.user) return json({ error: "Sessão inválida." }, 401);
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+  const { data: user, error } = await adminClient
+    .from("users")
+    .select("role,user_profile,active,email")
+    .eq("auth_user_id", authData.user.id)
+    .maybeSingle();
+  if (error) throw new Error("Não foi possível validar o administrador.");
+  const role = String(user?.role ?? user?.user_profile ?? "").toLowerCase();
+  if (!user || user.active === false || role !== "admin") {
+    return json({ error: "Apenas administradores podem criar tarefas de aniversário." }, 403);
   }
-  return { year, month, day };
+  return { userId: authData.user.id, email: String(user.email ?? authData.user.email ?? "").trim() || null };
 }
 
-function normalizeName(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+async function startRun(supabase: any, source: "scheduled" | "manual", actor: Actor | null, periods: BirthdayCycle[]) {
+  const { data, error } = await supabase.from("birthday_automation_runs").insert({
+    source,
+    status: "running",
+    requested_by: actor?.userId ?? null,
+    requested_by_email: actor?.email ?? null,
+    target_periods: periods.map(cycleKey),
+  }).select("id").single();
+  if (error) throw new Error("Falha ao registrar a execução da rotina de aniversários.");
+  return String(data.id);
 }
 
-function fullName(user: BitrixUser) {
-  return `${String(field(user, "name", "NAME") ?? "")} ${String(field(user, "last_name", "LAST_NAME") ?? "")}`
-    .replace(/\s+/g, " ")
-    .trim();
+async function finishRun(
+  supabase: any,
+  runId: string,
+  status: "success" | "partial" | "error" | "noop",
+  summary: Record<string, unknown>,
+  errorMessage: string | null = null,
+) {
+  const { error } = await supabase.from("birthday_automation_runs").update({
+    status,
+    finished_at: new Date().toISOString(),
+    summary,
+    error_message: errorMessage,
+  }).eq("id", runId);
+  if (error) console.error("[birthday-reminders] falha ao finalizar log operacional", error.message);
 }
 
-function pad(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-function displayDate(year: number, month: number, day: number) {
-  return `${pad(day)}/${pad(month)}/${year}`;
-}
-
-function isoDate(year: number, month: number, day: number) {
-  return `${year}-${pad(month)}-${pad(day)}`;
-}
-
-function shiftDate(year: number, month: number, day: number, deltaDays: number) {
-  const date = new Date(Date.UTC(year, month - 1, day + deltaDays));
-  return {
-    year: date.getUTCFullYear(),
-    month: date.getUTCMonth() + 1,
-    day: date.getUTCDate(),
+async function saveSchedulerState(
+  supabase: any,
+  input: {
+    status: "running" | "success" | "partial" | "error" | "noop";
+    summary?: Record<string, unknown>;
+    completedCycle?: BirthdayCycle | null;
+    finished?: boolean;
+  },
+) {
+  const now = new Date().toISOString();
+  const payload: Record<string, unknown> = {
+    scheduler_key: SCHEDULER_KEY,
+    last_status: input.status,
+    last_summary: input.summary ?? {},
+    updated_at: now,
   };
+  if (input.status === "running") payload.last_started_at = now;
+  if (input.finished) payload.last_finished_at = now;
+  if (input.status === "success" || input.status === "noop") payload.last_success_at = now;
+  if (input.completedCycle) payload.last_completed_cycle = `${cycleKey(input.completedCycle)}-01`;
+  const { error } = await supabase.from("birthday_automation_state").upsert(payload, { onConflict: "scheduler_key" });
+  if (error) throw new Error("Falha ao persistir o estado da rotina de aniversários.");
 }
 
-async function bitrixPost(path: string, body: unknown) {
-  if (!BITRIX_BASE_URL) throw new Error("BITRIX_BASE_URL não configurada.");
-  const response = await fetch(new URL(path, BITRIX_BASE_URL), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.error) {
-    const code = String(payload?.error ?? `HTTP_${response.status}`);
-    throw new Error(`Bitrix recusou ${path}: ${code}`);
+async function processCycle(
+  supabase: any,
+  context: Awaited<ReturnType<typeof loadBirthdayContext>>,
+  cycle: BirthdayCycle,
+  dryRun: boolean,
+) {
+  const employees = context.employees.filter((employee) => employee.birthday.month === cycle.month);
+  const created: unknown[] = [];
+  const skipped: unknown[] = [];
+  const planned: unknown[] = [];
+  const errors: unknown[] = [];
+
+  for (const employee of employees) {
+    if (dryRun) {
+      const contract = buildBirthdayTaskContract(employee.name, employee.birthday, cycle);
+      planned.push({ bitrixUserId: employee.bitrixUserId, name: employee.name, title: contract.title });
+      continue;
+    }
+    try {
+      const result = await ensureBirthdayTask(supabase, context, employee, cycle, { source: "scheduled" });
+      const item = { bitrixUserId: employee.bitrixUserId, name: employee.name, taskId: result.taskId, status: result.status };
+      if (result.status === "created") created.push(item);
+      else skipped.push(item);
+    } catch (error) {
+      errors.push({
+        bitrixUserId: employee.bitrixUserId,
+        name: employee.name,
+        error: error instanceof Error ? error.message : "Erro inesperado.",
+      });
+    }
   }
-  return payload;
+
+  return { period: cycleKey(cycle), eligible: employees.length, created, skipped, planned, errors };
 }
 
-async function fetchActiveBitrixUsers() {
-  const users: BitrixUser[] = [];
-  let start = 0;
-  for (let page = 0; page < 100; page += 1) {
-    const payload = await bitrixPost("user.get.json", {
-      FILTER: { ACTIVE: true },
-      sort: "ID",
-      order: "ASC",
-      start,
+async function runScheduled(supabase: any, body: Record<string, unknown>) {
+  const dryRun = body.dry_run === true;
+  const explicitMonth = Number(body.target_month);
+  const explicitYear = Number(body.target_year);
+  const hasExplicitCycle = Number.isInteger(explicitMonth) && explicitMonth >= 1 && explicitMonth <= 12 && Number.isInteger(explicitYear);
+
+  const { data: state, error: stateError } = await supabase
+    .from("birthday_automation_state")
+    .select("last_completed_cycle")
+    .eq("scheduler_key", SCHEDULER_KEY)
+    .maybeSingle();
+  if (stateError) throw new Error("Falha ao consultar o estado da rotina de aniversários.");
+
+  const periods = hasExplicitCycle
+    ? [{ year: explicitYear, month: explicitMonth }]
+    : cyclesToProcess(state?.last_completed_cycle);
+  const runId = await startRun(supabase, "scheduled", null, periods);
+  if (!dryRun && !hasExplicitCycle) await saveSchedulerState(supabase, { status: "running" });
+
+  try {
+    const context = await loadBirthdayContext(supabase);
+    const cycles = [];
+    let lastCompleted: BirthdayCycle | null = null;
+    for (const cycle of periods) {
+      const result = await processCycle(supabase, context, cycle, dryRun);
+      cycles.push(result);
+      if (result.errors.length > 0) break;
+      if (!dryRun && !hasExplicitCycle) lastCompleted = cycle;
+    }
+    const errors = cycles.flatMap((cycle) => cycle.errors);
+    const created = cycles.flatMap((cycle) => cycle.created);
+    const skipped = cycles.flatMap((cycle) => cycle.skipped);
+    const planned = cycles.flatMap((cycle) => cycle.planned);
+    const status = errors.length > 0 ? "partial" : created.length === 0 && planned.length === 0 ? "noop" : "success";
+    const summary = { dryRun, periods: periods.map(cycleKey), cycles, created: created.length, skipped: skipped.length, errors: errors.length };
+    await finishRun(supabase, runId, status, summary, errors.length ? "Uma ou mais tarefas falharam." : null);
+    if (!dryRun && !hasExplicitCycle) {
+      await saveSchedulerState(supabase, { status, summary, completedCycle: lastCompleted, finished: true });
+    }
+    console.info("[birthday-reminders] execução agendada concluída", { status, periods: summary.periods, created: created.length, errors: errors.length });
+    return json({ ok: errors.length === 0, dryRun, status, ...summary }, errors.length ? 207 : 200);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha na rotina de aniversários.";
+    await finishRun(supabase, runId, "error", {}, message);
+    await saveSchedulerState(supabase, { status: "error", summary: { error: message }, finished: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function runManual(supabase: any, body: Record<string, unknown>, actor: Actor) {
+  const bitrixUserId = String(body.bitrix_user_id ?? "").trim();
+  const cycle = { year: Number(body.cycle_year), month: Number(body.cycle_month) };
+  if (!bitrixUserId || !Number.isInteger(cycle.year) || !Number.isInteger(cycle.month) || cycle.month < 1 || cycle.month > 12) {
+    return json({ error: "Colaborador ou ciclo de aniversário inválido." }, 400);
+  }
+  const { data: existingCycle, error: existingCycleError } = await supabase
+    .from("birthday_task_cycles")
+    .select("status,bitrix_task_id,employee_name")
+    .eq("bitrix_user_id", bitrixUserId)
+    .eq("cycle_year", cycle.year)
+    .eq("cycle_month", cycle.month)
+    .maybeSingle();
+  if (existingCycleError) return json({ error: "Não foi possível verificar a tarefa existente." }, 500);
+  if (existingCycle?.status === "created" && existingCycle.bitrix_task_id) {
+    const runId = await startRun(supabase, "manual", actor, [cycle]);
+    const summary = {
+      employee: existingCycle.employee_name,
+      cycle: cycleKey(cycle),
+      taskId: String(existingCycle.bitrix_task_id),
+      result: "already_exists",
+      forcedEarly: false,
+    };
+    await finishRun(supabase, runId, "noop", summary);
+    return json({ ok: true, ...summary });
+  }
+  if (existingCycle?.status === "processing") {
+    const runId = await startRun(supabase, "manual", actor, [cycle]);
+    const summary = {
+      ok: true,
+      employee: existingCycle.employee_name,
+      cycle: cycleKey(cycle),
+      taskId: null,
+      result: "already_running",
+      forcedEarly: false,
+    };
+    await finishRun(supabase, runId, "noop", summary);
+    return json(summary, 202);
+  }
+  const forceEarly = body.force_early === true;
+  if (!isCycleEligible(cycle) && !forceEarly) {
+    return json({
+      error: "Confirmação necessária para criação antecipada.",
+      code: "EARLY_CONFIRMATION_REQUIRED",
+      eligible: false,
+    }, 409);
+  }
+
+  const runId = await startRun(supabase, "manual", actor, [cycle]);
+  try {
+    const context = await loadBirthdayContext(supabase);
+    const employee = context.employees.find((item) => item.bitrixUserId === bitrixUserId);
+    if (!employee) {
+      await finishRun(supabase, runId, "error", {}, "Colaborador ativo não localizado no Bitrix.");
+      return json({ error: "Colaborador ativo não localizado no Bitrix." }, 404);
+    }
+    const result = await ensureBirthdayTask(supabase, context, employee, cycle, {
+      source: "manual",
+      userId: actor.userId,
+      email: actor.email,
+      forcedEarly: forceEarly,
     });
-    users.push(...normalizeList(payload?.result));
-    const next = Number(payload?.next);
-    if (!Number.isFinite(next) || next <= start) break;
-    start = next;
+    const status = result.status === "created" ? "success" : "noop";
+    const summary = { employee: employee.name, cycle: cycleKey(cycle), taskId: result.taskId, result: result.status, forcedEarly: forceEarly };
+    await finishRun(supabase, runId, status, summary);
+    console.info("[birthday-reminders] criação manual concluída", { cycle: cycleKey(cycle), result: result.status });
+    return json({ ok: true, ...summary }, result.status === "already_running" ? 202 : 200);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao criar a tarefa de aniversário.";
+    await finishRun(supabase, runId, "error", {}, message);
+    return json({ error: message }, /Bitrix/i.test(message) ? 502 : 500);
   }
-  return users;
-}
-
-async function findExistingTask(title: string, responsibleId: string) {
-  let start = 0;
-  for (let page = 0; page < 10; page += 1) {
-    const payload = await bitrixPost("tasks.task.list.json", {
-      order: { ID: "DESC" },
-      filter: { RESPONSIBLE_ID: Number(responsibleId) },
-      select: ["ID", "TITLE", "RESPONSIBLE_ID"],
-      start,
-    });
-    const tasks = normalizeList(payload?.result?.tasks ?? payload?.result);
-    const existing = tasks.find(
-      (task) => String(field(task, "title", "TITLE") ?? "") === title,
-    );
-    if (existing) return existing;
-
-    const next = Number(payload?.next);
-    if (!Number.isFinite(next) || next <= start || tasks.length === 0) break;
-    start = next;
-  }
-  return undefined;
-}
-
-async function addTask(params: {
-  title: string;
-  description: string;
-  deadline: string;
-  responsibleId: string;
-  accompliceId: string;
-}) {
-  const body = new URLSearchParams();
-  body.set("fields[TITLE]", params.title);
-  body.set("fields[DESCRIPTION]", params.description);
-  body.set("fields[RESPONSIBLE_ID]", params.responsibleId);
-  body.set("fields[ACCOMPLICES][0]", params.accompliceId);
-  body.set("fields[DEADLINE]", params.deadline);
-  body.set("fields[TAGS][0]", "aniversario");
-  body.set("fields[TAGS][1]", "automacao-aniversario");
-
-  const response = await fetch(new URL("tasks.task.add.json", BITRIX_BASE_URL), {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-    signal: AbortSignal.timeout(30_000),
-  });
-  const payload = await response.json().catch(() => null);
-  const taskId = payload?.result?.task?.id ?? payload?.result?.id;
-  if (!response.ok || payload?.error || !taskId) throw new Error("O Bitrix não confirmou a criação da tarefa.");
-  return String(taskId);
-}
-
-async function ensureChecklist(taskId: string, titles: string[]) {
-  const currentPayload = await bitrixPost("task.checklistitem.getlist.json", { TASKID: Number(taskId) });
-  const currentTitles = new Set(
-    normalizeList(currentPayload?.result).map((item) => String(field(item, "title", "TITLE") ?? "")),
-  );
-
-  const created: string[] = [];
-  for (let index = 0; index < titles.length; index += 1) {
-    const title = titles[index];
-    if (currentTitles.has(title)) continue;
-    await bitrixPost("task.checklistitem.add.json", {
-      TASKID: Number(taskId),
-      FIELDS: {
-        TITLE: title,
-        SORT_INDEX: (index + 1) * 100,
-        IS_COMPLETE: "N",
-        IS_IMPORTANT: "Y",
-      },
-    });
-    created.push(title);
-  }
-  return created;
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Método não permitido." }), { status: 405, headers: responseHeaders });
-  }
+  if (req.method !== "POST") return json({ error: "Método não permitido." }, 405);
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const authorization = req.headers.get("Authorization") ?? "";
-    if (!serviceRoleKey || authorization !== `Bearer ${serviceRoleKey}`) {
-      return new Response(JSON.stringify({ error: "Não autorizado." }), { status: 401, headers: responseHeaders });
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) return json({ error: "Configuração do servidor incompleta." }, 500);
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const action = String(body.action ?? "scheduled");
+    const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+
+    if (action === "scheduled") {
+      if (req.headers.get("Authorization") !== `Bearer ${serviceRoleKey}`) return json({ error: "Não autorizado." }, 401);
+      return await runScheduled(supabase, body);
     }
-
-    const body = await req.json().catch(() => ({}));
-    const dryRun = body?.dry_run === true;
-    const now = new Date();
-    const defaultTarget = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-    const targetMonth = Number(body?.target_month ?? defaultTarget.getUTCMonth() + 1);
-    const targetYear = Number(body?.target_year ?? defaultTarget.getUTCFullYear());
-    if (!Number.isInteger(targetMonth) || targetMonth < 1 || targetMonth > 12 || !Number.isInteger(targetYear)) {
-      return new Response(JSON.stringify({ error: "Período alvo inválido." }), { status: 400, headers: responseHeaders });
+    if (action === "manual_create") {
+      const actor = await authenticateAdmin(req, supabaseUrl, anonKey, serviceRoleKey);
+      if (actor instanceof Response) return actor;
+      return await runManual(supabase, body, actor);
     }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      serviceRoleKey,
-      { auth: { persistSession: false } },
-    );
-    const { data: appUsers, error: appUsersError } = await supabase
-      .from("users")
-      .select("name,bitrix_user_id")
-      .eq("active", true)
-      .not("bitrix_user_id", "is", null);
-    if (appUsersError) throw new Error("Falha ao carregar usuários ativos do sistema.");
-
-    const activeBitrixIds = new Set(
-      (appUsers ?? []).map((user) => String(user.bitrix_user_id ?? "").trim()).filter(Boolean),
-    );
-    const bitrixUsers = await fetchActiveBitrixUsers();
-    const kayla = bitrixUsers.find((user) => normalizeName(fullName(user)) === normalizeName("Kayla Freitas Morais"));
-    const thalia = bitrixUsers.find((user) => normalizeName(fullName(user)) === normalizeName("Thalia Lourenço"));
-    const kaylaId = String(kayla ? field(kayla, "id", "ID") : "").trim();
-    const thaliaId = String(thalia ? field(thalia, "id", "ID") : "").trim();
-    if (!kaylaId || !thaliaId) throw new Error("Kayla ou Thalia não foram localizadas no Bitrix.");
-
-    const eligible = bitrixUsers
-      .filter((user) => {
-        const id = String(field(user, "id", "ID") ?? "").trim();
-        const type = String(field(user, "user_type", "USER_TYPE") ?? "").toLowerCase();
-        const birthday = parseBirthday(field(user, "personal_birthday", "PERSONAL_BIRTHDAY"));
-        return activeBitrixIds.has(id) && type === "employee" && birthday?.month === targetMonth;
-      })
-      .map((user) => ({ user, birthday: parseBirthday(field(user, "personal_birthday", "PERSONAL_BIRTHDAY"))! }));
-
-    const created: unknown[] = [];
-    const skipped: unknown[] = [];
-    const planned: unknown[] = [];
-    const errors: unknown[] = [];
-
-    for (const entry of eligible) {
-      const name = fullName(entry.user);
-      const celebration = { year: targetYear, month: targetMonth, day: entry.birthday.day };
-      const cakeDue = shiftDate(targetYear, targetMonth, entry.birthday.day, -2);
-      const artDue = shiftDate(targetYear, targetMonth, entry.birthday.day, -1);
-      const birthDate = displayDate(entry.birthday.year, entry.birthday.month, entry.birthday.day);
-      const celebrationDate = displayDate(celebration.year, celebration.month, celebration.day);
-      const title = `🎂 [ANIVERSÁRIO | ${celebrationDate}] Preparativos — ${name}`;
-      const checklist = [
-        `${displayDate(cakeDue.year, cakeDue.month, cakeDue.day)} — Providenciar a compra/organização do bolo (2 dias antes)`,
-        `${displayDate(artDue.year, artDue.month, artDue.day)} — Finalizar e programar a arte dos stories (1 dia antes)`,
-      ];
-      const description = [
-        "LEMBRETE AUTOMÁTICO DE ANIVERSÁRIO",
-        "",
-        `Aniversariante: ${name}`,
-        `Data de nascimento: ${birthDate}`,
-        `Data da comemoração: ${celebrationDate}`,
-        `Idade que completa: ${targetYear - entry.birthday.year} anos`,
-        "",
-        `Bolo: organizar até ${displayDate(cakeDue.year, cakeDue.month, cakeDue.day)}.` ,
-        `Arte dos stories: finalizar até ${displayDate(artDue.year, artDue.month, artDue.day)}.` ,
-        "",
-        "Responsável: Kayla Freitas Morais",
-        "Participante: Thalia Lourenço",
-        "",
-        "Tarefa gerada automaticamente pelo ISP Consulte Dashboard.",
-      ].join("\n");
-
-      try {
-        const existing = await findExistingTask(title, kaylaId);
-        const existingId = String(existing ? field(existing, "id", "ID") : "").trim();
-        if (dryRun) {
-          planned.push({ name, title, birthDate, celebrationDate, checklist, alreadyExists: Boolean(existingId) });
-          continue;
-        }
-
-        const taskId = existingId || await addTask({
-          title,
-          description,
-          deadline: `${isoDate(celebration.year, celebration.month, celebration.day)}T09:00:00-03:00`,
-          responsibleId: kaylaId,
-          accompliceId: thaliaId,
-        });
-        const checklistCreated = await ensureChecklist(taskId, checklist);
-        if (existingId) skipped.push({ name, taskId, reason: "already_exists", checklistCreated });
-        else created.push({ name, taskId, checklistCreated });
-      } catch (error) {
-        errors.push({ name, error: error instanceof Error ? error.message : "Erro inesperado." });
-      }
-    }
-
-    return new Response(JSON.stringify({
-      ok: errors.length === 0,
-      dryRun,
-      targetPeriod: `${targetYear}-${pad(targetMonth)}`,
-      responsible: { id: kaylaId, name: fullName(kayla!) },
-      participant: { id: thaliaId, name: fullName(thalia!) },
-      eligible: eligible.length,
-      planned,
-      created,
-      skipped,
-      errors,
-    }), { status: errors.length ? 207 : 200, headers: responseHeaders });
+    return json({ error: "Ação inválida." }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha na rotina de aniversários.";
-    console.error("[create-birthday-reminders]", message);
-    return new Response(JSON.stringify({ error: message }), { status: 500, headers: responseHeaders });
+    console.error("[birthday-reminders]", message);
+    return json({ error: message }, 500);
   }
 });

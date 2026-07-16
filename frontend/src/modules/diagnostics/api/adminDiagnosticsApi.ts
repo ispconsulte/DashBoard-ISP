@@ -111,6 +111,15 @@ export type TriggerSyncPayload = {
     job_name: string;
     status: number | null;
     ok: boolean;
+    outcome:
+      | "success"
+      | "noop"
+      | "already_running"
+      | "partial_success"
+      | "bitrix_unavailable"
+      | "authentication_failure"
+      | "timeout"
+      | "internal_failure";
     data: Record<string, unknown> | null;
     error: string | null;
   }>;
