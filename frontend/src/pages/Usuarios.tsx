@@ -1052,8 +1052,42 @@ export default function UsuariosPage() {
             <div className={`grid gap-5 ${showEditPanel ? "grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(460px,1fr)] items-stretch" : "grid-cols-1"}`}>
               {/* ─── USER LIST ─── */}
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-                className="task-card min-w-0 overflow-hidden flex flex-col xl:h-[calc(100vh-2rem)] xl:min-h-[820px]"
+                className="task-card min-w-0 overflow-hidden flex flex-col p-0"
               >
+                <div className="overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setOpenUsers((v) => !v)}
+                    className="relative flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-white/[0.03]"
+                    aria-expanded={openUsers}
+                  >
+                    <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--task-purple)/0.15)] shadow-lg shadow-[hsl(var(--task-purple)/0.05)]">
+                      <Users className="h-4.5 w-4.5 text-[hsl(var(--task-purple))]" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-sm font-bold text-white">Usuários Cadastrados</h2>
+                      <p className="mt-0.5 text-xs text-white/40">Gerencie acessos e permissões da equipe</p>
+                    </div>
+
+                    <div className="hidden shrink-0 items-center sm:flex mr-2">
+                      <span className="inline-flex items-center justify-center rounded-full bg-[hsl(var(--task-purple)/0.15)] px-2 py-0.5 text-[10px] font-bold text-[hsl(var(--task-purple))]">
+                        {filteredUsers.length} usuários
+                      </span>
+                    </div>
+
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-white/40 transition-transform duration-300 ${openUsers ? "rotate-180" : ""}`}
+                    />
+                  </button>
+
+                  <div
+                    className={`relative grid transition-[grid-template-rows] duration-300 ease-out ${
+                      openUsers ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="border-t border-[hsl(var(--task-border)/0.3)]">
                 {/* ── Header com busca ── */}
                 <div className="p-5 pb-4 space-y-4 shrink-0">
                   <div className="flex flex-wrap items-center justify-between gap-3">
