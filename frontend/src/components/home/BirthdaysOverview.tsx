@@ -279,7 +279,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
                 {birthdays.length > 1 &&
                   groupByUpcomingMonth(birthdays.slice(1)).map((group) => (
                     <div key={group.month}>
-                      <p className="sticky top-0 z-10 mb-2 bg-[hsl(270_45%_11%)]/90 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35 backdrop-blur-sm">
+                      <p className="sticky top-0 z-10 mb-2 bg-slate-950/80 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35 backdrop-blur-sm">
                         {MONTH_NAMES[group.month - 1]}
                       </p>
                       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
