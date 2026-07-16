@@ -94,9 +94,11 @@ function nextOccurrenceLabel(person: BirthdayPerson) {
 
 /** Idade que a pessoa vai completar na próxima data de aniversário */
 function turningAge(person: BirthdayPerson) {
-  const next = new Date(person.nextDate);
-  if (Number.isNaN(next.getTime()) || !person.year) return null;
-  return next.getFullYear() - person.year;
+  if (!person.year) return null;
+  const label = nextOccurrenceLabel(person);
+  const parts = label.split("/");
+  const nextYear = parseInt(parts[2]);
+  return nextYear - person.year;
 }
 
 function countdownLabel(person: BirthdayPerson) {
