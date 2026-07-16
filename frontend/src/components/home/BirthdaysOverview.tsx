@@ -181,7 +181,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
 
   const birthdays = data?.birthdays ?? [];
   const nextBirthday = birthdays[0];
-  const previewStack = birthdays.slice(0, 4);
+  
 
   return (
     <section className="task-card relative overflow-hidden p-0 transition-all duration-300">
