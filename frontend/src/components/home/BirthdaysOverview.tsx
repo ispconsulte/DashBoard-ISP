@@ -197,7 +197,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-bold text-white">Aniversários no Bitrix</h2>
+          <h2 className="text-sm font-bold text-white">Aniversários no Nubítrix</h2>
 
           {isLoading ? (
             <p className="mt-0.5 flex items-center gap-1.5 text-xs text-white/40">
