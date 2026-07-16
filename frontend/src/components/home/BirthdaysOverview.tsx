@@ -192,7 +192,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
         aria-expanded={open}
       >
         <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 shadow-lg shadow-primary/5">
-          <CakeSlice className="h-4.5 w-4.5 text-white" />
+          <CakeSlice className="h-4.5 w-4.5 text-primary" />
           <Sparkles className="absolute -right-1.5 -top-1.5 h-3.5 w-3.5 text-amber-300 drop-shadow" />
         </div>
 
