@@ -1116,59 +1116,75 @@ export default function UsuariosPage() {
                         Inativo
                       </span>
                     </div>
-                  </div>
+                    
+                    <div className="p-5 space-y-4">
+                      {/* Search + Client filter row */}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="relative flex-1">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--task-text-muted)/0.5)]" />
+                          <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar por nome, e-mail..."
+                            className="h-10 w-full rounded-xl border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg)/0.6)] pl-10 pr-3 text-xs text-[hsl(var(--task-text))] outline-none transition-all focus:border-[hsl(var(--task-purple)/0.5)] focus:bg-[hsl(var(--task-bg))] focus:shadow-[0_0_0_3px_hsl(var(--task-purple)/0.08)] placeholder:text-[hsl(var(--task-text-muted)/0.4)]" />
+                        </div>
+                        <Select
+                          value={clienteFilter === "all" ? "all" : String(clienteFilter)}
+                          onValueChange={(value) => setClienteFilter(value === "all" ? "all" : Number(value))}
+                        >
+                          <SelectTrigger className={taskSelectTriggerFilterClass}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className={taskSelectContentClass}>
+                            <SelectItem value="all" className={taskSelectItemClass}>Todos os clientes</SelectItem>
+                            {clienteOptions.map((c) => (
+                              <SelectItem key={c.value} value={String(c.value)} className={taskSelectItemClass}>{c.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  {/* Search + Client filter row */}
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="relative flex-1">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--task-text-muted)/0.5)]" />
-                      <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar por nome, e-mail..."
-                        className="h-10 w-full rounded-xl border border-[hsl(var(--task-border))] bg-[hsl(var(--task-bg)/0.6)] pl-10 pr-3 text-xs text-[hsl(var(--task-text))] outline-none transition-all focus:border-[hsl(var(--task-purple)/0.5)] focus:bg-[hsl(var(--task-bg))] focus:shadow-[0_0_0_3px_hsl(var(--task-purple)/0.08)] placeholder:text-[hsl(var(--task-text-muted)/0.4)]" />
+                      {/* Profile filter chips */}
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { key: "all", label: "Todos" },
+                          ...PERFIS.map(p => ({ key: p, label: p })),
+                        ].map(chip => {
+                          const isActive = profileFilter === chip.key;
+                          const count = chip.key === "all" ? api.users.length : api.users.filter(u => u.user_profile === chip.key).length;
+                          return (
+                            <button key={chip.key} onClick={() => setProfileFilter(chip.key)}
+                              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all duration-200 ${
+                                isActive
+                                  ? "bg-[hsl(var(--task-purple)/0.2)] text-[hsl(var(--task-purple))] border border-[hsl(var(--task-purple)/0.3)] shadow-[0_0_8px_hsl(var(--task-purple)/0.15)]"
+                                  : "bg-[hsl(var(--task-bg)/0.5)] text-[hsl(var(--task-text-muted))] border border-[hsl(var(--task-border)/0.5)] hover:border-[hsl(var(--task-purple)/0.25)] hover:text-[hsl(var(--task-text))] hover:bg-[hsl(var(--task-bg))]"
+                              }`}>
+                              {chip.label}
+                              <span className={`inline-flex items-center justify-center rounded-full px-1.5 min-w-[18px] h-[18px] text-[9px] font-bold ${
+                                isActive 
+                                  ? "bg-[hsl(var(--task-purple)/0.25)] text-[hsl(var(--task-purple))]" 
+                                  : "bg-[hsl(var(--task-border)/0.3)] text-[hsl(var(--task-text-muted)/0.6)]"
+                              }`}>
+                                {count}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Legenda de status */}
+                      <div className="flex items-center gap-4 text-[10px] text-[hsl(var(--task-text-muted)/0.7)] pt-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-teal-400 shadow-[0_0_6px_rgba(45,212,191,0.6)]" />
+                          Online
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--task-text-muted)/0.3)]" />
+                          Offline
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                          Inativo
+                        </span>
+                      </div>
                     </div>
-                    <Select
-                      value={clienteFilter === "all" ? "all" : String(clienteFilter)}
-                      onValueChange={(value) => setClienteFilter(value === "all" ? "all" : Number(value))}
-                    >
-                      <SelectTrigger className={taskSelectTriggerFilterClass}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className={taskSelectContentClass}>
-                        <SelectItem value="all" className={taskSelectItemClass}>Todos os clientes</SelectItem>
-                        {clienteOptions.map((c) => (
-                          <SelectItem key={c.value} value={String(c.value)} className={taskSelectItemClass}>{c.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Profile filter chips */}
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { key: "all", label: "Todos" },
-                      ...PERFIS.map(p => ({ key: p, label: p })),
-                    ].map(chip => {
-                      const isActive = profileFilter === chip.key;
-                      const count = chip.key === "all" ? api.users.length : api.users.filter(u => u.user_profile === chip.key).length;
-                      return (
-                        <button key={chip.key} onClick={() => setProfileFilter(chip.key)}
-                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all duration-200 ${
-                            isActive
-                              ? "bg-[hsl(var(--task-purple)/0.2)] text-[hsl(var(--task-purple))] border border-[hsl(var(--task-purple)/0.3)] shadow-[0_0_8px_hsl(var(--task-purple)/0.15)]"
-                              : "bg-[hsl(var(--task-bg)/0.5)] text-[hsl(var(--task-text-muted))] border border-[hsl(var(--task-border)/0.5)] hover:border-[hsl(var(--task-purple)/0.25)] hover:text-[hsl(var(--task-text))] hover:bg-[hsl(var(--task-bg))]"
-                          }`}>
-                          {chip.label}
-                          <span className={`inline-flex items-center justify-center rounded-full px-1.5 min-w-[18px] h-[18px] text-[9px] font-bold ${
-                            isActive 
-                              ? "bg-[hsl(var(--task-purple)/0.25)] text-[hsl(var(--task-purple))]" 
-                              : "bg-[hsl(var(--task-border)/0.3)] text-[hsl(var(--task-text-muted)/0.6)]"
-                          }`}>
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
 
                 {/* Divider */}
                 <div className="mx-5 border-t border-[hsl(var(--task-border)/0.3)]" />
