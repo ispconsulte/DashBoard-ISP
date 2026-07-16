@@ -134,10 +134,9 @@ function BirthdayCard({
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-white/90">{person.name}</p>
+          <p className="truncate text-[13px] font-semibold text-white/95">{person.name}</p>
           <p className={`mt-0.5 text-[11px] font-medium ${theme.text}`}>
-            {birthdayDayMonthLabel(person)}
-            {age !== null ? ` · ${age} anos` : ""}
+            Nasceu em {birthDateLabel(person)}
           </p>
         </div>
 
