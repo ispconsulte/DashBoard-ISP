@@ -134,10 +134,9 @@ function BirthdayCard({
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-white/90">{person.name}</p>
+          <p className="truncate text-[13px] font-semibold text-white/95">{person.name}</p>
           <p className={`mt-0.5 text-[11px] font-medium ${theme.text}`}>
-            {birthdayDayMonthLabel(person)}
-            {age !== null ? ` · ${age} anos` : ""}
+            Nasceu em {birthDateLabel(person)}
           </p>
         </div>
 
@@ -157,9 +156,9 @@ function BirthdayCard({
             style={{ width: `${progress}%` }}
           />
         </div>
-        <div className="flex items-center justify-between text-[10px] text-white/35">
-          <span>Nasceu {birthDateLabel(person)}</span>
-          <span>{nextOccurrenceLabel(person)}</span>
+        <div className="flex items-center justify-between text-[10px] text-white/45">
+          <span>Aniversário {nextOccurrenceLabel(person)}</span>
+          <span className="text-white/25">completa {age} anos</span>
         </div>
       </div>
     </div>
@@ -185,7 +184,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
   const previewStack = birthdays.slice(0, 4);
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[linear-gradient(145deg,hsl(270_50%_14%/0.85),hsl(234_45%_9%/0.75))] shadow-xl">
+    <section className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-slate-950/40 shadow-xl backdrop-blur-md">
       <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 animate-float-slow rounded-full bg-fuchsia-500/15 blur-3xl" />
       <div
         className="pointer-events-none absolute -bottom-20 left-1/4 h-44 w-44 animate-float-slow rounded-full bg-indigo-500/10 blur-3xl"
@@ -226,7 +225,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
               return (
                 <div
                   key={person.bitrixUserId}
-                  className={`-ml-2 flex h-7 w-7 items-center justify-center rounded-full border-2 border-[hsl(270_45%_11%)] bg-gradient-to-br ${theme.grad} text-[9px] font-bold text-white first:ml-0`}
+                  className={`-ml-2 flex h-7 w-7 items-center justify-center rounded-full border-2 border-slate-900 bg-gradient-to-br ${theme.grad} text-[9px] font-bold text-white first:ml-0`}
                   style={{ zIndex: previewStack.length - i }}
                   title={person.name}
                 >
@@ -263,10 +262,10 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
                 <p className="mt-1 text-xs text-white/35">Preencha a data de nascimento nos perfis do Bitrix.</p>
               </div>
             ) : (
-              <div className="max-h-[30rem] space-y-5 overflow-y-auto pr-1">
+              <div className="max-h-[30rem] space-y-5 overflow-y-auto pr-1.5 scrollbar-thin scrollbar-track-white/[0.02] scrollbar-thumb-white/[0.08] hover:scrollbar-thumb-white/[0.12]">
                 {nextBirthday && (
                   <div>
-                    <p className="sticky top-0 z-10 mb-2 flex items-center gap-1.5 bg-[hsl(270_45%_11%)]/90 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-fuchsia-200/55 backdrop-blur-sm">
+                    <p className="sticky top-0 z-10 mb-2 flex items-center gap-1.5 bg-slate-950/80 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-fuchsia-200/55 backdrop-blur-sm">
                       <PartyPopper className="h-3.5 w-3.5" />
                       Próximo aniversário
                     </p>
@@ -279,7 +278,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
                 {birthdays.length > 1 &&
                   groupByUpcomingMonth(birthdays.slice(1)).map((group) => (
                     <div key={group.month}>
-                      <p className="sticky top-0 z-10 mb-2 bg-[hsl(270_45%_11%)]/90 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35 backdrop-blur-sm">
+                      <p className="sticky top-0 z-10 mb-2 bg-slate-950/80 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35 backdrop-blur-sm">
                         {MONTH_NAMES[group.month - 1]}
                       </p>
                       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
