@@ -191,7 +191,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
         className="relative flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-white/[0.03] sm:px-5"
         aria-expanded={open}
       >
-        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 shadow-lg shadow-fuchsia-950/40">
+        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 shadow-lg shadow-primary/5">
           <CakeSlice className="h-4.5 w-4.5 text-white" />
           <Sparkles className="absolute -right-1.5 -top-1.5 h-3.5 w-3.5 text-amber-300 drop-shadow" />
         </div>
