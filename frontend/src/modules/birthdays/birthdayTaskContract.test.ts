@@ -26,6 +26,15 @@ describe("automação de tarefas de aniversário", () => {
     expect(cyclesToProcess("2026-05-01", now)).toEqual(cyclesToProcess("2026-05-01", now));
   });
 
+  it("revalida diariamente o ciclo atual para captar aniversários corrigidos", () => {
+    expect(cyclesToProcess("2026-07-01", atSaoPauloNoon("2026-07-18"))).toEqual([
+      { year: 2026, month: 7 },
+    ]);
+    expect(cyclesToProcess("2026-08-01", atSaoPauloNoon("2026-07-20"))).toEqual([
+      { year: 2026, month: 8 },
+    ]);
+  });
+
   it("distingue criação elegível de criação antecipada", () => {
     const now = atSaoPauloNoon("2026-07-16");
     expect(isCycleEligible({ year: 2026, month: 7 }, now)).toBe(true);

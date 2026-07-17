@@ -99,7 +99,14 @@ export function cyclesToProcess(lastCompletedCycle: unknown, now = new Date(), m
   const current = { year: local.year, month: local.month };
   const end = eligibleCycleEnd(now);
   const previous = parseCycle(lastCompletedCycle);
-  let cursor = previous ? addMonths(previous, 1) : current;
+  // Reprocessa o ciclo elegível mais recente todos os dias. A identidade
+  // idempotente impede duplicatas e permite captar aniversários corrigidos
+  // depois que o cursor mensal já foi concluído.
+  let cursor = previous
+    ? compareCycles(previous, end) < 0
+      ? addMonths(previous, 1)
+      : end
+    : current;
   const cycles: BirthdayCycle[] = [];
   while (compareCycles(cursor, end) <= 0 && cycles.length < maxCycles) {
     cycles.push(cursor);
