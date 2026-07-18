@@ -5,10 +5,16 @@ export type BirthdayTaskContract = {
   birthDate: string;
   celebrationDate: string;
   title: string;
+  legacyTitles: string[];
   description: string;
   deadline: string;
   checklist: string[];
 };
+
+export const BIRTHDAY_TASK_TAGS = [
+  "aniversário",
+  "preparativos para o aniversário",
+] as const;
 
 export function parseBirthday(value: unknown): Birthday | null {
   const raw = String(value ?? "").trim();
@@ -131,7 +137,7 @@ export function buildBirthdayTaskContract(
     `${displayDate(artDue.year, artDue.month, artDue.day)} — Finalizar e programar a arte dos stories (1 dia antes)`,
   ];
   const description = [
-    "LEMBRETE AUTOMÁTICO DE ANIVERSÁRIO",
+    `PREPARATIVOS PARA O ANIVERSÁRIO DE ${employeeName.toLocaleUpperCase("pt-BR")}`,
     "",
     `Aniversariante: ${employeeName}`,
     `Data de nascimento: ${birthDate}`,
@@ -143,14 +149,15 @@ export function buildBirthdayTaskContract(
     "",
     "Responsável: Kayla Freitas Morais",
     "Participante: Thalia Lourenço",
-    "",
-    "Tarefa gerada automaticamente pelo ISP Consulte Dashboard.",
   ].join("\n");
+
+  const legacyTitle = `🎂 [ANIVERSÁRIO | ${celebrationDate}] Preparativos — ${employeeName}`;
 
   return {
     birthDate,
     celebrationDate,
-    title: `🎂 [ANIVERSÁRIO | ${celebrationDate}] Preparativos — ${employeeName}`,
+    title: `🎂 Preparativos para o aniversário de ${employeeName} | ${celebrationDate}`,
+    legacyTitles: [legacyTitle],
     description,
     deadline: `${isoDate(celebration.year, celebration.month, celebration.day)}T09:00:00-03:00`,
     checklist,

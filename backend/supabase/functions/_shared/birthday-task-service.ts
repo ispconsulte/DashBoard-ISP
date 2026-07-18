@@ -1,4 +1,5 @@
 import {
+  BIRTHDAY_TASK_TAGS,
   buildBirthdayTaskContract,
   cycleKey,
   parseBirthday,
@@ -215,7 +216,10 @@ export async function ensureBirthdayTask(
   if (!claimed) return { status: "already_running" as const, taskId: null, contract };
 
   try {
-    const existingTask = await findExistingTask(contract.title, context.responsibleId);
+    const existingTask = await findExistingTask(
+      [contract.title, ...contract.legacyTitles],
+      context.responsibleId,
+    );
     const existingTaskId = String(existingTask ? field(existingTask, "id", "ID") : "").trim();
     const taskId = existingTaskId || await addTask({
       ...contract,
@@ -249,7 +253,8 @@ export async function ensureBirthdayTask(
   }
 }
 
-async function findExistingTask(title: string, responsibleId: string) {
+async function findExistingTask(titles: string[], responsibleId: string) {
+  const acceptedTitles = new Set(titles);
   let start = 0;
   for (let page = 0; page < 10; page += 1) {
     const payload = await bitrixPost("tasks.task.list.json", {
@@ -259,7 +264,7 @@ async function findExistingTask(title: string, responsibleId: string) {
       start,
     });
     const tasks = normalizeList(payload?.result?.tasks ?? payload?.result);
-    const existing = tasks.find((task) => String(field(task, "title", "TITLE") ?? "") === title);
+    const existing = tasks.find((task) => acceptedTitles.has(String(field(task, "title", "TITLE") ?? "")));
     if (existing) return existing;
     const next = Number(payload?.next);
     if (!Number.isFinite(next) || next <= start || tasks.length === 0) break;
@@ -281,8 +286,7 @@ async function addTask(params: {
   body.set("fields[RESPONSIBLE_ID]", params.responsibleId);
   body.set("fields[ACCOMPLICES][0]", params.participantId);
   body.set("fields[DEADLINE]", params.deadline);
-  body.set("fields[TAGS][0]", "aniversario");
-  body.set("fields[TAGS][1]", "automacao-aniversario");
+  BIRTHDAY_TASK_TAGS.forEach((tag, index) => body.set(`fields[TAGS][${index}]`, tag));
   const payload = await requestBitrix("tasks.task.add.json", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BIRTHDAY_TASK_TAGS,
   buildBirthdayTaskContract,
   cyclesToProcess,
   eligibleCycleEnd,
@@ -41,17 +42,22 @@ describe("automação de tarefas de aniversário", () => {
     expect(isCycleEligible({ year: 2026, month: 8 }, now)).toBe(false);
   });
 
-  it("preserva o contrato Bitrix existente", () => {
+  it("gera texto natural sem expor a automação e preserva o título legado", () => {
     const contract = buildBirthdayTaskContract(
       "Colaborador Teste",
       { year: 2000, month: 8, day: 10 },
       { year: 2026, month: 8 },
     );
-    expect(contract.title).toBe("🎂 [ANIVERSÁRIO | 10/08/2026] Preparativos — Colaborador Teste");
+    expect(contract.title).toBe("🎂 Preparativos para o aniversário de Colaborador Teste | 10/08/2026");
+    expect(contract.legacyTitles).toContain("🎂 [ANIVERSÁRIO | 10/08/2026] Preparativos — Colaborador Teste");
     expect(contract.deadline).toBe("2026-08-10T09:00:00-03:00");
+    expect(contract.description).toContain("PREPARATIVOS PARA O ANIVERSÁRIO DE COLABORADOR TESTE");
+    expect(contract.description).not.toContain("AUTOMÁTICO");
+    expect(contract.description).not.toContain("automaticamente");
     expect(contract.description).toContain("Responsável: Kayla Freitas Morais");
     expect(contract.description).toContain("Participante: Thalia Lourenço");
     expect(contract.checklist).toHaveLength(2);
+    expect(BIRTHDAY_TASK_TAGS).toEqual(["aniversário", "preparativos para o aniversário"]);
   });
 
   it("normaliza 29 de fevereiro no próximo ciclo não bissexto", () => {
