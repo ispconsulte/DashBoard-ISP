@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BirthdayTaskRequestError,
   createBirthdayTask,
+  getBitrixTaskUrl,
   type BirthdayPerson,
 } from "./api/useBirthdays";
 
@@ -68,5 +69,21 @@ describe("createBirthdayTask", () => {
     const error = await createBirthdayTask("session-token", person).catch((caught) => caught);
     expect(error).toBeInstanceOf(BirthdayTaskRequestError);
     expect(error).toMatchObject({ status, code });
+  });
+});
+
+describe("getBitrixTaskUrl", () => {
+  it("monta o link da tarefa no contexto do usuário autenticado", () => {
+    expect(getBitrixTaskUrl("10566", "606")).toBe(
+      "https://isp.bitrix24.com.br/company/personal/user/606/tasks/task/view/10566/",
+    );
+  });
+
+  it.each([
+    [null, "606"],
+    ["10566", null],
+    ["../10566", "606"],
+  ])("não cria link com identificadores inválidos", (taskId, userId) => {
+    expect(getBitrixTaskUrl(taskId, userId)).toBeNull();
   });
 });

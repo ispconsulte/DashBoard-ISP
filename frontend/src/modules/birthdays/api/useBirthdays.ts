@@ -49,6 +49,16 @@ export type CreateBirthdayTaskResponse = {
   forcedEarly: boolean;
 };
 
+const BITRIX_PORTAL_URL = "https://isp.bitrix24.com.br";
+
+export function getBitrixTaskUrl(taskId?: string | null, viewerBitrixUserId?: string | null) {
+  const normalizedTaskId = String(taskId ?? "").trim();
+  const normalizedViewerId = String(viewerBitrixUserId ?? "").trim();
+  if (!/^\d+$/.test(normalizedTaskId) || !/^\d+$/.test(normalizedViewerId)) return null;
+
+  return `${BITRIX_PORTAL_URL}/company/personal/user/${normalizedViewerId}/tasks/task/view/${normalizedTaskId}/`;
+}
+
 export class BirthdayTaskRequestError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {
     super(message);

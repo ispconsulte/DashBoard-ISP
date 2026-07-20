@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { CakeSlice, ChevronDown, ClipboardPlus, Clock3, Gift, Loader2, Sparkles } from "lucide-react";
+import { CakeSlice, ChevronDown, ClipboardPlus, Clock3, ExternalLink, Gift, Loader2, Sparkles } from "lucide-react";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import {
   BirthdayTaskRequestError,
   createBirthdayTask,
+  getBitrixTaskUrl,
   useBirthdays,
   type BirthdayPerson,
 } from "@/modules/birthdays/api/useBirthdays";
@@ -137,6 +138,7 @@ function BirthdayCard({
   featured = false,
   canCreateTask = false,
   creating = false,
+  viewerBitrixUserId,
   onCreateTask,
 }: {
   person: BirthdayPerson;
@@ -144,11 +146,14 @@ function BirthdayCard({
   featured?: boolean;
   canCreateTask?: boolean;
   creating?: boolean;
+  viewerBitrixUserId?: string | null;
   onCreateTask?: (person: BirthdayPerson) => void;
 }) {
   const age = turningAge(person);
   const theme = themeFor(person);
   const progress = Math.max(proximityPercent(person.daysUntil), person.isToday ? 100 : 6);
+  const taskUrl = getBitrixTaskUrl(person.taskId, viewerBitrixUserId);
+  const taskExists = person.taskStatus === "created" && Boolean(person.taskId);
 
   return (
     <div
@@ -204,8 +209,10 @@ function BirthdayCard({
       {canCreateTask && (
         <div className="relative mt-3 flex items-center justify-between gap-2 border-t border-white/[0.06] pt-3">
           <span className={`text-[10px] ${person.taskStatus === "error" ? "text-rose-300" : "text-white/40"}`}>
-            {person.taskStatus === "created" && person.taskId
-              ? `Tarefa #${person.taskId} criada`
+            {taskExists
+              ? taskUrl
+                ? <a className="underline decoration-white/20 underline-offset-2 hover:text-white/70" href={taskUrl} target="_blank" rel="noopener noreferrer">Tarefa #{person.taskId} já criada</a>
+                : `Tarefa #${person.taskId} já criada`
               : person.taskStatus === "processing"
                 ? "Criação em andamento"
                 : person.taskStatus === "error"
@@ -214,17 +221,26 @@ function BirthdayCard({
                     ? "Período disponível"
                     : "Fora do período previsto"}
           </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-8 shrink-0 gap-1.5 rounded-lg border-white/10 bg-white/[0.04] px-2.5 text-[11px] text-white/80 hover:bg-white/[0.09]"
-            disabled={creating}
-            onClick={() => onCreateTask?.(person)}
-          >
-            {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardPlus className="h-3.5 w-3.5" />}
-            Criar tarefa
-          </Button>
+          {taskExists && taskUrl ? (
+            <Button asChild size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 rounded-lg border-white/10 bg-white/[0.04] px-2.5 text-[11px] text-white/80 hover:bg-white/[0.09]">
+              <a href={taskUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Abrir tarefa
+              </a>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 shrink-0 gap-1.5 rounded-lg border-white/10 bg-white/[0.04] px-2.5 text-[11px] text-white/80 hover:bg-white/[0.09]"
+              disabled={creating || taskExists}
+              onClick={() => onCreateTask?.(person)}
+            >
+              {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardPlus className="h-3.5 w-3.5" />}
+              {taskExists ? "Tarefa criada" : "Criar tarefa"}
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -257,10 +273,19 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
     setCreatingId(person.bitrixUserId);
     try {
       const result = await createBirthdayTask(session.accessToken, person, forceEarly);
+      const taskUrl = getBitrixTaskUrl(result.taskId, session.bitrixUserId);
+      const toastOptions = taskUrl
+        ? {
+            action: {
+              label: "Abrir tarefa",
+              onClick: () => window.open(taskUrl, "_blank", "noopener,noreferrer"),
+            },
+          }
+        : undefined;
       if (result.result === "created") {
-        toast.success(`Tarefa de aniversário criada${result.taskId ? ` (#${result.taskId})` : ""}.`);
+        toast.success(`Tarefa de aniversário criada${result.taskId ? ` (#${result.taskId})` : ""}.`, toastOptions);
       } else if (result.result === "already_exists") {
-        toast.info(`A tarefa deste ciclo já existe${result.taskId ? ` (#${result.taskId})` : ""}.`);
+        toast.info(`A tarefa deste ciclo já foi criada${result.taskId ? ` (#${result.taskId})` : ""}.`, toastOptions);
       } else {
         toast.info("A criação desta tarefa já está em andamento.");
       }
@@ -373,6 +398,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
                             index={index}
                             canCreateTask={isAdmin}
                             creating={creatingId === person.bitrixUserId}
+                            viewerBitrixUserId={session?.bitrixUserId}
                             onCreateTask={requestCreation}
                           />
                         ))}
