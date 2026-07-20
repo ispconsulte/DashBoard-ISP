@@ -8,6 +8,7 @@ import {
   fetchActiveBitrixUsers,
   field as getField,
 } from "../_shared/birthday-task-service.ts";
+import { canViewBirthdays } from "../_shared/birthday-authorization.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,10 +67,8 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (userError) throw new Error("Não foi possível validar o perfil do usuário.");
-    const role = String(appUser?.role ?? appUser?.user_profile ?? "").toLowerCase();
-    const canManageUsers = ["admin", "gerente", "coordenador"].includes(role);
-    if (!appUser || appUser.active === false || !canManageUsers) {
-      return new Response(JSON.stringify({ error: "Acesso restrito à gestão de usuários." }), {
+    if (!canViewBirthdays(appUser)) {
+      return new Response(JSON.stringify({ error: "Acesso restrito aos usuários internos." }), {
         status: 403,
         headers: jsonHeaders,
       });
