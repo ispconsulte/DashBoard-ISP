@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CakeSlice, ChevronDown, ClipboardPlus, Clock3, ExternalLink, Gift, Loader2, Sparkles } from "lucide-react";
+import { CakeSlice, CheckCircle2, ChevronDown, ClipboardPlus, Clock3, ExternalLink, Gift, Loader2, Sparkles } from "lucide-react";
 import { useAuth } from "@/modules/auth/hooks/useAuth";
 import {
   BirthdayTaskRequestError,
@@ -206,19 +206,27 @@ function BirthdayCard({
 
       {canCreateTask && (
         <div className="relative mt-3 flex items-center justify-between gap-2 border-t border-white/[0.06] pt-3">
-          <span className={`text-[10px] ${person.taskStatus === "error" ? "text-rose-300" : "text-white/40"}`}>
-            {taskExists
-              ? taskUrl
-                ? <a className="underline decoration-white/20 underline-offset-2 hover:text-white/70" href={taskUrl} target="_blank" rel="noopener noreferrer">Tarefa #{person.taskId} já criada</a>
-                : `Tarefa #${person.taskId} já criada`
-              : person.taskStatus === "processing"
+          {taskExists ? (
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-emerald-400/15 bg-emerald-400/[0.06] px-2.5 py-2">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-400/20">
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-300">Preparativos iniciados</p>
+                <p className="truncate text-[10px] text-white/50">Tarefa #{person.taskId} criada para {person.name.split(" ")[0]}</p>
+              </div>
+            </div>
+          ) : (
+            <span className={`text-[10px] ${person.taskStatus === "error" ? "text-rose-300" : "text-white/40"}`}>
+              {person.taskStatus === "processing"
                 ? "Criação em andamento"
                 : person.taskStatus === "error"
                   ? "Última tentativa falhou"
                   : person.taskEligible
                     ? "Período disponível"
                     : "Fora do período previsto"}
-          </span>
+            </span>
+          )}
           {taskExists && taskUrl ? (
             <Button asChild size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 rounded-lg border-white/10 bg-white/[0.04] px-2.5 text-[11px] text-white/80 hover:bg-white/[0.09]">
               <a href={taskUrl} target="_blank" rel="noopener noreferrer">
