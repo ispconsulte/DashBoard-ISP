@@ -73,7 +73,7 @@ describe("createBirthdayTask", () => {
 });
 
 describe("getBitrixTaskUrl", () => {
-  it("monta o link da tarefa no contexto do usuário autenticado", () => {
+  it("monta o link da tarefa com o ID Bitrix do aniversariante", () => {
     expect(getBitrixTaskUrl("10566", "606")).toBe(
       "https://isp.bitrix24.com.br/company/personal/user/606/tasks/task/view/10566/",
     );

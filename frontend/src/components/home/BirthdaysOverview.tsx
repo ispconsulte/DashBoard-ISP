@@ -138,7 +138,6 @@ function BirthdayCard({
   featured = false,
   canCreateTask = false,
   creating = false,
-  viewerBitrixUserId,
   onCreateTask,
 }: {
   person: BirthdayPerson;
@@ -146,13 +145,12 @@ function BirthdayCard({
   featured?: boolean;
   canCreateTask?: boolean;
   creating?: boolean;
-  viewerBitrixUserId?: string | null;
   onCreateTask?: (person: BirthdayPerson) => void;
 }) {
   const age = turningAge(person);
   const theme = themeFor(person);
   const progress = Math.max(proximityPercent(person.daysUntil), person.isToday ? 100 : 6);
-  const taskUrl = getBitrixTaskUrl(person.taskId, viewerBitrixUserId);
+  const taskUrl = getBitrixTaskUrl(person.taskId, person.bitrixUserId);
   const taskExists = person.taskStatus === "created" && Boolean(person.taskId);
 
   return (
@@ -273,7 +271,7 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
     setCreatingId(person.bitrixUserId);
     try {
       const result = await createBirthdayTask(session.accessToken, person, forceEarly);
-      const taskUrl = getBitrixTaskUrl(result.taskId, session.bitrixUserId);
+      const taskUrl = getBitrixTaskUrl(result.taskId, person.bitrixUserId);
       const toastOptions = taskUrl
         ? {
             action: {
@@ -398,7 +396,6 @@ function BirthdaysOverview({ refreshKey = 0 }: BirthdaysOverviewProps) {
                             index={index}
                             canCreateTask={isAdmin}
                             creating={creatingId === person.bitrixUserId}
-                            viewerBitrixUserId={session?.bitrixUserId}
                             onCreateTask={requestCreation}
                           />
                         ))}
